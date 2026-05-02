@@ -36,7 +36,7 @@ avec le cœur de métier de DEF (SSI, détection incendie, vidéosurveillance)."
 def analyze_tender(text: str) -> dict:
     try:
         response = _get_client().models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-1.5-flash",
             contents=f"Analyse ce marché :\n\n{text[:3000]}",
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
