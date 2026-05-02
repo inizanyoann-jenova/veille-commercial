@@ -10,7 +10,7 @@ from email.utils import parsedate_to_datetime
 import feedparser
 
 from database import SessionLocal, init_db
-from filters import is_construction_relevant
+from filters import is_prive_relevant
 from models import Tender
 
 FLUX_PRESSE = [
@@ -126,9 +126,9 @@ def fetch_presse_io() -> int:
     total = 0
     try:
         for territoire, nom, url in FLUX_PRESSE:
-            total += _fetch_feed(territoire, nom, url, db, "Presse", is_construction_relevant)
+            total += _fetch_feed(territoire, nom, url, db, "Presse", is_prive_relevant)
         for territoire, nom, url in FLUX_INSTITUTIONS:
-            total += _fetch_feed(territoire, nom, url, db, "Institution", lambda t: True)
+            total += _fetch_feed(territoire, nom, url, db, "Institution", is_prive_relevant)
     finally:
         db.close()
     return total

@@ -194,6 +194,17 @@ def load_tenders(status_filter: str, maintenance_only: bool, annee_min: int, sec
         db.close()
 
 
+def delete_tender(tender_id: str) -> None:
+    db = new_db()
+    try:
+        t = db.query(Tender).filter(Tender.id == tender_id).first()
+        if t:
+            db.delete(t)
+            db.commit()
+    finally:
+        db.close()
+
+
 def save_status(tender_id: str, new_status: str) -> None:
     db = new_db()
     try:
@@ -572,11 +583,14 @@ kp5.metric("À qualifier", nb_qualif)
 if not rows_priv:
     st.info("Aucun signal privé. Lancez la collecte Permis / Presse / Banques Dev. depuis le menu latéral.")
 else:
-    st.caption(f"{len(rows_priv)} signal(s) affiché(s)")
+    st.caption(f"{len(rows_priv)} signal(s) affiché(s) — cochez pour supprimer")
     df_priv = pd.DataFrame(rows_priv)
+    df_priv.insert(0, "🗑️", False)
+
     edited_priv = st.data_editor(
         df_priv,
         column_config={
+            "🗑️": st.column_config.CheckboxColumn("🗑️", width="small"),
             "ID": st.column_config.TextColumn("ID", disabled=True, width="small"),
             "Titre": st.column_config.TextColumn("Titre", width="large"),
             "Source": st.column_config.LinkColumn("Source", width="small"),
@@ -592,13 +606,23 @@ else:
             "Maint.": st.column_config.TextColumn("Maint.", width="small", disabled=True),
             "Concurrents": st.column_config.TextColumn("Concurrents", width="medium"),
         },
-        column_order=["Titre", "Source", "Territoire", "Type", "Score", "Publication", "Statut", "Maint.", "ID"],
+        column_order=["🗑️", "Titre", "Source", "Territoire", "Type", "Score", "Publication", "Statut", "Maint.", "ID"],
         use_container_width=True,
         hide_index=True,
         num_rows="fixed",
         key="priv_editor",
     )
 
+    # Suppression des lignes cochées
+    to_delete = edited_priv[edited_priv["🗑️"] == True]["ID"].tolist()
+    if to_delete:
+        if st.button(f"🗑️ Supprimer {len(to_delete)} signal(s) sélectionné(s)", type="secondary"):
+            for tid in to_delete:
+                delete_tender(tid)
+            st.cache_data.clear()
+            st.rerun()
+
+    # Persistance des changements de statut
     editor_state_priv = st.session_state.get("priv_editor", {})
     for row_idx, changes in editor_state_priv.get("edited_rows", {}).items():
         if "Statut" in changes:
