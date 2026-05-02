@@ -347,7 +347,7 @@ with st.sidebar:
 
     st.markdown("**Tout collecter**")
     if st.button("⚡ Toutes les sources", use_container_width=True, type="primary"):
-        with st.spinner("Collecte BOAMP + TED…"):
+        with st.spinner("Collecte toutes sources…"):
             total = 0
             errors = []
             for name, func_path in [
@@ -404,11 +404,13 @@ st.markdown("---")
 
 db_kpi = new_db()
 try:
-    total = db_kpi.query(Tender).count()
-    a_qualifier = db_kpi.query(Tender).filter(Tender.status == "À qualifier").count()
-    en_cours = db_kpi.query(Tender).filter(Tender.status == "En cours").count()
-    gagnes = db_kpi.query(Tender).filter(Tender.status == "Gagné").count()
-    soumis = db_kpi.query(Tender).filter(Tender.status == "Soumis").count()
+    from sqlalchemy import or_ as _or
+    _pub = _or(Tender.secteur == "Public", Tender.secteur == None)
+    total = db_kpi.query(Tender).filter(_pub).count()
+    a_qualifier = db_kpi.query(Tender).filter(_pub, Tender.status == "À qualifier").count()
+    en_cours = db_kpi.query(Tender).filter(_pub, Tender.status == "En cours").count()
+    gagnes = db_kpi.query(Tender).filter(_pub, Tender.status == "Gagné").count()
+    soumis = db_kpi.query(Tender).filter(_pub, Tender.status == "Soumis").count()
 finally:
     db_kpi.close()
 
@@ -551,17 +553,21 @@ try:
     nb_instit = db_priv.query(Tender).filter(
         Tender.secteur == "Privé", Tender.type_opportunite == "Institution"
     ).count()
+    nb_devbanks = db_priv.query(Tender).filter(
+        Tender.type_opportunite == "Banque Dev."
+    ).count()
     nb_qualif = db_priv.query(Tender).filter(
         Tender.secteur == "Privé", Tender.status == "À qualifier"
     ).count()
 finally:
     db_priv.close()
 
-kp1, kp2, kp3, kp4 = st.columns(4)
+kp1, kp2, kp3, kp4, kp5 = st.columns(5)
 kp1.metric("Permis construire", nb_permis)
 kp2.metric("Articles presse", nb_presse)
 kp3.metric("Institutions", nb_instit)
-kp4.metric("À qualifier", nb_qualif)
+kp4.metric("Banques Dev.", nb_devbanks)
+kp5.metric("À qualifier", nb_qualif)
 
 if not rows_priv:
     st.info("Aucun signal privé. Lancez la collecte Permis / Presse / Banques Dev. depuis le menu latéral.")

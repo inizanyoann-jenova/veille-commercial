@@ -37,9 +37,10 @@ def _type_batiment_ok(record: dict) -> bool:
 def _parse_date(value) -> datetime | None:
     if not value:
         return None
-    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%d/%m/%Y"):
+    s = str(value)
+    for fmt, trunc in [("%Y-%m-%dT%H:%M:%S", 19), ("%Y-%m-%d", 10), ("%d/%m/%Y", 10)]:
         try:
-            return datetime.strptime(str(value)[:10], fmt[:8])
+            return datetime.strptime(s[:trunc], fmt)
         except ValueError:
             continue
     return None

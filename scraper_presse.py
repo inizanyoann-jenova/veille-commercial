@@ -73,7 +73,7 @@ def _parse_date(entry) -> datetime | None:
                         return datetime(*parsed[:6])
                 except Exception:
                     pass
-    return datetime.now()
+    return None
 
 
 def _dedup_id(url: str) -> str:
