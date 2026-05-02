@@ -2,17 +2,18 @@ import json
 import os
 
 from dotenv import load_dotenv
-from openai import OpenAI
+from google import genai
+from google.genai import types
 
 load_dotenv()
 
-_client: OpenAI | None = None
+_client = None
 
 
-def _get_client() -> OpenAI:
+def _get_client():
     global _client
     if _client is None:
-        _client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        _client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
     return _client
 
 
@@ -34,19 +35,16 @@ avec le cœur de métier de DEF (SSI, détection incendie, vidéosurveillance)."
 
 def analyze_tender(text: str) -> dict:
     try:
-        response = _get_client().chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": f"Analyse ce marché public :\n\n{text[:3000]}",
-                },
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.1,
+        response = _get_client().models.generate_content(
+            model="gemini-2.0-flash",
+            contents=f"Analyse ce marché :\n\n{text[:3000]}",
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                temperature=0.1,
+                response_mime_type="application/json",
+            ),
         )
-        return json.loads(response.choices[0].message.content)
+        return json.loads(response.text)
 
     except Exception as exc:
         return {
