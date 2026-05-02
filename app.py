@@ -453,14 +453,16 @@ if not rows:
         "ou ajustez les filtres."
     )
 else:
-    st.subheader(f"📋 Marchés qualifiés ({len(rows)} résultats)")
+    st.subheader(f"📋 Marchés qualifiés ({len(rows)} résultats) — cochez pour supprimer")
 
     df = pd.DataFrame(rows)
+    df.insert(0, "🗑️", False)
     status_options = ["À qualifier", "En cours", "Soumis", "Gagné", "Perdu"]
 
     edited = st.data_editor(
         df,
         column_config={
+            "🗑️": st.column_config.CheckboxColumn("🗑️", width="small"),
             "ID": st.column_config.TextColumn("ID", disabled=True, width="small"),
             "Titre": st.column_config.TextColumn("Titre du Marché", width="large"),
             "Source": st.column_config.LinkColumn("Source", width="small"),
@@ -478,12 +480,21 @@ else:
             "Maint.": st.column_config.TextColumn("Maint.", width="small", disabled=True),
             "Concurrents": st.column_config.TextColumn("Concurrents", width="medium"),
         },
-        column_order=["Titre", "Source", "Territoire", "Domaine", "Score", "Date Limite", "Publication", "Statut", "Type", "Maint.", "Concurrents", "ID"],
+        column_order=["🗑️", "Titre", "Source", "Territoire", "Domaine", "Score", "Date Limite", "Publication", "Statut", "Type", "Maint.", "Concurrents", "ID"],
         use_container_width=True,
         hide_index=True,
         num_rows="fixed",
         key="tenders_editor",
     )
+
+    # Suppression des lignes cochées
+    to_delete_pub = edited[edited["🗑️"] == True]["ID"].tolist()
+    if to_delete_pub:
+        if st.button(f"🗑️ Supprimer {len(to_delete_pub)} marché(s) sélectionné(s)", type="secondary"):
+            for tid in to_delete_pub:
+                delete_tender(tid)
+            st.cache_data.clear()
+            st.rerun()
 
     # Persist status changes
     editor_state = st.session_state.get("tenders_editor", {})
