@@ -17,3 +17,5 @@ class Tender(Base):
     relevance_score = Column(Integer, default=0)
     is_maintenance = Column(Boolean, default=False)
     llm_analysis = Column(JSON)
+    secteur = Column(String, default=None)
+    type_opportunite = Column(String, default="Marché Public")

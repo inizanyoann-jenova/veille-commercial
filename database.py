@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from models import Base
 
@@ -10,6 +10,17 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    # Migration : ajoute les colonnes si elles n'existent pas (SQLite ne les crée pas via create_all)
+    with engine.connect() as conn:
+        for col_name, col_def in [
+            ("secteur", "VARCHAR"),
+            ("type_opportunite", "VARCHAR DEFAULT 'Marché Public'"),
+        ]:
+            try:
+                conn.execute(text(f"ALTER TABLE tenders ADD COLUMN {col_name} {col_def}"))
+                conn.commit()
+            except Exception:
+                pass  # Colonne déjà présente
 
 
 def get_db():
