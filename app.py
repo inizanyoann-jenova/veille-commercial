@@ -138,16 +138,21 @@ def new_db():
 
 
 @st.cache_data(ttl=60)
-def load_tenders(status_filter: str, maintenance_only: bool, annee_min: int) -> list[dict]:
+def load_tenders(status_filter: str, maintenance_only: bool, annee_min: int, secteur: str = "Public") -> list[dict]:
     db = new_db()
     try:
         from sqlalchemy import or_, extract
         q = db.query(Tender)
+
+        if secteur == "Public":
+            q = q.filter(or_(Tender.secteur == "Public", Tender.secteur == None))
+        elif secteur == "Privé":
+            q = q.filter(Tender.secteur == "Privé")
+
         if status_filter != "Tous":
             q = q.filter(Tender.status == status_filter)
         if maintenance_only:
             q = q.filter(Tender.is_maintenance == True)
-        # Filtre année : publication_date OU deadline dans la période
         if annee_min > 0:
             q = q.filter(or_(
                 extract("year", Tender.publication_date) >= annee_min,
@@ -179,7 +184,7 @@ def load_tenders(status_filter: str, maintenance_only: bool, annee_min: int) -> 
                         t.publication_date.strftime("%d/%m/%Y") if t.publication_date else "—"
                     ),
                     "Statut": t.status or "À qualifier",
-                    "Type": a.get("type_marche", "—"),
+                    "Type": t.type_opportunite or a.get("type_marche", "—"),
                     "Maint.": "✓" if t.is_maintenance else "",
                     "Concurrents": ", ".join(a.get("marques_concurrentes_citees", [])),
                 }
@@ -307,6 +312,39 @@ with st.sidebar:
             except Exception as exc:
                 st.error(f"Erreur BM : {exc}")
 
+    st.markdown("**Permis de construire** — Signaux en amont")
+    if st.button("🏗️ Collecter Permis (974 & 976)", use_container_width=True):
+        with st.spinner("Interrogation Sit@del2…"):
+            try:
+                from scraper_permis import fetch_permis_construire
+                count = fetch_permis_construire()
+                st.cache_data.clear()
+                st.success(f"Permis : {count} nouveau(x) inséré(s).")
+            except Exception as exc:
+                st.error(f"Erreur Permis : {exc}")
+
+    st.markdown("**Presse & Institutions** — Océan Indien")
+    if st.button("📰 Collecter Presse & Institutions (IO)", use_container_width=True):
+        with st.spinner("Lecture flux RSS…"):
+            try:
+                from scraper_presse import fetch_presse_io
+                count = fetch_presse_io()
+                st.cache_data.clear()
+                st.success(f"Presse/Institutions : {count} nouveau(x) inséré(s).")
+            except Exception as exc:
+                st.error(f"Erreur Presse : {exc}")
+
+    st.markdown("**Banques de Développement** — BAD / BEI / COI / JICA / KfW")
+    if st.button("🌍 Collecter Banques Dev. (IO)", use_container_width=True):
+        with st.spinner("Collecte BAD / BEI / COI…"):
+            try:
+                from scraper_devbanks import fetch_devbanks
+                count = fetch_devbanks()
+                st.cache_data.clear()
+                st.success(f"Banques Dev. : {count} nouveau(x) inséré(s).")
+            except Exception as exc:
+                st.error(f"Erreur Banques Dev. : {exc}")
+
     st.markdown("**Tout collecter**")
     if st.button("⚡ Toutes les sources", use_container_width=True, type="primary"):
         with st.spinner("Collecte BOAMP + TED…"):
@@ -317,6 +355,9 @@ with st.sidebar:
                 ("TED", "scraper_ted.fetch_ted_tenders"),
                 ("AFD", "scraper_afd.fetch_afd_projects"),
                 ("Banque Mondiale", "scraper_worldbank.fetch_worldbank_projects"),
+                ("Permis", "scraper_permis.fetch_permis_construire"),
+                ("Presse IO", "scraper_presse.fetch_presse_io"),
+                ("Banques Dev.", "scraper_devbanks.fetch_devbanks"),
             ]:
                 try:
                     module_name, func_name = func_path.rsplit(".", 1)
@@ -382,7 +423,7 @@ st.markdown("---")
 
 # ── interactive table ─────────────────────────────────────────────────────────
 
-rows = load_tenders(selected_status, maintenance_only, annee_min)
+rows = load_tenders(selected_status, maintenance_only, annee_min, secteur="Public")
 
 # Filtres territoire côté affichage
 terr_actifs = selected_territoires[:]
@@ -484,6 +525,80 @@ else:
                 st.info("Ce marché n'a pas encore été analysé par l'IA.")
         finally:
             db_det.close()
+
+st.markdown("---")
+
+# ── section marché privé ──────────────────────────────────────────────────────
+
+st.subheader("🏗️ Signaux & Opportunités Marché Privé")
+st.caption("Sources : Permis de construire · Presse locale IO · Institutions · Banques de développement")
+
+rows_priv = load_tenders(selected_status, maintenance_only, annee_min, secteur="Privé")
+
+if terr_actifs:
+    rows_priv = [r for r in rows_priv if any(t in r["Territoire"] for t in terr_actifs)]
+if selected_domaines:
+    rows_priv = [r for r in rows_priv if any(d in r["Domaine"] for d in selected_domaines)]
+
+db_priv = new_db()
+try:
+    nb_permis = db_priv.query(Tender).filter(
+        Tender.secteur == "Privé", Tender.type_opportunite == "Permis Construire"
+    ).count()
+    nb_presse = db_priv.query(Tender).filter(
+        Tender.secteur == "Privé", Tender.type_opportunite == "Presse"
+    ).count()
+    nb_instit = db_priv.query(Tender).filter(
+        Tender.secteur == "Privé", Tender.type_opportunite == "Institution"
+    ).count()
+    nb_qualif = db_priv.query(Tender).filter(
+        Tender.secteur == "Privé", Tender.status == "À qualifier"
+    ).count()
+finally:
+    db_priv.close()
+
+kp1, kp2, kp3, kp4 = st.columns(4)
+kp1.metric("Permis construire", nb_permis)
+kp2.metric("Articles presse", nb_presse)
+kp3.metric("Institutions", nb_instit)
+kp4.metric("À qualifier", nb_qualif)
+
+if not rows_priv:
+    st.info("Aucun signal privé. Lancez la collecte Permis / Presse / Banques Dev. depuis le menu latéral.")
+else:
+    st.caption(f"{len(rows_priv)} signal(s) affiché(s)")
+    df_priv = pd.DataFrame(rows_priv)
+    edited_priv = st.data_editor(
+        df_priv,
+        column_config={
+            "ID": st.column_config.TextColumn("ID", disabled=True, width="small"),
+            "Titre": st.column_config.TextColumn("Titre", width="large"),
+            "Source": st.column_config.LinkColumn("Source", width="small"),
+            "Territoire": st.column_config.TextColumn("Territoire", width="medium", disabled=True),
+            "Domaine": st.column_config.TextColumn("Domaine", width="medium", disabled=True),
+            "Score": st.column_config.NumberColumn("Score", min_value=0, max_value=100, width="small"),
+            "Date Limite": st.column_config.TextColumn("Date Limite", width="small"),
+            "Publication": st.column_config.TextColumn("Publication", width="small"),
+            "Statut": st.column_config.SelectboxColumn(
+                "Statut", options=["À qualifier", "En cours", "Soumis", "Gagné", "Perdu"], width="medium"
+            ),
+            "Type": st.column_config.TextColumn("Type", width="small", disabled=True),
+            "Maint.": st.column_config.TextColumn("Maint.", width="small", disabled=True),
+            "Concurrents": st.column_config.TextColumn("Concurrents", width="medium"),
+        },
+        column_order=["Titre", "Source", "Territoire", "Type", "Score", "Publication", "Statut", "Maint.", "ID"],
+        use_container_width=True,
+        hide_index=True,
+        num_rows="fixed",
+        key="priv_editor",
+    )
+
+    editor_state_priv = st.session_state.get("priv_editor", {})
+    for row_idx, changes in editor_state_priv.get("edited_rows", {}).items():
+        if "Statut" in changes:
+            save_status(df_priv.iloc[row_idx]["ID"], changes["Statut"])
+            st.cache_data.clear()
+            st.rerun()
 
 st.markdown("---")
 
