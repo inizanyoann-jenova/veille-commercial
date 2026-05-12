@@ -5,7 +5,8 @@ import streamlit as st
 
 from database import SessionLocal, init_db
 from export_excel import generate_executive_report
-from llm_analyzer import analyze_tender
+from llm_analyzer import analyze_tender, auto_analyze_pending
+from source_registry import list_sources, add_source, remove_source, toggle_enabled
 from models import Tender
 
 # ── domaine detection ─────────────────────────────────────────────────────────
@@ -137,6 +138,29 @@ def new_db():
     return SessionLocal()
 
 
+def _run_auto_analysis():
+    """Lance l'analyse locale sur tous les marchés non encore analysés."""
+    db = new_db()
+    try:
+        auto_analyze_pending(db)
+    finally:
+        db.close()
+
+
+def _gonogo(score: int) -> str:
+    if score >= 65:
+        return "🟢 GO"
+    elif score >= 35:
+        return "🟡 Étudier"
+    return "🔴 Passer"
+
+
+# Auto-analyse au démarrage (une seule fois par session)
+if "auto_analyzed" not in st.session_state:
+    _run_auto_analysis()
+    st.session_state["auto_analyzed"] = True
+
+
 @st.cache_data(ttl=60)
 def load_tenders(status_filter: str, maintenance_only: bool, annee_min: int, secteur: str = "Public") -> list[dict]:
     db = new_db()
@@ -174,6 +198,7 @@ def load_tenders(status_filter: str, maintenance_only: bool, annee_min: int, sec
             rows.append(
                 {
                     "ID": t.id,
+                    "Go/No-Go": _gonogo(score),
                     "Titre": t.title or "Sans titre",
                     "Source": t.source or "",
                     "Territoire": territoire,
@@ -184,7 +209,7 @@ def load_tenders(status_filter: str, maintenance_only: bool, annee_min: int, sec
                         t.publication_date.strftime("%d/%m/%Y") if t.publication_date else "—"
                     ),
                     "Statut": t.status or "À qualifier",
-                    "Type": t.type_opportunite or a.get("type_marche", "—"),
+                    "Type": a.get("type_marche") or t.type_opportunite or "—",
                     "Maint.": "✓" if t.is_maintenance else "",
                     "Concurrents": ", ".join(a.get("marques_concurrentes_citees", [])),
                 }
@@ -233,6 +258,41 @@ def run_analysis(tender_id: str) -> None:
 
 # ── sidebar ───────────────────────────────────────────────────────────────────
 
+def _collect_selected_sources(selected_source_ids: list[int]) -> None:
+    """Lance les scrapers des sources sélectionnées et affiche les résultats."""
+    import importlib
+    db_s = new_db()
+    try:
+        sources = list_sources(db_s)
+    finally:
+        db_s.close()
+
+    total = 0
+    errors = []
+    with st.spinner("Collecte en cours…"):
+        for source in sources:
+            if source.id not in selected_source_ids:
+                continue
+            if source.is_manual or not source.scraper_module:
+                continue
+            try:
+                mod = importlib.import_module(source.scraper_module)
+                func = getattr(mod, source.scraper_func)
+                count = func()
+                total += count
+            except Exception as exc:
+                errors.append(f"{source.name} : {exc}")
+
+    _run_auto_analysis()
+    st.cache_data.clear()
+    if total:
+        st.success(f"{total} nouveau(x) marché(s) importé(s) — analyse automatique effectuée.")
+    elif not errors:
+        st.info("Aucune nouvelle offre trouvée pour les sources sélectionnées.")
+    for err in errors:
+        st.warning(err)
+
+
 with st.sidebar:
     st.markdown("## 🔥 DEF Océan Indien")
     st.markdown("**Veille Marchés Publics**")
@@ -277,111 +337,45 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    st.markdown("### Sources de données")
+    st.markdown("### ⚡ Sources de collecte")
 
-    st.markdown("**BOAMP** — Journal Officiel")
-    if st.button("🔄 Collecter BOAMP (974 & 976)", use_container_width=True):
-        with st.spinner("Interrogation BOAMP…"):
-            try:
-                from scraper_boamp import fetch_boamp_tenders
-                count = fetch_boamp_tenders()
-                st.cache_data.clear()
-                st.success(f"BOAMP : {count} nouveau(x) marché(s).")
-            except Exception as exc:
-                st.error(f"Erreur BOAMP : {exc}")
+    db_src = new_db()
+    try:
+        all_sources = list_sources(db_src)
+    finally:
+        db_src.close()
 
-    st.markdown("**TED** — Appels d'offres européens")
-    if st.button("🇪🇺 Collecter TED (EU)", use_container_width=True):
-        with st.spinner("Interrogation TED Europe…"):
-            try:
-                from scraper_ted import fetch_ted_tenders
-                count = fetch_ted_tenders()
-                st.cache_data.clear()
-                st.success(f"TED : {count} nouveau(x) marché(s).")
-            except Exception as exc:
-                st.error(f"Erreur TED : {exc}")
+    CATEGORY_ICONS = {"Public": "📋 Public", "Privé": "🏗️ Privé", "International": "🌍 International"}
+    selected_source_ids: list[int] = []
 
-    st.markdown("**AFD** — Projets Agence Française de Développement")
-    if st.button("🏗️ Collecter AFD (Océan Indien)", use_container_width=True):
-        with st.spinner("Interrogation AFD OpenData…"):
-            try:
-                from scraper_afd import fetch_afd_projects
-                count = fetch_afd_projects()
-                st.cache_data.clear()
-                st.success(f"AFD : {count} projet(s) importé(s).")
-            except Exception as exc:
-                st.error(f"Erreur AFD : {exc}")
+    for cat in ["Public", "Privé", "International"]:
+        cat_sources = [s for s in all_sources if s.category == cat and s.enabled]
+        if not cat_sources:
+            continue
+        st.markdown(f"**{CATEGORY_ICONS[cat]}**")
+        for s in cat_sources:
+            if s.is_manual:
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    st.markdown(
+                        f"<span style='color:grey;font-size:0.9em'>☐ {s.name}</span>",
+                        unsafe_allow_html=True,
+                    )
+                with col2:
+                    st.link_button("🔗", url=s.url, help=f"Ouvrir {s.url}")
+            else:
+                checked = st.checkbox(
+                    s.name,
+                    value=True,
+                    key=f"src_chk_{s.id}",
+                )
+                if checked:
+                    selected_source_ids.append(s.id)
 
-    st.markdown("**Banque Mondiale** — Projets actifs")
-    if st.button("🌐 Collecter Banque Mondiale", use_container_width=True):
-        with st.spinner("Interrogation World Bank…"):
-            try:
-                from scraper_worldbank import fetch_worldbank_projects
-                count = fetch_worldbank_projects()
-                st.cache_data.clear()
-                st.success(f"Banque Mondiale : {count} projet(s) importé(s).")
-            except Exception as exc:
-                st.error(f"Erreur BM : {exc}")
-
-    st.markdown("**Permis de construire** — Signaux en amont")
-    if st.button("🏗️ Collecter Permis (974 & 976)", use_container_width=True):
-        with st.spinner("Interrogation Sit@del2…"):
-            try:
-                from scraper_permis import fetch_permis_construire
-                count = fetch_permis_construire()
-                st.cache_data.clear()
-                st.success(f"Permis : {count} nouveau(x) inséré(s).")
-            except Exception as exc:
-                st.error(f"Erreur Permis : {exc}")
-
-    st.markdown("**Presse & Institutions** — Océan Indien")
-    if st.button("📰 Collecter Presse & Institutions (IO)", use_container_width=True):
-        with st.spinner("Lecture flux RSS…"):
-            try:
-                from scraper_presse import fetch_presse_io
-                count = fetch_presse_io()
-                st.cache_data.clear()
-                st.success(f"Presse/Institutions : {count} nouveau(x) inséré(s).")
-            except Exception as exc:
-                st.error(f"Erreur Presse : {exc}")
-
-    st.markdown("**Banques de Développement** — BAD / BEI / COI / JICA / KfW")
-    if st.button("🌍 Collecter Banques Dev. (IO)", use_container_width=True):
-        with st.spinner("Collecte BAD / BEI / COI…"):
-            try:
-                from scraper_devbanks import fetch_devbanks
-                count = fetch_devbanks()
-                st.cache_data.clear()
-                st.success(f"Banques Dev. : {count} nouveau(x) inséré(s).")
-            except Exception as exc:
-                st.error(f"Erreur Banques Dev. : {exc}")
-
-    st.markdown("**Tout collecter**")
-    if st.button("⚡ Toutes les sources", use_container_width=True, type="primary"):
-        with st.spinner("Collecte toutes sources…"):
-            total = 0
-            errors = []
-            for name, func_path in [
-                ("BOAMP", "scraper_boamp.fetch_boamp_tenders"),
-                ("TED", "scraper_ted.fetch_ted_tenders"),
-                ("AFD", "scraper_afd.fetch_afd_projects"),
-                ("Banque Mondiale", "scraper_worldbank.fetch_worldbank_projects"),
-                ("Permis", "scraper_permis.fetch_permis_construire"),
-                ("Presse IO", "scraper_presse.fetch_presse_io"),
-                ("Banques Dev.", "scraper_devbanks.fetch_devbanks"),
-            ]:
-                try:
-                    module_name, func_name = func_path.rsplit(".", 1)
-                    import importlib
-                    mod = importlib.import_module(module_name)
-                    total += getattr(mod, func_name)()
-                except Exception as exc:
-                    errors.append(f"{name} : {exc}")
-            st.cache_data.clear()
-            if total:
-                st.success(f"{total} nouveau(x) marché(s) importé(s).")
-            for err in errors:
-                st.warning(err)
+    st.markdown("")
+    if st.button("⚡ Collecter la sélection", use_container_width=True, type="primary",
+                 disabled=len(selected_source_ids) == 0):
+        _collect_selected_sources(selected_source_ids)
 
 
 # ── header + export ───────────────────────────────────────────────────────────
@@ -464,6 +458,7 @@ else:
         column_config={
             "🗑️": st.column_config.CheckboxColumn("🗑️", width="small"),
             "ID": st.column_config.TextColumn("ID", disabled=True, width="small"),
+            "Go/No-Go": st.column_config.TextColumn("Décision", width="small", disabled=True),
             "Titre": st.column_config.TextColumn("Titre du Marché", width="large"),
             "Source": st.column_config.LinkColumn("Source", width="small"),
             "Territoire": st.column_config.TextColumn("Territoire", width="medium", disabled=True),
@@ -480,7 +475,7 @@ else:
             "Maint.": st.column_config.TextColumn("Maint.", width="small", disabled=True),
             "Concurrents": st.column_config.TextColumn("Concurrents", width="medium"),
         },
-        column_order=["🗑️", "Titre", "Source", "Territoire", "Domaine", "Score", "Date Limite", "Publication", "Statut", "Type", "Maint.", "Concurrents", "ID"],
+        column_order=["🗑️", "Go/No-Go", "Titre", "Source", "Territoire", "Domaine", "Score", "Date Limite", "Publication", "Statut", "Type", "Maint.", "Concurrents", "ID"],
         use_container_width=True,
         hide_index=True,
         num_rows="fixed",
@@ -508,45 +503,47 @@ else:
 
     # ── per-tender AI analysis ─────────────────────────────────────────────────
 
-    st.subheader("🤖 Analyse IA d'un Marché")
+    st.subheader("📋 Fiche commerciale")
     title_to_id = {r["Titre"]: r["ID"] for r in rows}
     chosen_title = st.selectbox("Sélectionner un marché", list(title_to_id.keys()))
 
     if chosen_title:
         chosen_id = title_to_id[chosen_title]
-
-        if st.button("▶ Lancer l'analyse GPT", use_container_width=False):
-            with st.spinner("Analyse en cours…"):
-                run_analysis(chosen_id)
-                st.cache_data.clear()
-            st.success("Analyse enregistrée.")
-            st.rerun()
-
         db_det = new_db()
         try:
             t = db_det.query(Tender).filter(Tender.id == chosen_id).first()
-            if t and t.llm_analysis:
-                a = t.llm_analysis
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Type de marché", a.get("type_marche", "—"))
-                m2.metric("Score pertinence", f"{a.get('score_pertinence', 0)} / 100")
-                m3.metric("Concurrents détectés", len(a.get("marques_concurrentes_citees", [])))
+            if t:
+                a = t.llm_analysis or {}
+                domaine = detect_domaine(t.title or "")
+                territoire = detect_territoire(t.title or "", t.description or "")
+                score = t.relevance_score or a.get("score_pertinence", 0) or calc_score(t.title or "", domaine, territoire)
+                decision = _gonogo(score)
+
+                # Bandeau Go/No-Go
+                if score >= 65:
+                    st.success(f"**{decision}** — Score {score}/100 · {domaine} · {territoire}")
+                elif score >= 35:
+                    st.warning(f"**{decision}** — Score {score}/100 · {domaine} · {territoire}")
+                else:
+                    st.error(f"**{decision}** — Score {score}/100 · {domaine} · {territoire}")
+
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Type", a.get("type_marche", "—"))
+                m2.metric("Score DEF", f"{score} / 100")
+                m3.metric("Concurrents", len(a.get("marques_concurrentes_citees", [])))
+                m4.metric("Maintenance", "Oui" if t.is_maintenance else "Non")
 
                 if a.get("marques_concurrentes_citees"):
-                    st.write(
-                        "**Marques citées :**",
-                        ", ".join(a["marques_concurrentes_citees"]),
-                    )
+                    st.write("**Marques concurrentes citées :**", ", ".join(a["marques_concurrentes_citees"]))
                 if a.get("risques_penalites"):
                     st.warning(f"⚠️ Risques / Pénalités : {a['risques_penalites']}")
-                if a.get("error"):
-                    st.error(f"Erreur LLM : {a['error']}")
+
+                source = a.get("_source", "local")
+                st.caption("🤖 Analyse Gemini" if source == "gemini" else "🔍 Analyse automatique (règles métier DEF)")
 
                 if t.description:
                     with st.expander("Description complète du marché"):
                         st.write(t.description)
-            elif t:
-                st.info("Ce marché n'a pas encore été analysé par l'IA.")
         finally:
             db_det.close()
 
@@ -603,6 +600,7 @@ else:
         column_config={
             "🗑️": st.column_config.CheckboxColumn("🗑️", width="small"),
             "ID": st.column_config.TextColumn("ID", disabled=True, width="small"),
+            "Go/No-Go": st.column_config.TextColumn("Décision", width="small", disabled=True),
             "Titre": st.column_config.TextColumn("Titre", width="large"),
             "Source": st.column_config.LinkColumn("Source", width="small"),
             "Territoire": st.column_config.TextColumn("Territoire", width="medium", disabled=True),
@@ -617,7 +615,7 @@ else:
             "Maint.": st.column_config.TextColumn("Maint.", width="small", disabled=True),
             "Concurrents": st.column_config.TextColumn("Concurrents", width="medium"),
         },
-        column_order=["🗑️", "Titre", "Source", "Territoire", "Type", "Score", "Publication", "Statut", "Maint.", "ID"],
+        column_order=["🗑️", "Go/No-Go", "Titre", "Source", "Territoire", "Domaine", "Type", "Score", "Publication", "Statut", "Maint.", "Concurrents", "ID"],
         use_container_width=True,
         hide_index=True,
         num_rows="fixed",
@@ -640,6 +638,49 @@ else:
             save_status(df_priv.iloc[row_idx]["ID"], changes["Statut"])
             st.cache_data.clear()
             st.rerun()
+
+    st.markdown("---")
+
+    # ── fiche commerciale privé ────────────────────────────────────────────────
+    st.subheader("📋 Fiche commerciale — Signal privé")
+    title_to_id_priv = {r["Titre"]: r["ID"] for r in rows_priv}
+    chosen_priv = st.selectbox("Sélectionner un signal", list(title_to_id_priv.keys()), key="sel_priv")
+
+    if chosen_priv:
+        chosen_priv_id = title_to_id_priv[chosen_priv]
+        db_fp = new_db()
+        try:
+            t = db_fp.query(Tender).filter(Tender.id == chosen_priv_id).first()
+            if t:
+                a = t.llm_analysis or {}
+                domaine = detect_domaine(t.title or "")
+                territoire = detect_territoire(t.title or "", t.description or "")
+                score = t.relevance_score or a.get("score_pertinence", 0) or calc_score(t.title or "", domaine, territoire)
+                decision = _gonogo(score)
+
+                if score >= 65:
+                    st.success(f"**{decision}** — Score {score}/100 · {domaine} · {territoire}")
+                elif score >= 35:
+                    st.warning(f"**{decision}** — Score {score}/100 · {domaine} · {territoire}")
+                else:
+                    st.error(f"**{decision}** — Score {score}/100 · {domaine} · {territoire}")
+
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Type signal", a.get("type_marche") or t.type_opportunite or "—")
+                m2.metric("Score DEF", f"{score} / 100")
+                m3.metric("Concurrents", len(a.get("marques_concurrentes_citees", [])))
+                m4.metric("Maintenance", "Oui" if t.is_maintenance else "Non")
+
+                if a.get("marques_concurrentes_citees"):
+                    st.write("**Marques concurrentes citées :**", ", ".join(a["marques_concurrentes_citees"]))
+                if a.get("risques_penalites"):
+                    st.warning(f"⚠️ Risques / Pénalités : {a['risques_penalites']}")
+
+                if t.description:
+                    with st.expander("Description complète du signal"):
+                        st.write(t.description)
+        finally:
+            db_fp.close()
 
 st.markdown("---")
 
@@ -680,6 +721,7 @@ with st.expander("➕ Ajouter une opportunité manuellement (AWS, achatpublic.co
                         st.warning("Cette opportunité existe déjà.")
                     else:
                         from models import Tender as T
+                        analyse = analyze_tender(f"{m_title.strip()} {m_desc.strip()}")
                         db_m.add(T(
                             id=tid,
                             title=m_title.strip(),
@@ -688,13 +730,13 @@ with st.expander("➕ Ajouter une opportunité manuellement (AWS, achatpublic.co
                             publication_date=datetime.combine(m_pub_date, datetime.min.time()) if m_pub_date else None,
                             deadline=datetime.combine(m_deadline, datetime.min.time()) if m_deadline else None,
                             status="À qualifier",
-                            relevance_score=0,
-                            is_maintenance=False,
-                            llm_analysis=None,
+                            relevance_score=analyse.get("score_pertinence", 0),
+                            is_maintenance=analyse.get("type_marche", "").lower() == "maintenance",
+                            llm_analysis=analyse,
                         ))
                         db_m.commit()
                         st.cache_data.clear()
-                        st.success(f"✅ « {m_title} » ajouté.")
+                        st.success(f"✅ « {m_title} » ajouté — Score DEF : {analyse.get('score_pertinence', 0)}/100.")
                 finally:
                     db_m.close()
 
