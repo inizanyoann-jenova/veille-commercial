@@ -355,14 +355,16 @@ with st.sidebar:
         st.markdown(f"**{CATEGORY_ICONS[cat]}**")
         for s in cat_sources:
             if s.is_manual:
-                col1, col2 = st.columns([4, 1])
+                col1, col2 = st.columns([5, 1])
                 with col1:
-                    st.markdown(
-                        f"<span style='color:grey;font-size:0.9em'>☐ {s.name}</span>",
-                        unsafe_allow_html=True,
+                    st.checkbox(
+                        s.name,
+                        value=False,
+                        key=f"src_chk_{s.id}",
+                        help="Source manuelle — aucun scraper automatique. Cliquez ↗ pour consulter le site.",
                     )
                 with col2:
-                    st.link_button("🔗", url=s.url, help=f"Ouvrir {s.url}")
+                    st.link_button("↗", url=s.url, help=f"Ouvrir {s.name}")
             else:
                 checked = st.checkbox(
                     s.name,
@@ -376,6 +378,13 @@ with st.sidebar:
     if st.button("⚡ Collecter la sélection", use_container_width=True, type="primary",
                  disabled=len(selected_source_ids) == 0):
         _collect_selected_sources(selected_source_ids)
+
+    st.markdown("---")
+    col_nav1, col_nav2 = st.columns(2)
+    with col_nav1:
+        st.page_link("pages/parametres.py", label="⚙️ Paramètres", use_container_width=True)
+    with col_nav2:
+        st.page_link("pages/guide.py", label="📖 Guide", use_container_width=True)
 
 
 # ── header + export ───────────────────────────────────────────────────────────
