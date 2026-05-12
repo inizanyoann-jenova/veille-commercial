@@ -20,19 +20,19 @@ def db():
 
 
 def test_init_sources_populates_table(db):
-    from source_registry import init_sources, list_sources
+    from source_registry import init_sources, list_sources, _DEFAULT_SOURCES
     init_sources(db)
     sources = list_sources(db)
-    assert len(sources) >= 9  # au moins les sources existantes + nouvelles
+    assert len(sources) == len(_DEFAULT_SOURCES)
 
 
 def test_init_sources_is_idempotent(db):
-    from source_registry import init_sources, list_sources
+    from source_registry import init_sources, list_sources, _DEFAULT_SOURCES
     init_sources(db)
+    count_after_first = len(list_sources(db))
     init_sources(db)  # deuxième appel ne doit pas dupliquer
-    sources = list_sources(db)
-    names = [s.name for s in sources]
-    assert len(names) == len(set(names))
+    count_after_second = len(list_sources(db))
+    assert count_after_second == count_after_first == len(_DEFAULT_SOURCES)
 
 
 def test_list_sources_by_category(db):

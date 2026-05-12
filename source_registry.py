@@ -121,11 +121,11 @@ def remove_source(db, source_id: int) -> bool:
     return True
 
 
-def toggle_enabled(db, source_id: int) -> bool:
-    """Bascule l'état enabled d'une source. Retourne le nouvel état."""
+def toggle_enabled(db, source_id: int) -> bool | None:
+    """Bascule l'état enabled d'une source. Retourne le nouvel état, ou None si source introuvable."""
     s = db.query(Source).filter(Source.id == source_id).first()
     if not s:
-        return False
+        return None
     s.enabled = not s.enabled
     db.commit()
     return s.enabled
