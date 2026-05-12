@@ -45,9 +45,10 @@ Toutes les sources actuelles sont conservées sans modification.
 
 | Source | Fichier | Méthode technique |
 |--------|---------|-------------------|
-| DECP / PLACE | `scraper_decp.py` | API data.economie.gouv.fr — filtre departement 974/976 |
-| Marchés publics Réunion | `scraper_reunion.py` | Profil acheteur Région Réunion (flux XML BOAMP ou page publique) |
-| UNGM | `scraper_ungm.py` | RSS public `https://www.ungm.org/Public/Notice/SearchNotices` |
+| DECP / PLACE (incl. Réunion dept 974/976) | `scraper_decp.py` | API data.economie.gouv.fr — filtre `departement_code=974` et `departement_code=976` + mots-clés métier |
+| UNGM | `scraper_ungm.py` | Scraping HTML `https://www.ungm.org/Public/Notice/SearchNotices` (requests + BeautifulSoup) |
+
+> **Note :** `scraper_reunion.py` initialement prévu est supprimé du scope — la Région Réunion publie ses marchés via BOAMP (déjà collecté) et DECP (couvert par `scraper_decp.py` avec filtre département 974). Cela évite les doublons.
 
 Ces scrapers suivent exactement le même pattern que les scrapers existants : `fetch_*() -> int` (retourne le nombre d'enregistrements insérés).
 
@@ -260,10 +261,8 @@ Barème de score :
 | Fichier | Rôle |
 |---------|------|
 | `source_registry.py` | CRUD table `sources` + données initiales |
-| `scraper_decp.py` | Collecte DECP/PLACE (API data.economie.gouv.fr) |
-| `scraper_reunion.py` | Collecte marchés publics Région Réunion |
-| `scraper_ungm.py` | Collecte UNGM (RSS public) |
-| `generic_scraper.py` | Moteur générique RSS → HTML pour sources manuelles activées |
+| `scraper_decp.py` | Collecte DECP/PLACE (API data.economie.gouv.fr, depts 974/976) |
+| `scraper_ungm.py` | Collecte UNGM (scraping HTML BeautifulSoup) |
 
 ### Fichiers modifiés
 
@@ -293,8 +292,8 @@ Barème de score :
 ## Ordre d'implémentation recommandé
 
 1. `source_registry.py` + migration `database.py` (fondation)
-2. `llm_analyzer.py` — System Prompt + score combiné
-3. `scraper_decp.py`, `scraper_reunion.py`, `scraper_ungm.py`
+2. `llm_analyzer.py` — System Prompt enrichi + score combiné
+3. `scraper_decp.py` + `scraper_ungm.py`
 4. `app.py` — sidebar dynamique + sélection à la carte
 5. `app.py` — section gestion des sources (CRUD UI)
-6. `app.py` — affichage enrichi fiche commerciale (nouveaux champs)
+6. `app.py` — affichage enrichi fiche commerciale (nouveaux champs LLM)
