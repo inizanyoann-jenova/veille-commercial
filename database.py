@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
-from models import Base
+from models import Base, Credential  # noqa: Credential enregistre la table credentials
 
 DATABASE_URL = "sqlite:///def_oi_veille.db"
 

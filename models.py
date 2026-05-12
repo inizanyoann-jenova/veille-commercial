@@ -19,3 +19,12 @@ class Tender(Base):
     llm_analysis = Column(JSON)
     secteur = Column(String, default=None)
     type_opportunite = Column(String, default="Marché Public")
+
+
+class Credential(Base):
+    __tablename__ = "credentials"
+
+    id       = Column(Integer, primary_key=True, autoincrement=True)
+    site     = Column(String, unique=True, nullable=False)
+    email    = Column(String, nullable=False)
+    password = Column(String, nullable=False)  # chiffré Fernet
