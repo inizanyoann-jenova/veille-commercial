@@ -33,9 +33,9 @@ def _parse_date(value: str | None) -> datetime | None:
     if not value:
         return None
     s = str(value)
-    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+    for fmt, length in (("%Y-%m-%dT%H:%M:%S", 19), ("%Y-%m-%d", 10)):
         try:
-            return datetime.strptime(s[:len(fmt)], fmt)
+            return datetime.strptime(s[:length], fmt)
         except ValueError:
             continue
     return None

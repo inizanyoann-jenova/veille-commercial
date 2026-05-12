@@ -824,6 +824,8 @@ with st.expander("⚙️ Gérer les sources de veille"):
         if submitted_src:
             if not new_name.strip() or not new_url.strip():
                 st.error("Le nom et l'URL sont obligatoires.")
+            elif not new_url.strip().startswith(("http://", "https://")):
+                st.error("L'URL doit commencer par http:// ou https://")
             else:
                 db_a = new_db()
                 try:

@@ -51,7 +51,7 @@ KEYWORDS_ERP_CIBLES = [
     "immeuble de bureaux", "siège social", "siège",
     "entrepôt logistique", "entrepot", "usine",
     "résidence étudiante", "campus", "internat",
-    "aéroport", "aeroport", "gare", "port",
+    "aéroport", "aeroport", "gare", "port maritime", "port de pêche", "port de commerce",
     "centre de données", "data center",
     "mairie", "préfecture", "tribunal", "commissariat",
 ]
