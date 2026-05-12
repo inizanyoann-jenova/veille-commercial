@@ -117,3 +117,59 @@ def test_fetch_nukema_inserts_relevant():
                             from scraper_nukema import fetch_nukema_tenders
                             result = fetch_nukema_tenders()
     assert result == 1
+
+
+# ── Marchés Sécurisés ─────────────────────────────────────────────────────────
+
+def test_fetch_marchessecurises_skips_without_creds():
+    Session = _db_session()
+    with patch("credential_manager.CredentialManager.get", return_value=None):
+        with patch("scraper_marchessecurises.SessionLocal", Session):
+            with patch("scraper_marchessecurises.init_db"):
+                from scraper_marchessecurises import fetch_marchessecurises_tenders
+                result = fetch_marchessecurises_tenders()
+    assert result == 0
+
+
+def test_fetch_marchessecurises_with_creds_inserts():
+    Session = _db_session()
+    mock_pw, _ = _mock_pw_context()
+    with patch("credential_manager.CredentialManager.get", return_value=("u@u.com", "pass")):
+        with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
+            with patch("scraper_marchessecurises.login", return_value=True):
+                with patch("scraper_marchessecurises.extract_cards", return_value=[{
+                    "title": "Maintenance SSI incendie établissement public",
+                    "description": "La Réunion 974",
+                    "url": "https://www.marches-securises.fr/ao/99",
+                    "date": "01/05/2026",
+                }]):
+                    with patch("scraper_marchessecurises.paginate", return_value=False):
+                        with patch("scraper_marchessecurises.SessionLocal", Session):
+                            with patch("scraper_marchessecurises.init_db"):
+                                from scraper_marchessecurises import fetch_marchessecurises_tenders
+                                result = fetch_marchessecurises_tenders()
+    assert result == 1
+
+
+# ── Instao ────────────────────────────────────────────────────────────────────
+
+def test_fetch_instao_skips_without_creds():
+    Session = _db_session()
+    with patch("credential_manager.CredentialManager.get", return_value=None):
+        with patch("scraper_instao.SessionLocal", Session):
+            with patch("scraper_instao.init_db"):
+                from scraper_instao import fetch_instao_tenders
+                result = fetch_instao_tenders()
+    assert result == 0
+
+
+# ── Tenders Go ────────────────────────────────────────────────────────────────
+
+def test_fetch_tendersgo_skips_without_creds():
+    Session = _db_session()
+    with patch("credential_manager.CredentialManager.get", return_value=None):
+        with patch("scraper_tendersgo.SessionLocal", Session):
+            with patch("scraper_tendersgo.init_db"):
+                from scraper_tendersgo import fetch_tendersgo_tenders
+                result = fetch_tendersgo_tenders()
+    assert result == 0
