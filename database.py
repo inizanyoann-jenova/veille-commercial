@@ -10,7 +10,12 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def init_db():
+    # Import lazy pour éviter la dépendance circulaire au niveau module
+    from source_registry import Source, init_sources  # noqa: enregistre Source avec Base
+
     Base.metadata.create_all(bind=engine)
+
+    # Migrations de colonnes existantes (conservées)
     with engine.connect() as conn:
         for col_name, col_def in [
             ("secteur", "VARCHAR"),
@@ -22,6 +27,13 @@ def init_db():
             except OperationalError as e:
                 if "already exists" not in str(e) and "duplicate column" not in str(e):
                     raise
+
+    # Seeding des sources par défaut si la table est vide
+    db = SessionLocal()
+    try:
+        init_sources(db)
+    finally:
+        db.close()
 
 
 def get_db():
