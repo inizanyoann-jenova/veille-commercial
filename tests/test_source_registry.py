@@ -78,3 +78,35 @@ def test_toggle_enabled(db):
     toggle_enabled(db, source.id)
     db.refresh(source)
     assert source.enabled != original
+
+
+def test_new_sources_present():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from models import Base
+    from source_registry import Source, init_sources, list_sources
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    db = Session()
+    init_sources(db)
+    names = [s.name for s in list_sources(db)]
+    for expected in ["VAAO", "Marché Online", "Nukema", "Instao", "Tenders Go"]:
+        assert expected in names, f"{expected} manquant dans les sources"
+    db.close()
+
+
+def test_defunct_urls_not_in_sources():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from models import Base
+    from source_registry import Source, init_sources, list_sources
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    db = Session()
+    init_sources(db)
+    urls = [s.url for s in list_sources(db)]
+    assert "https://www.nukema.fr" not in urls
+    assert "https://www.marcheonline.com" not in urls
+    db.close()
