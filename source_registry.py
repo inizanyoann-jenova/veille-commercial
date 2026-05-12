@@ -56,41 +56,53 @@ _DEFAULT_SOURCES = [
      "category": "International", "scraper_module": "scraper_ungm",
      "scraper_func": "fetch_ungm_tenders", "is_manual": False, "display_order": 23},
     # ── Manuels (accès guidé) ─────────────────────────────────────────────────
-    {"name": "Marché Online", "url": "https://www.marcheonline.com",
+    {"name": "PLACE — Portail commandes publiques",
+     "url": "https://www.marches-publics.gouv.fr",
      "category": "Public", "is_manual": True, "display_order": 30},
-    {"name": "Marchés Publics Info", "url": "https://www.marches-publics.info",
-     "category": "Public", "is_manual": True, "display_order": 31},
-    {"name": "e-marchés publics", "url": "https://www.e-marches-publics.fr",
-     "category": "Public", "is_manual": True, "display_order": 32},
     {"name": "France Marchés", "url": "https://www.france-marches.fr",
      "category": "Privé", "is_manual": True, "display_order": 40},
-    {"name": "Marchés Sécurisés", "url": "https://www.marches-securises.fr",
+    {"name": "Marchés Sécurisés (MPS)", "url": "https://www.marches-securises.fr",
      "category": "Privé", "is_manual": True, "display_order": 41},
     {"name": "Achatpublic.com", "url": "https://www.achatpublic.com",
      "category": "Privé", "is_manual": True, "display_order": 42},
     {"name": "Dematis", "url": "https://www.dematis.com",
      "category": "Privé", "is_manual": True, "display_order": 43},
-    {"name": "Instao", "url": "https://www.instao.fr",
-     "category": "Privé", "is_manual": True, "display_order": 44},
-    {"name": "Vaao", "url": "https://www.vaao.fr",
-     "category": "Privé", "is_manual": True, "display_order": 45},
-    {"name": "Nukema", "url": "https://www.nukema.fr",
-     "category": "Privé", "is_manual": True, "display_order": 46},
     {"name": "Deepbloo", "url": "https://www.deepbloo.com",
      "category": "International", "is_manual": True, "display_order": 50},
-    {"name": "Tenders Go", "url": "https://www.tendersgo.com",
+    {"name": "DG Market", "url": "https://www.dgmarket.com",
      "category": "International", "is_manual": True, "display_order": 51},
-    {"name": "Marchés internationaux", "url": "https://www.marches-internationaux.com",
-     "category": "International", "is_manual": True, "display_order": 52},
 ]
+
+# URLs défuntes à supprimer des bases existantes (domaines DNS morts ou non vérifiés)
+_DEFUNCT_URLS = {
+    "https://www.vaao.fr",
+    "https://www.instao.fr",
+    "https://www.nukema.fr",
+    "https://www.marcheonline.com",
+    "https://www.marches-publics.info",
+    "https://www.e-marches-publics.fr",
+    "https://www.tendersgo.com",
+    "https://www.marches-internationaux.com",
+}
 
 
 def init_sources(db) -> None:
-    """Insère les sources par défaut si la table est vide. Idempotent."""
+    """Insère les sources par défaut si la table est vide. Idempotent.
+    Supprime aussi les URLs défuntes des bases existantes."""
+    # Nettoyage des domaines morts (migration silencieuse)
+    deleted = (db.query(Source)
+               .filter(Source.url.in_(_DEFUNCT_URLS))
+               .filter(Source.scraper_module == None)  # noqa: E711
+               .all())
+    for s in deleted:
+        db.delete(s)
+    if deleted:
+        db.flush()
+
     if db.query(Source).count() == 0:
         for data in _DEFAULT_SOURCES:
             db.add(Source(**data))
-        db.commit()
+    db.commit()
 
 
 def list_sources(db, category: str | None = None) -> list:
