@@ -62,3 +62,27 @@ def test_fetch_decp_inserts_relevant_record():
     assert result == 1
     assert len(tenders) == 1
     assert "SSI" in tenders[0].title or "incendie" in tenders[0].title.lower()
+
+
+# ── Tests scraper_ungm ─────────────────────────────────────────────────────
+
+def test_fetch_ungm_returns_zero_on_empty_html():
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status.return_value = None
+    mock_resp.text = "<html><body>No results</body></html>"
+    mock_resp.status_code = 200
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from models import Base
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+
+    with patch("requests.post", return_value=mock_resp):
+        with patch("requests.get", return_value=mock_resp):
+            with patch("scraper_ungm.SessionLocal", Session):
+                with patch("scraper_ungm.init_db"):
+                    from scraper_ungm import fetch_ungm_tenders
+                    result = fetch_ungm_tenders()
+    assert result == 0
