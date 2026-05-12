@@ -520,12 +520,21 @@ else:
                 decision = _gonogo(score)
 
                 # Bandeau Go/No-Go
+                tag = a.get("tag_pertinence") or decision
                 if score >= 65:
-                    st.success(f"**{decision}** — Score {score}/100 · {domaine} · {territoire}")
+                    st.success(f"**{tag}** — Score {score}/100 · {domaine} · {territoire}")
                 elif score >= 35:
-                    st.warning(f"**{decision}** — Score {score}/100 · {domaine} · {territoire}")
+                    st.warning(f"**{tag}** — Score {score}/100 · {domaine} · {territoire}")
                 else:
-                    st.error(f"**{decision}** — Score {score}/100 · {domaine} · {territoire}")
+                    st.error(f"**{tag}** — Score {score}/100 · {domaine} · {territoire}")
+
+                domaines = a.get("domaines_concernes", [])
+                if domaines:
+                    chips = " · ".join([f"`{d}`" for d in domaines])
+                    st.markdown(f"**Domaines :** {chips}")
+
+                if a.get("justification_score"):
+                    st.caption(f"💡 {a['justification_score']}")
 
                 m1, m2, m3, m4 = st.columns(4)
                 m1.metric("Type", a.get("type_marche", "—"))
@@ -539,7 +548,10 @@ else:
                     st.warning(f"⚠️ Risques / Pénalités : {a['risques_penalites']}")
 
                 source = a.get("_source", "local")
-                st.caption("🤖 Analyse Gemini" if source == "gemini" else "🔍 Analyse automatique (règles métier DEF)")
+                if source == "gemini":
+                    st.caption("🤖 Analyse Gemini (score combiné 70 % IA + 30 % règles métier)")
+                else:
+                    st.caption("🔍 Analyse locale (règles métier DEF — Gemini indisponible ou quota dépassé)")
 
                 if t.description:
                     with st.expander("Description complète du marché"):
@@ -658,12 +670,21 @@ else:
                 score = t.relevance_score or a.get("score_pertinence", 0) or calc_score(t.title or "", domaine, territoire)
                 decision = _gonogo(score)
 
+                tag = a.get("tag_pertinence") or decision
                 if score >= 65:
-                    st.success(f"**{decision}** — Score {score}/100 · {domaine} · {territoire}")
+                    st.success(f"**{tag}** — Score {score}/100 · {domaine} · {territoire}")
                 elif score >= 35:
-                    st.warning(f"**{decision}** — Score {score}/100 · {domaine} · {territoire}")
+                    st.warning(f"**{tag}** — Score {score}/100 · {domaine} · {territoire}")
                 else:
-                    st.error(f"**{decision}** — Score {score}/100 · {domaine} · {territoire}")
+                    st.error(f"**{tag}** — Score {score}/100 · {domaine} · {territoire}")
+
+                domaines = a.get("domaines_concernes", [])
+                if domaines:
+                    chips = " · ".join([f"`{d}`" for d in domaines])
+                    st.markdown(f"**Domaines :** {chips}")
+
+                if a.get("justification_score"):
+                    st.caption(f"💡 {a['justification_score']}")
 
                 m1, m2, m3, m4 = st.columns(4)
                 m1.metric("Type signal", a.get("type_marche") or t.type_opportunite or "—")
