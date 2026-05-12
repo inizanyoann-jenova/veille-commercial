@@ -741,4 +741,78 @@ with st.expander("➕ Ajouter une opportunité manuellement (AWS, achatpublic.co
                     db_m.close()
 
 st.markdown("---")
+
+# ── Gestion des sources ──────────────────────────────────────────────────────
+
+with st.expander("⚙️ Gérer les sources de veille"):
+    db_gs = new_db()
+    try:
+        all_gs = list_sources(db_gs)
+    finally:
+        db_gs.close()
+
+    st.markdown("#### Sources configurées")
+
+    for s in all_gs:
+        col_name, col_cat, col_type, col_toggle, col_del = st.columns([3, 1, 1, 1, 1])
+        with col_name:
+            st.markdown(f"**{s.name}**")
+        with col_cat:
+            st.caption(s.category)
+        with col_type:
+            if s.scraper_module:
+                st.markdown("🤖 Auto")
+            else:
+                st.markdown("👤 Manuel")
+        with col_toggle:
+            label_toggle = "✅" if s.enabled else "❌"
+            if st.button(label_toggle, key=f"toggle_{s.id}", help="Activer/Désactiver"):
+                db_t = new_db()
+                try:
+                    toggle_enabled(db_t, s.id)
+                finally:
+                    db_t.close()
+                st.cache_data.clear()
+                st.rerun()
+        with col_del:
+            if s.scraper_module is None:  # uniquement les sources manuelles
+                if st.button("🗑️", key=f"del_{s.id}", help="Supprimer cette source"):
+                    db_d = new_db()
+                    try:
+                        remove_source(db_d, s.id)
+                    finally:
+                        db_d.close()
+                    st.cache_data.clear()
+                    st.rerun()
+            else:
+                st.markdown("—")  # sources auto protégées
+
+    st.markdown("---")
+    st.markdown("#### Ajouter une source de veille")
+
+    with st.form("form_add_source", clear_on_submit=True):
+        col_a, col_b = st.columns(2)
+        with col_a:
+            new_name = st.text_input("Nom de la source *", placeholder="Ex : SEAO Québec")
+            new_url = st.text_input("URL *", placeholder="https://...")
+        with col_b:
+            new_cat = st.selectbox("Catégorie", ["Public", "Privé", "International"])
+            new_notes = st.text_input("Notes (optionnel)", placeholder="Ex : Appels d'offres Québec")
+
+        submitted_src = st.form_submit_button("➕ Ajouter la source", use_container_width=True)
+        if submitted_src:
+            if not new_name.strip() or not new_url.strip():
+                st.error("Le nom et l'URL sont obligatoires.")
+            else:
+                db_a = new_db()
+                try:
+                    add_source(db_a, name=new_name.strip(), url=new_url.strip(),
+                               category=new_cat, notes=new_notes.strip() or None)
+                finally:
+                    db_a.close()
+                st.success(f"✅ « {new_name} » ajoutée comme source {new_cat}.")
+                st.cache_data.clear()
+                st.rerun()
+
+st.markdown("---")
 st.caption("DEF Océan Indien © 2025 · Outil de Veille Commerciale Interne")
