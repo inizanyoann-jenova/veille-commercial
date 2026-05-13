@@ -861,6 +861,96 @@ def _collect_selected_sources(selected_source_ids: list[int]) -> None:
         st.warning(err)
 
 
+@st.fragment
+def _render_new_tenders_section() -> None:
+    """Affiche les cartes des nouveaux marchés collectés lors de cette session."""
+    new_ids = st.session_state.get("new_tender_ids", set())
+    if not new_ids:
+        return
+
+    db = new_db()
+    try:
+        new_tenders = (
+            db.query(Tender)
+            .filter(Tender.id.in_(new_ids), Tender.is_blacklisted != True)
+            .all()
+        )
+    finally:
+        db.close()
+
+    if not new_tenders:
+        return
+
+    def _score(t):
+        a = t.llm_analysis or {}
+        return a.get("score_pertinence", t.relevance_score or 0)
+
+    new_tenders.sort(key=_score, reverse=True)
+    top5 = new_tenders[:5]
+    total = len(new_tenders)
+
+    col_title, col_close = st.columns([9, 1])
+    with col_title:
+        st.markdown(f"### 🆕 {total} nouveau(x) marché(s) collecté(s)")
+    with col_close:
+        if st.button("✕ Fermer", key="close_new_tenders"):
+            st.session_state["new_tender_ids"] = set()
+            st.rerun(scope="fragment")
+
+    for t in top5:
+        a = t.llm_analysis or {}
+        score = _score(t)
+        domaine = detect_domaine(t.title or "", t.description or "")
+        territoire = detect_territoire(t.title or "", t.description or "")
+        justif = (a.get("justification_score") or "")[:120]
+
+        if score >= 65:
+            color_class = ""
+            badge = f"🟢 GO — Score {score}/100"
+        elif score >= 35:
+            color_class = "orange"
+            badge = f"🟡 Étudier — Score {score}/100"
+        else:
+            color_class = "teal"
+            badge = f"🔴 Passer — Score {score}/100"
+
+        title_short = (t.title or "Sans titre")[:90]
+        justif_html = (
+            f"<div style='font-size:0.82rem;color:#374151;font-style:italic;margin-bottom:10px;'>"
+            f"💡 {justif}</div>"
+            if justif else ""
+        )
+
+        st.markdown(
+            f"""<div class="kpi-card {color_class}" style="margin-bottom:12px;padding:16px 20px;">
+<div style="font-size:0.75rem;font-weight:700;color:#6b7280;margin-bottom:6px;">{badge}</div>
+<div style="font-size:1rem;font-weight:700;color:#111827;margin-bottom:4px;">{title_short}</div>
+<div style="font-size:0.8rem;color:#6b7280;margin-bottom:8px;">{territoire} · {domaine}</div>
+{justif_html}</div>""",
+            unsafe_allow_html=True,
+        )
+
+        col_save, col_qualify, col_src, _ = st.columns([2, 2, 2, 4])
+        with col_save:
+            if st.button("⭐ Sauvegarder", key=f"new_save_{t.id}"):
+                toggle_saved(t.id, True)
+                st.cache_data.clear()
+                st.rerun(scope="fragment")
+        with col_qualify:
+            if st.button("✅ Qualifier", key=f"new_qualify_{t.id}"):
+                save_status(t.id, "En cours")
+                st.cache_data.clear()
+                st.rerun(scope="fragment")
+        with col_src:
+            if t.source and t.source.startswith("http"):
+                st.link_button("🔗 Source", url=t.source)
+
+    if total > 5:
+        st.caption(f"+ {total - 5} autre(s) nouveau(x) marché(s) — consultez le tableau ci-dessous.")
+
+    st.markdown("---")
+
+
 with st.sidebar:
     st.markdown("## 🔥 DEF Océan Indien")
     st.markdown("**Veille Marchés Publics**")
@@ -1022,6 +1112,9 @@ with col_btn:
     )
 
 st.markdown("---")
+
+# ── Nouveaux marchés post-collecte ────────────────────────────────────────────
+_render_new_tenders_section()
 
 # ── KPI metrics ───────────────────────────────────────────────────────────────
 
