@@ -645,13 +645,14 @@ def _render_strategic_analysis(t, a: dict, domaine: str, territoire: str, score:
 if "auto_analyzed" not in st.session_state:
     _run_auto_analysis()
     st.session_state["auto_analyzed"] = True
+st.session_state.setdefault("new_tender_ids", set())
 
 
 @st.cache_data(ttl=60)
-def load_tenders(status_filter: str, maintenance_only: bool, annee_min: int, secteur: str = "Public") -> list[dict]:
+def load_tenders(status_filter: str, maintenance_only: bool, date_from: datetime | None, strict_date: bool = False, secteur: str = "Public") -> list[dict]:
     db = new_db()
     try:
-        from sqlalchemy import or_, extract
+        from sqlalchemy import or_
         q = db.query(Tender).filter(Tender.is_blacklisted != True)
 
         if secteur == "Public":
@@ -663,12 +664,16 @@ def load_tenders(status_filter: str, maintenance_only: bool, annee_min: int, sec
             q = q.filter(Tender.status == status_filter)
         if maintenance_only:
             q = q.filter(Tender.is_maintenance == True)
-        if annee_min > 0:
-            q = q.filter(or_(
-                extract("year", Tender.publication_date) >= annee_min,
-                extract("year", Tender.deadline) >= annee_min,
-                Tender.publication_date == None,
-            ))
+        if date_from is not None:
+            if strict_date:
+                # Mode "30 derniers jours" : uniquement la date de publication
+                q = q.filter(Tender.publication_date >= date_from)
+            else:
+                q = q.filter(or_(
+                    Tender.publication_date >= date_from,
+                    Tender.deadline >= date_from,
+                    Tender.publication_date == None,
+                ))
         tenders = q.order_by(Tender.deadline).all()
 
         rows = []
@@ -803,6 +808,14 @@ def run_analysis(tender_id: str) -> None:
 def _collect_selected_sources(selected_source_ids: list[int]) -> None:
     """Lance les scrapers des sources sélectionnées et affiche les résultats."""
     import importlib
+
+    # Snapshot des IDs existants avant collecte
+    _db_snap = new_db()
+    try:
+        ids_before = {row.id for row in _db_snap.query(Tender.id).all()}
+    finally:
+        _db_snap.close()
+
     db_s = new_db()
     try:
         sources = list_sources(db_s)
@@ -831,6 +844,15 @@ def _collect_selected_sources(selected_source_ids: list[int]) -> None:
 
     _run_auto_analysis()
     st.cache_data.clear()
+
+    # Calcul des nouveaux IDs apparus pendant cette collecte
+    _db_snap2 = new_db()
+    try:
+        ids_after = {row.id for row in _db_snap2.query(Tender.id).all()}
+    finally:
+        _db_snap2.close()
+    st.session_state["new_tender_ids"] = ids_after - ids_before
+
     if total:
         st.success(f"{total} nouveau(x) marché(s) importé(s) — analyse automatique effectuée.")
     elif not errors:
@@ -844,19 +866,22 @@ with st.sidebar:
     st.markdown("**Veille Marchés Publics**")
     st.markdown("---")
 
-    current_year = datetime.now().year
+    from datetime import timedelta
+    _now = datetime.now()
+    _cy = _now.year
     periode_labels = {
-        f"Depuis {current_year} (cette année)": current_year,
-        f"Depuis {current_year - 1} (2 ans)": current_year - 1,
-        f"Depuis {current_year - 2} (3 ans)": current_year - 2,
-        "Tout afficher": 0,
+        "30 derniers jours": (_now - timedelta(days=30), True),
+        f"Cette année ({_cy})": (datetime(_cy, 1, 1), False),
+        f"2 ans": (datetime(_cy - 1, 1, 1), False),
+        f"3 ans": (datetime(_cy - 2, 1, 1), False),
+        "Tout": (None, False),
     }
     selected_periode = st.selectbox(
         "Période",
         list(periode_labels.keys()),
-        index=1,  # défaut : 2 ans
+        index=2,  # défaut : 2 ans
     )
-    annee_min = periode_labels[selected_periode]
+    date_from, strict_date = periode_labels[selected_periode]
 
     st.markdown("**Territoire**")
     selected_groupe = st.selectbox(
@@ -886,13 +911,6 @@ with st.sidebar:
         options=["🟢 GO", "🟡 Étudier", "🔴 Passer"],
         placeholder="Toutes les décisions",
     )
-    selected_secteurs = st.multiselect(
-        "Filtrer par secteur",
-        options=["Public", "Privé"],
-        default=["Public", "Privé"],
-        placeholder="Tous les secteurs",
-    )
-
     st.markdown("---")
     st.markdown("### ⚡ Sources de collecte")
 
@@ -1089,43 +1107,97 @@ st.markdown(_kpi_row([
 
 st.markdown("---")
 
-# ── tableau unifié marchés publics & signaux privés ───────────────────────────
+# ── Filtres territoriaux communs ──────────────────────────────────────────────
 
-rows = load_tenders(selected_status, maintenance_only, annee_min, secteur="Tous")
-
-# Filtres côté affichage
 terr_actifs = selected_territoires[:]
 if selected_groupe != "Tous":
     terr_actifs = list(set(terr_actifs + GROUPES[selected_groupe]))
-if terr_actifs:
-    rows = [r for r in rows if any(terr in r["Territoire"] for terr in terr_actifs)]
-if selected_domaines:
-    rows = [r for r in rows if any(d in r["Domaine"] for d in selected_domaines)]
-if selected_decisions:
-    rows = [r for r in rows if r["Go/No-Go"] in selected_decisions]
-if selected_secteurs and len(selected_secteurs) < 2:
-    rows = [r for r in rows if r["Secteur"] in selected_secteurs]
 
-if not rows:
-    st.info(
-        "Aucun marché ou signal trouvé. Lancez la collecte depuis le menu latéral, "
-        "ou ajustez les filtres."
-    )
-else:
-    st.markdown(_section_html(
-        f"📋 Marchés & Signaux — {len(rows)} résultats",
-        "Cliquez sur une ligne pour afficher la fiche détaillée"
-    ), unsafe_allow_html=True)
+status_options = ["À qualifier", "En cours", "Soumis", "Gagné", "Perdu"]
+
+
+def _render_fiche(tender_id: str, key_suffix: str) -> None:
+    db_det = new_db()
+    try:
+        t = db_det.query(Tender).filter(Tender.id == tender_id).first()
+        if not t:
+            return
+        a = t.llm_analysis or {}
+        domaine = detect_domaine(t.title or "", t.description or "")
+        territoire = detect_territoire(t.title or "", t.description or "")
+        score = a.get("score_pertinence", t.relevance_score or 0)
+        decision = _gonogo(score)
+
+        tag = a.get("tag_pertinence") or decision
+        if score >= 65:
+            st.success(f"**{tag}** — Score {score}/100 · {domaine} · {territoire}")
+        elif score >= 35:
+            st.warning(f"**{tag}** — Score {score}/100 · {domaine} · {territoire}")
+        else:
+            st.error(f"**{tag}** — Score {score}/100 · {domaine} · {territoire}")
+
+        domaines = a.get("domaines_concernes", [])
+        if domaines:
+            chips = " · ".join([f"`{d}`" for d in domaines])
+            st.markdown(f"**Domaines :** {chips}")
+
+        if a.get("justification_score"):
+            st.caption(f"💡 {a['justification_score']}")
+
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Type", a.get("type_marche") or t.type_opportunite or "—")
+        m2.metric("Score DEF", f"{score} / 100")
+        m3.metric("Concurrents", len(a.get("marques_concurrentes_citees", [])))
+        m4.metric("Maintenance", "Oui" if t.is_maintenance else "Non")
+
+        if a.get("marques_concurrentes_citees"):
+            st.write("**Marques concurrentes citées :**", ", ".join(a["marques_concurrentes_citees"]))
+        if a.get("risques_penalites"):
+            st.warning(f"⚠️ Risques / Pénalités : {a['risques_penalites']}")
+
+        source_a = a.get("_source", "local")
+        if source_a in ("claude", "gemini"):
+            st.caption("🤖 Analyse Claude (score combiné 70 % IA + 30 % règles métier)")
+        else:
+            st.caption("🔍 Analyse locale (règles métier DEF — Claude indisponible)")
+
+        _render_strategic_analysis(t, a, domaine, territoire, score)
+        st.markdown("---")
+        if st.button("🤖 Réanalyser avec Claude", key=f"reanalyze_{key_suffix}_{tender_id}",
+                     help="Relance l'analyse Claude pour affiner le score et la justification"):
+            with st.spinner("Analyse Claude en cours…"):
+                run_analysis(tender_id)
+            st.cache_data.clear()
+            st.rerun()
+    finally:
+        db_det.close()
+
+
+def _render_editor_section(
+    rows: list[dict],
+    section_title: str,
+    section_subtitle: str,
+    fiche_title: str,
+    fiche_label: str,
+    editor_key: str,
+    sel_all_key: str,
+    sel_title_key: str,
+    del_btn_key: str,
+    sel_box_key: str,
+) -> None:
+    st.markdown(_section_html(section_title, section_subtitle), unsafe_allow_html=True)
+
+    if not rows:
+        st.info("Aucun résultat. Lancez la collecte depuis le menu latéral ou ajustez les filtres.")
+        return
 
     df = pd.DataFrame(rows)
-    status_options = ["À qualifier", "En cours", "Soumis", "Gagné", "Perdu"]
 
-    event = st.dataframe(
-        df,
+    # ── Tableau principal (clic pour sélectionner) ────────────────────────────
+    st.caption("👆 Cliquez sur une ligne pour la sélectionner et afficher son analyse ci-dessous")
+    view_event = st.dataframe(
+        df.drop(columns=["ID", "Secteur"], errors="ignore"),
         column_config={
-            "ID": None,
-            "Secteur": st.column_config.TextColumn("Secteur", width="small"),
-            "⭐": st.column_config.CheckboxColumn("⭐", width="small"),
             "Go/No-Go": st.column_config.TextColumn("Décision", width="small"),
             "Titre": st.column_config.TextColumn("Titre du Marché", width="large"),
             "Source": st.column_config.LinkColumn("Source", width="small"),
@@ -1134,36 +1206,39 @@ else:
             "Score": st.column_config.NumberColumn("Score DEF", min_value=0, max_value=100, width="small"),
             "Date Limite": st.column_config.TextColumn("Date Limite", width="small"),
             "Publication": st.column_config.TextColumn("Publication", width="small"),
-            "Statut": st.column_config.TextColumn("Statut", width="medium"),
+            "Statut": st.column_config.TextColumn("Statut", width="small"),
             "Type": st.column_config.TextColumn("Type", width="small"),
             "Maint.": st.column_config.TextColumn("Maint.", width="small"),
             "Concurrents": st.column_config.TextColumn("Concurrents", width="medium"),
             "Montant (€)": st.column_config.NumberColumn("Montant (€)", format="%d €", width="small"),
+            "⭐": st.column_config.CheckboxColumn("⭐", width="small"),
         },
-        column_order=["⭐", "Secteur", "Go/No-Go", "Titre", "Source", "Territoire", "Domaine", "Score", "Montant (€)", "Date Limite", "Publication", "Statut", "Type", "Maint.", "Concurrents"],
+        column_order=["Go/No-Go", "Titre", "Source", "Territoire", "Domaine", "Score", "Montant (€)", "Date Limite", "Publication", "Statut", "Type", "Maint.", "Concurrents", "⭐"],
         use_container_width=True,
         hide_index=True,
         on_select="rerun",
         selection_mode="single-row",
-        key="unified_df",
+        key=f"{editor_key}_view",
     )
 
-    sel_rows = event.selection.rows
-    if sel_rows:
-        st.session_state["_sel_title"] = df.iloc[sel_rows[0]]["Titre"]
+    # Clic sur une ligne → met à jour le dropdown d'analyse
+    if view_event.selection.rows:
+        selected_row_idx = view_event.selection.rows[0]
+        if selected_row_idx < len(df):
+            st.session_state[sel_title_key] = df.iloc[selected_row_idx]["Titre"]
 
-    # ── Panneau d'édition (dépliable) ──────────────────────────────────────────
-    with st.expander("✏️ Modifier statut / montant / étoile / suppression"):
-        _all = st.session_state.get("_sel_all", False)
+    # ── Édition rapide (statut, montant, étoile, suppression) ─────────────────
+    with st.expander("✏️ Modifier statut / montant / étoile / supprimer"):
+        _all = st.session_state.get(sel_all_key, False)
         _, col_selall = st.columns([8, 1])
         with col_selall:
-            if st.button("☑️ Tout" if not _all else "☐ Aucun", key="btn_sel_all"):
-                st.session_state["_sel_all"] = not _all
-                st.session_state.pop("tenders_editor", None)
+            if st.button("☑️ Tout" if not _all else "☐ Aucun", key=f"btn_{sel_all_key}"):
+                st.session_state[sel_all_key] = not _all
+                st.session_state.pop(editor_key, None)
                 st.rerun()
 
         df_edit = df.copy()
-        df_edit.insert(0, "🗑️", st.session_state.get("_sel_all", False))
+        df_edit.insert(0, "🗑️", st.session_state.get(sel_all_key, False))
 
         edited = st.data_editor(
             df_edit,
@@ -1173,36 +1248,36 @@ else:
                 "ID": st.column_config.TextColumn("ID", disabled=True, width="small"),
                 "Secteur": st.column_config.TextColumn("Secteur", disabled=True, width="small"),
                 "Go/No-Go": st.column_config.TextColumn("Décision", width="small", disabled=True),
-                "Titre": st.column_config.TextColumn("Titre du Marché", width="large"),
+                "Titre": st.column_config.TextColumn("Titre du Marché", width="large", disabled=True),
                 "Source": st.column_config.LinkColumn("Source", width="small"),
                 "Territoire": st.column_config.TextColumn("Territoire", width="medium", disabled=True),
                 "Domaine": st.column_config.TextColumn("Domaine", width="medium", disabled=True),
-                "Score": st.column_config.NumberColumn("Score DEF", min_value=0, max_value=100, width="small"),
-                "Date Limite": st.column_config.TextColumn("Date Limite", width="small"),
-                "Publication": st.column_config.TextColumn("Publication", width="small"),
+                "Score": st.column_config.NumberColumn("Score DEF", min_value=0, max_value=100, width="small", disabled=True),
+                "Date Limite": st.column_config.TextColumn("Date Limite", width="small", disabled=True),
+                "Publication": st.column_config.TextColumn("Publication", width="small", disabled=True),
                 "Statut": st.column_config.SelectboxColumn("Statut", options=status_options, width="medium"),
-                "Type": st.column_config.TextColumn("Type", width="small"),
+                "Type": st.column_config.TextColumn("Type", width="small", disabled=True),
                 "Maint.": st.column_config.TextColumn("Maint.", width="small", disabled=True),
-                "Concurrents": st.column_config.TextColumn("Concurrents", width="medium"),
+                "Concurrents": st.column_config.TextColumn("Concurrents", width="medium", disabled=True),
                 "Montant (€)": st.column_config.NumberColumn("Montant (€)", min_value=0, step=1000, format="%d €", width="small"),
             },
-            column_order=["🗑️", "⭐", "Secteur", "Go/No-Go", "Titre", "Source", "Territoire", "Domaine", "Score", "Montant (€)", "Date Limite", "Publication", "Statut", "Type", "Maint.", "Concurrents", "ID"],
+            column_order=["🗑️", "⭐", "Go/No-Go", "Titre", "Source", "Territoire", "Domaine", "Score", "Montant (€)", "Date Limite", "Publication", "Statut", "Type", "Maint.", "Concurrents", "ID"],
             use_container_width=True,
             hide_index=True,
             num_rows="fixed",
-            key="tenders_editor",
+            key=editor_key,
         )
 
         to_delete = edited[edited["🗑️"] == True]["ID"].tolist()
         if to_delete:
-            if st.button(f"🗑️ Supprimer {len(to_delete)} marché(s) sélectionné(s)", type="secondary"):
+            if st.button(f"🗑️ Supprimer {len(to_delete)} élément(s) sélectionné(s)", key=del_btn_key, type="secondary"):
                 for tid in to_delete:
                     delete_tender(tid)
-                st.session_state.pop("_sel_all", None)
+                st.session_state.pop(sel_all_key, None)
                 st.cache_data.clear()
                 st.rerun()
 
-        editor_state = st.session_state.get("tenders_editor", {})
+        editor_state = st.session_state.get(editor_key, {})
         for row_idx, changes in editor_state.get("edited_rows", {}).items():
             if "Statut" in changes:
                 save_status(df_edit.iloc[row_idx]["ID"], changes["Statut"])
@@ -1217,75 +1292,69 @@ else:
                 st.cache_data.clear()
                 st.rerun()
 
+    # ── Analyse de la ligne sélectionnée ──────────────────────────────────────
     st.markdown("---")
+    st.markdown(_section_html(fiche_title, "Analyse détaillée de l'élément sélectionné"), unsafe_allow_html=True)
 
-    # ── fiche commerciale unifiée ──────────────────────────────────────────────
-    st.markdown(_section_html("📋 Fiche commerciale", "Analyse détaillée du marché ou signal sélectionné"), unsafe_allow_html=True)
     title_to_id = {r["Titre"]: r["ID"] for r in rows}
     _titles = list(title_to_id.keys())
     _default = 0
-    _sel_t = st.session_state.get("_sel_title")
+    _sel_t = st.session_state.get(sel_title_key)
     if _sel_t and _sel_t in _titles:
         _default = _titles.index(_sel_t)
-    chosen_title = st.selectbox("Sélectionner un marché / signal", _titles, index=_default)
+    chosen_title = st.selectbox(fiche_label, _titles, index=_default, key=sel_box_key)
 
     if chosen_title:
-        chosen_id = title_to_id[chosen_title]
-        db_det = new_db()
-        try:
-            t = db_det.query(Tender).filter(Tender.id == chosen_id).first()
-            if t:
-                a = t.llm_analysis or {}
-                domaine = detect_domaine(t.title or "", t.description or "")
-                territoire = detect_territoire(t.title or "", t.description or "")
-                score = a.get("score_pertinence", t.relevance_score or 0)
-                decision = _gonogo(score)
+        _render_fiche(title_to_id[chosen_title], editor_key)
 
-                tag = a.get("tag_pertinence") or decision
-                if score >= 65:
-                    st.success(f"**{tag}** — Score {score}/100 · {domaine} · {territoire}")
-                elif score >= 35:
-                    st.warning(f"**{tag}** — Score {score}/100 · {domaine} · {territoire}")
-                else:
-                    st.error(f"**{tag}** — Score {score}/100 · {domaine} · {territoire}")
+    st.markdown("---")
 
-                domaines = a.get("domaines_concernes", [])
-                if domaines:
-                    chips = " · ".join([f"`{d}`" for d in domaines])
-                    st.markdown(f"**Domaines :** {chips}")
 
-                if a.get("justification_score"):
-                    st.caption(f"💡 {a['justification_score']}")
+# ── Tableau Marchés Publics ───────────────────────────────────────────────────
 
-                m1, m2, m3, m4 = st.columns(4)
-                m1.metric("Type", a.get("type_marche") or t.type_opportunite or "—")
-                m2.metric("Score DEF", f"{score} / 100")
-                m3.metric("Concurrents", len(a.get("marques_concurrentes_citees", [])))
-                m4.metric("Maintenance", "Oui" if t.is_maintenance else "Non")
+rows_pub = load_tenders(selected_status, maintenance_only, date_from, strict_date, secteur="Public")
+if terr_actifs:
+    rows_pub = [r for r in rows_pub if any(terr in r["Territoire"] for terr in terr_actifs)]
+if selected_domaines:
+    rows_pub = [r for r in rows_pub if any(d in r["Domaine"] for d in selected_domaines)]
+if selected_decisions:
+    rows_pub = [r for r in rows_pub if r["Go/No-Go"] in selected_decisions]
 
-                if a.get("marques_concurrentes_citees"):
-                    st.write("**Marques concurrentes citées :**", ", ".join(a["marques_concurrentes_citees"]))
-                if a.get("risques_penalites"):
-                    st.warning(f"⚠️ Risques / Pénalités : {a['risques_penalites']}")
+_render_editor_section(
+    rows=rows_pub,
+    section_title=f"📋 Marchés Publics — {len(rows_pub)} résultats",
+    section_subtitle="Modifiez le statut, le montant ou l'étoile directement dans le tableau",
+    fiche_title="📋 Fiche commerciale — Marché Public",
+    fiche_label="Sélectionner un marché public",
+    editor_key="pub_editor",
+    sel_all_key="_sel_all_pub",
+    sel_title_key="_sel_title_pub",
+    del_btn_key="del_pub",
+    sel_box_key="sel_pub",
+)
 
-                source_a = a.get("_source", "local")
-                if source_a in ("claude", "gemini"):
-                    st.caption("🤖 Analyse Claude (score combiné 70 % IA + 30 % règles métier)")
-                else:
-                    st.caption("🔍 Analyse locale (règles métier DEF — Claude indisponible)")
+# ── Tableau Signaux Privés ────────────────────────────────────────────────────
 
-                _render_strategic_analysis(t, a, domaine, territoire, score)
-                st.markdown("---")
-                if st.button("🤖 Réanalyser avec Claude", key=f"reanalyze_{chosen_id}",
-                             help="Relance l'analyse Claude pour affiner le score et la justification"):
-                    with st.spinner("Analyse Claude en cours…"):
-                        run_analysis(chosen_id)
-                    st.cache_data.clear()
-                    st.rerun()
-        finally:
-            db_det.close()
+rows_priv = load_tenders(selected_status, maintenance_only, date_from, strict_date, secteur="Privé")
+if terr_actifs:
+    rows_priv = [r for r in rows_priv if any(terr in r["Territoire"] for terr in terr_actifs)]
+if selected_domaines:
+    rows_priv = [r for r in rows_priv if any(d in r["Domaine"] for d in selected_domaines)]
+if selected_decisions:
+    rows_priv = [r for r in rows_priv if r["Go/No-Go"] in selected_decisions]
 
-st.markdown("---")
+_render_editor_section(
+    rows=rows_priv,
+    section_title=f"🏗️ Signaux Privés — {len(rows_priv)} résultats",
+    section_subtitle="Permis de construire, articles presse, institutions, banques de développement",
+    fiche_title="🏗️ Fiche commerciale — Signal Privé",
+    fiche_label="Sélectionner un signal privé",
+    editor_key="priv_editor",
+    sel_all_key="_sel_all_priv",
+    sel_title_key="_sel_title_priv",
+    del_btn_key="del_priv",
+    sel_box_key="sel_priv",
+)
 
 # ── saisie manuelle ───────────────────────────────────────────────────────────
 
