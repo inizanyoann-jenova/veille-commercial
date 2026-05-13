@@ -111,7 +111,7 @@ _DEFUNCT_URLS = {
 
 
 def init_sources(db) -> None:
-    """Insère les sources par défaut si la table est vide. Idempotent.
+    """Insère les sources par défaut manquantes. Idempotent.
     Supprime aussi les URLs défuntes des bases existantes."""
     # Nettoyage des domaines morts (migration silencieuse)
     deleted = (db.query(Source)
@@ -123,8 +123,9 @@ def init_sources(db) -> None:
     if deleted:
         db.flush()
 
-    if db.query(Source).count() == 0:
-        for data in _DEFAULT_SOURCES:
+    existing_names = {s.name for s in db.query(Source.name).all()}
+    for data in _DEFAULT_SOURCES:
+        if data["name"] not in existing_names:
             db.add(Source(**data))
     db.commit()
 

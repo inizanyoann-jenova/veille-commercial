@@ -10,6 +10,84 @@ init_db()
 st.set_page_config(page_title="Paramètres — DEF OI", page_icon="⚙️", layout="wide")
 st.title("⚙️ Paramètres")
 
+# ── Section clé API Claude ────────────────────────────────────────────────────
+st.header("🤖 Intelligence Artificielle — Clé API Claude")
+st.caption("Claude analyse les appels d'offres et produit des scores de pertinence enrichis (70 % IA + 30 % règles métier).")
+
+current_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+_key_ok = bool(current_key and not current_key.startswith("sk-ant-...") and len(current_key) > 20)
+
+if _key_ok:
+    st.success(f"✅ Clé API Claude configurée (`{current_key[:16]}…`)")
+else:
+    st.warning("⚠️ Clé API Claude non configurée — l'analyse IA tourne en mode local uniquement (règles métier).")
+
+with st.expander(
+    "🔑 Configurer / modifier la clé API Claude",
+    expanded=not _key_ok,
+):
+    st.markdown("""
+**Comment obtenir votre clé API ?**
+
+1. Ouvrez [console.anthropic.com](https://console.anthropic.com) dans votre navigateur
+2. Connectez-vous avec le compte DEF OI (ou créez un compte si besoin)
+3. Dans le menu de gauche, cliquez **API Keys**
+4. Cliquez **Create Key**, donnez-lui un nom (ex : "DEF OI Veille")
+5. Copiez la clé affichée — elle commence par `sk-ant-api03-…`
+   ⚠️ Cette clé n'est affichée **qu'une seule fois** — copiez-la immédiatement
+
+Collez-la ci-dessous puis cliquez **Enregistrer**.
+""")
+
+    new_key = st.text_input(
+        "Clé API Anthropic",
+        type="password",
+        placeholder="sk-ant-api03-…",
+        key="anthropic_api_key_input",
+        help="La clé doit commencer par sk-ant-",
+    )
+
+    col_save, col_test, col_spacer = st.columns([2, 2, 4])
+    with col_save:
+        if st.button("💾 Enregistrer la clé", key="save_anthropic_key", type="primary"):
+            key_to_save = new_key.strip()
+            if key_to_save.startswith("sk-ant-") and len(key_to_save) > 20:
+                from dotenv import set_key as _set_key
+                _set_key(".env", "ANTHROPIC_API_KEY", key_to_save)
+                os.environ["ANTHROPIC_API_KEY"] = key_to_save
+                # Réinitialiser le client pour prendre la nouvelle clé en compte immédiatement
+                try:
+                    import llm_analyzer
+                    llm_analyzer._anthropic_client = None
+                except Exception:
+                    pass
+                st.success("✅ Clé enregistrée — active immédiatement, sans redémarrage.")
+                st.rerun()
+            else:
+                st.error("Format invalide — la clé doit commencer par `sk-ant-`")
+
+    with col_test:
+        if st.button("🧪 Tester la clé", key="test_anthropic_key"):
+            key_to_test = new_key.strip() or current_key
+            if not key_to_test or key_to_test == "sk-ant-...":
+                st.error("Entrez d'abord une clé.")
+            else:
+                with st.spinner("Connexion à Claude en cours…"):
+                    try:
+                        import anthropic as _ant
+                        _test_client = _ant.Anthropic(api_key=key_to_test)
+                        _test_client.messages.create(
+                            model="claude-haiku-4-5",
+                            max_tokens=5,
+                            messages=[{"role": "user", "content": "OK"}],
+                        )
+                        st.success("✅ Clé valide — connexion à Claude réussie.")
+                    except _ant.AuthenticationError:
+                        st.error("❌ Clé invalide — vérifiez la valeur copiée depuis console.anthropic.com")
+                    except Exception as exc:
+                        st.error(f"Erreur inattendue : {exc}")
+
+# ── Section identifiants ──────────────────────────────────────────────────────
 _SITE_LABELS = {
     "vaao":               ("VAAO",                      "Public"),
     "marcheonline":       ("Marché Online",              "Public"),
@@ -21,7 +99,7 @@ _SITE_LABELS = {
     "tendersgo":          ("Tenders Go",                 "International"),
 }
 
-# ── Section identifiants ──────────────────────────────────────────────────────
+st.markdown("---")
 st.header("🔐 Identifiants des sources")
 st.caption("Les mots de passe sont chiffrés en base de données. Les variables `.env` ont la priorité.")
 
@@ -65,32 +143,69 @@ for site_key, (site_label, category) in _SITE_LABELS.items():
             with btn3:
                 if cred and st.button("🔌 Tester la connexion", key=f"test_{site_key}"):
                     with st.spinner("Test en cours…"):
-                        try:
-                            from playwright.sync_api import sync_playwright
-                            from playwright_base import login
-                            _TEST_URLS = {
-                                "marches_securises": ("https://www.marches-securises.fr/entreprise/?page=connexion",
-                                                      {"email": "input[name='login']", "password": "input[name='pass']", "submit": "input[type='submit']"}),
-                                "instao":            ("https://www.instao.fr/connexion",
-                                                      {"email": "input[type='email']", "password": "input[type='password']", "submit": "button[type='submit']"}),
-                                "tendersgo":         ("https://app.tendersgo.com/login",
-                                                      {"email": "input[type='email']", "password": "input[type='password']", "submit": "button[type='submit']"}),
-                            }
-                            if site_key in _TEST_URLS:
-                                url, selectors = _TEST_URLS[site_key]
-                                with sync_playwright() as pw:
-                                    browser = pw.chromium.launch(headless=True)
-                                    page = browser.new_page()
-                                    ok = login(page, url, new_email or cred["email"], new_pwd or "", selectors)
-                                    browser.close()
-                                if ok:
-                                    st.success("✅ Connexion réussie")
-                                else:
-                                    st.error("❌ Connexion échouée — vérifiez vos identifiants")
+                        _TEST_URLS = {
+                            "marcheonline":      ("https://www.marchesonline.com/connexion",
+                                                  {"email": "#email-input", "password": "input[type='password'].modal_connexion_input", "submit": "button.primary-dark-btn"}),
+                            "nukema":            ("https://www.actu.nukema.com/connexion",
+                                                  {"email": "input[type='email']", "password": "input[type='password']", "submit": "button[type='submit']"}),
+                            "marches_securises": ("https://www.marches-securises.fr/entreprise/?page=connexion",
+                                                  {"email": "input[name='login']", "password": "input[name='pass']", "submit": "input[type='submit']"}),
+                            "instao":            ("https://www.instao.fr/connexion",
+                                                  {"email": "input[type='email']", "password": "input[type='password']", "submit": "button[type='submit']"}),
+                            "tendersgo":         ("https://app.tendersgo.com/login",
+                                                  {"email": "input[type='email']", "password": "input[type='password']", "submit": "button[type='submit']"}),
+                        }
+                        if site_key not in _TEST_URLS:
+                            st.info("Test de connexion non disponible pour cette source (accès public).")
+                        else:
+                            import subprocess, json, sys as _sys, os as _os
+                            url, selectors = _TEST_URLS[site_key]
+                            email_to_test = new_email or cred["email"]
+                            if new_pwd:
+                                pwd_to_test = new_pwd
                             else:
-                                st.info("Test de connexion non disponible pour cette source (accès public).")
-                        except Exception as e:
-                            st.error(f"Erreur : {e}")
+                                stored = CredentialManager.get(site_key)
+                                pwd_to_test = stored[1] if stored else ""
+                            if not pwd_to_test:
+                                st.error("Mot de passe introuvable — enregistrez-le d'abord.")
+                            else:
+                                worker = _os.path.join(
+                                    _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                                    "_test_login_worker.py",
+                                )
+                                payload = json.dumps({
+                                    "url": url,
+                                    "selectors": selectors,
+                                    "email": email_to_test,
+                                    "password": pwd_to_test,
+                                })
+                                try:
+                                    proc = subprocess.run(
+                                        [_sys.executable, worker, payload],
+                                        capture_output=True, text=True, timeout=60,
+                                    )
+                                    if proc.returncode != 0 and not proc.stdout.strip():
+                                        st.error(f"❌ Erreur du worker Playwright :\n{proc.stderr[:500]}")
+                                    else:
+                                        diag = json.loads(proc.stdout)
+                                        if diag.get("ok"):
+                                            st.success(f"✅ Connexion réussie — redirigé vers `{diag.get('url_finale', '—')}`")
+                                        elif "erreur_worker" in diag:
+                                            st.error(f"❌ Erreur : {diag['erreur_worker']}")
+                                            st.code(diag.get("traceback", ""), language="python")
+                                        elif "champ_manquant" in diag:
+                                            st.error(f"❌ Champ introuvable sur la page : {diag['champ_manquant']}")
+                                            st.caption(f"URL : {diag.get('url_initiale', '—')}")
+                                            if diag.get("champs_page"):
+                                                st.info("Champs détectés sur la page :\n" + "\n".join(diag["champs_page"]))
+                                        elif "erreur_page" in diag:
+                                            st.error(f"❌ Identifiants incorrects — message du site : *{diag['erreur_page']}*")
+                                        elif diag.get("no_redirect"):
+                                            st.warning(f"⚠️ Pas de redirection après login (URL : `{diag.get('url_finale', '—')}`). Possible CAPTCHA ou identifiants incorrects.")
+                                        else:
+                                            st.error("❌ Connexion échouée — vérifiez vos identifiants.")
+                                except subprocess.TimeoutExpired:
+                                    st.error("❌ Timeout — la page de connexion n'a pas répondu en 60 secondes.")
 
 # ── Section sécurité ──────────────────────────────────────────────────────────
 st.markdown("---")
@@ -111,6 +226,47 @@ if st.button("🔄 Régénérer la clé de chiffrement"):
         set_key(".env", "CREDENTIAL_KEY", new_key)
         os.environ["CREDENTIAL_KEY"] = new_key
         st.success("Nouvelle clé générée et sauvegardée dans `.env`. Relancez l'application.")
+
+# ── Blacklist ─────────────────────────────────────────────────────────────────
+st.markdown("---")
+st.header("🚫 Articles ignorés (blacklist)")
+st.caption("Ces éléments ont été supprimés et ne réapparaîtront plus après une collecte. Vous pouvez les réactiver ici.")
+
+from database import SessionLocal as _SL
+from models import Tender as _Tender
+
+_db_bl = _SL()
+try:
+    _blacklisted = (
+        _db_bl.query(_Tender)
+        .filter(_Tender.is_blacklisted == True)
+        .order_by(_Tender.title)
+        .all()
+    )
+finally:
+    _db_bl.close()
+
+if not _blacklisted:
+    st.info("Aucun élément blacklisté.")
+else:
+    st.caption(f"{len(_blacklisted)} élément(s) ignoré(s)")
+    for item in _blacklisted:
+        col_t, col_s, col_btn = st.columns([6, 2, 1])
+        with col_t:
+            st.markdown(f"**{item.title or item.id}**")
+        with col_s:
+            st.caption(item.secteur or "Public")
+        with col_btn:
+            if st.button("↩️ Réactiver", key=f"unbl_{item.id}"):
+                _db_r = _SL()
+                try:
+                    t = _db_r.query(_Tender).filter(_Tender.id == item.id).first()
+                    if t:
+                        t.is_blacklisted = False
+                        _db_r.commit()
+                finally:
+                    _db_r.close()
+                st.rerun()
 
 # ── Section maintenance ───────────────────────────────────────────────────────
 st.markdown("---")

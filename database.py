@@ -20,6 +20,9 @@ def init_db():
         for col_name, col_def in [
             ("secteur", "VARCHAR"),
             ("type_opportunite", "VARCHAR DEFAULT 'Marché Public'"),
+            ("amount", "INTEGER"),
+            ("is_blacklisted", "BOOLEAN DEFAULT 0"),
+            ("is_saved", "BOOLEAN DEFAULT 0"),
         ]:
             try:
                 conn.execute(text(f"ALTER TABLE tenders ADD COLUMN {col_name} {col_def}"))

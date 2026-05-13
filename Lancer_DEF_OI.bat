@@ -27,6 +27,10 @@ if errorlevel 1 (
     exit /b 1
 )
 
+:: Installer le navigateur Playwright (silencieux si déjà installé)
+echo Installation du navigateur (premiere fois uniquement)...
+playwright install chromium --quiet >nul 2>&1
+
 :: Créer le fichier .env s'il n'existe pas
 if not exist ".env" (
     copy ".env.example" ".env" >nul

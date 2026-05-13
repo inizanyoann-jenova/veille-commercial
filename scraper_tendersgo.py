@@ -47,6 +47,7 @@ def fetch_tendersgo_tenders() -> int:
     init_db()
     db = SessionLocal()
     inserted = 0
+    seen_ids: set[str] = set()
     try:
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=True)
@@ -68,6 +69,9 @@ def fetch_tendersgo_tenders() -> int:
                         if url and not url.startswith("http"):
                             url = f"https://app.tendersgo.com{url}"
                         tid = f"TENDERSGO-{hashlib.md5(f'{title}{url}'.encode()).hexdigest()}"
+                        if tid in seen_ids:
+                            continue
+                        seen_ids.add(tid)
                         if db.query(Tender).filter(Tender.id == tid).first():
                             continue
                         db.add(Tender(

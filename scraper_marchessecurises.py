@@ -47,6 +47,7 @@ def fetch_marchessecurises_tenders() -> int:
     init_db()
     db = SessionLocal()
     inserted = 0
+    seen_ids: set[str] = set()
     try:
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=True)
@@ -68,6 +69,9 @@ def fetch_marchessecurises_tenders() -> int:
                         if url and not url.startswith("http"):
                             url = f"https://www.marches-securises.fr{url}"
                         tid = f"MARCHESSEC-{hashlib.md5(f'{title}{url}'.encode()).hexdigest()}"
+                        if tid in seen_ids:
+                            continue
+                        seen_ids.add(tid)
                         if db.query(Tender).filter(Tender.id == tid).first():
                             continue
                         db.add(Tender(
@@ -76,7 +80,7 @@ def fetch_marchessecurises_tenders() -> int:
                             deadline=None, status="À qualifier",
                             relevance_score=0, is_maintenance=False,
                             llm_analysis=None, secteur="Privé",
-                            type_opportunite="Marché Public",
+                            type_opportunite="Marché Privé",
                         ))
                         inserted += 1
                     if not paginate(page, _NEXT):

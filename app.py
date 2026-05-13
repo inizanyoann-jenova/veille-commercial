@@ -5,45 +5,35 @@ import streamlit as st
 
 from database import SessionLocal, init_db
 from export_excel import generate_executive_report
-from llm_analyzer import analyze_tender, auto_analyze_pending
+from llm_analyzer import (
+    analyze_tender,
+    auto_analyze_pending,
+    auto_analyze_claude,
+    _KW_SSI,
+    _KW_CMSI,
+    _KW_VIDEO,
+    _KW_COURANTS_FAIBLES,
+    _KW_MAINTENANCE,
+    _KW_PENALITES,
+    _KW_ERP,
+    _match,
+)
 from source_registry import list_sources, add_source, remove_source, toggle_enabled
 from models import Tender
 
 # ── domaine detection ─────────────────────────────────────────────────────────
 
 DOMAINES = {
-    # SSI = systèmes électroniques de détection/alarme — PAS les extincteurs ni le génie civil
-    "🔥 SSI / Détection incendie": [
-        " ssi ", "ssi,", "(ssi)", "système de sécurité incendie",
-        "systeme de securite incendie", "détection incendie", "detection incendie",
-        "alarme incendie", "centrale incendie", "détecteur incendie",
-        "detecteur incendie", "tableau de signalisation", "equipement d'alarme",
-        "équipement d'alarme",
-    ],
-    "💨 CMSI / Désenfumage": [
-        "cmsi", "désenfumage", "desenfumage", "désenfumer", "desenfumer",
-        "extraction de fumée", "extraction de fumee", "évacuation de fumée",
-        "evacuation de fumee", "volet de désenfumage", "volet de desenfumage",
-    ],
-    "📷 Vidéosurveillance / CCTV": [
-        "vidéosurveillance", "videosurveillance", "cctv", "vidéo-surveillance",
-        "video-surveillance", "vidéo protection", "video protection",
-        "caméras de sécurité", "cameras de securite", "télésurveillance vidéo",
-        "supervision vidéo",
-    ],
-    "⚡ Courants faibles": [
-        "courants faibles", "contrôle d'accès", "controle d'acces",
-        "interphonie", "gtb", "intrusion", "anti-intrusion",
-    ],
+    "🔥 SSI / Détection incendie": _KW_SSI,
+    "💨 CMSI / Désenfumage": _KW_CMSI,
+    "📷 Vidéosurveillance / CCTV": _KW_VIDEO,
+    "⚡ Courants faibles": _KW_COURANTS_FAIBLES,
 }
 
 
-def detect_domaine(title: str) -> str:
-    t = f" {title.lower()} "
-    found = []
-    for label, keywords in DOMAINES.items():
-        if any(kw in t for kw in keywords):
-            found.append(label)
+def detect_domaine(title: str, description: str = "") -> str:
+    t = f" {(title + ' ' + description).lower()} "
+    found = [label for label, keywords in DOMAINES.items() if any(_match(kw, t) for kw in keywords)]
     return ", ".join(found) if found else "Autre"
 
 
@@ -51,13 +41,34 @@ def detect_domaine(title: str) -> str:
 
 TERRITOIRES = {
     "🏝️ La Réunion": [
-        "la réunion", "la reunion", " 974 ", "(974)", "saint-denis", "saint-pierre",
-        "saint-paul", "le port", "sainte-marie", "le tampon", "saint-benoît",
-        "saint-benoit", "saint-joseph", "ile bourbon",
+        "la réunion", "la reunion", " 974 ", "(974)", "ile bourbon",
+        "ile de la reunion",
+        # Communes
+        "saint-denis", "saint-pierre", "saint-paul", "le tampon", "saint-louis",
+        "le port", "sainte-marie", "saint-benoît", "saint-benoit", "saint-joseph",
+        "saint-leu", "sainte-suzanne", "saint-andré", "saint-andre",
+        "bras-panon", "cilaos", "entre-deux", "étang-salé", "etang-sale",
+        "petite-île", "la plaine-des-palmistes",
+        "saint-philippe", "sainte-rose", "salazie", "les trois-bassins",
+        "trois-bassins", "les avirons", "la possession", "saint-gilles",
+        # Codes postaux 974xx
+        "97400", "97410", "97411", "97412", "97413", "97414", "97416",
+        "97417", "97418", "97419", "97420", "97421", "97422", "97423",
+        "97424", "97425", "97426", "97427", "97428", "97429", "97430",
+        "97431", "97432", "97433", "97434", "97436", "97437", "97438",
+        "97439", "97440", "97441", "97442", "97450", "97460", "97470",
+        "97480", "97490",
     ],
     "🏝️ Mayotte": [
-        "mayotte", " 976 ", "(976)", "mamoudzou", "dzaoudzi", "koungou",
-        "bandraboua", "petite terre",
+        "mayotte", " 976 ", "(976)", "petite-terre", "grande-terre",
+        # Communes
+        "mamoudzou", "dzaoudzi", "pamandzi", "koungou", "bandraboua",
+        "bouéni", "boueni", "chiconi", "chirongui", "dembéni", "dembeni",
+        "kani-kéli", "kani-keli", "mtsamboro", "m'tsangamouji",
+        "ouangani", "sada", "tsingoni", "acoua",
+        # Codes postaux 976xx
+        "97600", "97610", "97615", "97616", "97617", "97618", "97619",
+        "97620", "97625", "97630", "97640", "97650", "97660", "97670", "97680",
     ],
     "🇫🇷 France métropole": [
         "france", "paris", "lyon", "marseille", "bordeaux", "nantes", "toulouse",
@@ -92,36 +103,6 @@ def detect_territoire(title: str, description: str = "") -> str:
     return ", ".join(found) if found else "Non précisé"
 
 
-def calc_score(title: str, domaine: str, territoire: str) -> int:
-    """Score DEF automatique 0–100 sans GPT, basé sur domaine + territoire + mots-clés."""
-    score = 0
-    t = title.lower()
-
-    # Pertinence métier (0–45)
-    if "🔥 SSI" in domaine:      score += 45
-    elif "💨 CMSI" in domaine:   score += 40
-    elif "📷 Vidéo" in domaine:  score += 40
-    elif "⚡ Courants" in domaine: score += 30
-    else:                         score += 5
-
-    # Proximité géographique (0–30)
-    if "La Réunion" in territoire or "Mayotte" in territoire: score += 30
-    elif "Madagascar" in territoire or "Maurice" in territoire: score += 22
-    elif "Comores" in territoire:                              score += 18
-    elif "France" in territoire:                              score += 10
-
-    # Bonus mots-clés titre (0–15)
-    for kw in ["ssi", "cmsi", "détection", "alarme incendie", "désenfumage",
-               "vidéosurveillance", "cctv", "courants faibles"]:
-        if kw in t:
-            score += 15
-            break
-
-    # Bonus maintenance = client récurrent (0–10)
-    if "maintenance" in t:
-        score += 10
-
-    return min(score, 100)
 
 st.set_page_config(
     page_title="DEF OI — Veille Marchés",
@@ -130,6 +111,238 @@ st.set_page_config(
 )
 
 init_db()
+
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body, [class*="css"] { font-family: 'Inter', system-ui, -apple-system, sans-serif !important; }
+
+#MainMenu, footer, header { visibility: hidden; }
+[data-testid="stDecoration"] { display: none; }
+
+.main .block-container {
+    padding-top: 1.2rem;
+    padding-left: 2.5rem;
+    padding-right: 2.5rem;
+    max-width: 100%;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #1c1c2e 0%, #16213e 55%, #0f3460 100%) !important;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.25);
+}
+[data-testid="stSidebar"] * { color: #e2e8f0 !important; }
+[data-testid="stSidebar"] h2 {
+    font-size: 1.05rem !important; font-weight: 800 !important;
+    color: #fff !important; letter-spacing: -0.01em;
+}
+[data-testid="stSidebar"] p { color: #94a3b8 !important; font-size: 0.78rem !important; }
+[data-testid="stSidebar"] label {
+    color: #94a3b8 !important; font-size: 0.71rem !important;
+    font-weight: 600 !important; text-transform: uppercase; letter-spacing: 0.07em;
+}
+[data-testid="stSidebar"] h3 {
+    color: #cbd5e1 !important; font-size: 0.71rem !important;
+    font-weight: 700 !important; text-transform: uppercase; letter-spacing: 0.09em;
+}
+[data-testid="stSidebar"] hr { border-color: rgba(255,255,255,0.08) !important; margin: 0.7rem 0 !important; }
+[data-testid="stSidebar"] [data-baseweb="select"] > div:first-child {
+    background: rgba(255,255,255,0.07) !important;
+    border: 1px solid rgba(255,255,255,0.13) !important;
+    border-radius: 8px !important; color: #e2e8f0 !important;
+}
+[data-testid="stSidebar"] [data-baseweb="select"] > div:first-child:hover {
+    border-color: rgba(204,34,34,0.6) !important;
+}
+[data-testid="stSidebar"] button[kind="primary"] {
+    background: linear-gradient(135deg, #cc2222 0%, #e03333 100%) !important;
+    border: none !important; border-radius: 10px !important;
+    color: #fff !important; font-weight: 700 !important; font-size: 0.84rem !important;
+    box-shadow: 0 4px 14px rgba(204,34,34,0.4) !important;
+    transition: all 0.2s !important;
+}
+[data-testid="stSidebar"] button[kind="primary"]:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 6px 20px rgba(204,34,34,0.5) !important;
+}
+[data-testid="stSidebar"] [data-testid="stPageLink"] a {
+    background: rgba(255,255,255,0.07) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    border-radius: 8px !important; color: #e2e8f0 !important;
+    font-size: 0.8rem !important; font-weight: 500 !important;
+    transition: all 0.2s !important;
+}
+[data-testid="stSidebar"] [data-testid="stPageLink"] a:hover {
+    background: rgba(204,34,34,0.28) !important;
+    border-color: rgba(204,34,34,0.55) !important;
+}
+
+/* ── Boutons ─────────────────────────────────────────────────────────────── */
+.stButton > button {
+    border-radius: 8px !important; font-weight: 600 !important;
+    font-size: 0.85rem !important; transition: all 0.2s !important;
+}
+.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #cc2222, #e03333) !important;
+    border: none !important; color: #fff !important;
+    box-shadow: 0 2px 8px rgba(204,34,34,0.3) !important;
+}
+.stButton > button[kind="primary"]:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 5px 16px rgba(204,34,34,0.42) !important;
+}
+.stButton > button[kind="secondary"]:hover {
+    border-color: #cc2222 !important; color: #cc2222 !important;
+    background: rgba(204,34,34,0.04) !important;
+}
+.stDownloadButton > button {
+    background: linear-gradient(135deg, #cc2222, #e03333) !important;
+    border: none !important; border-radius: 10px !important;
+    color: #fff !important; font-weight: 700 !important;
+    box-shadow: 0 4px 16px rgba(204,34,34,0.35) !important;
+    transition: all 0.25s !important; font-size: 0.95rem !important;
+}
+.stDownloadButton > button:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 26px rgba(204,34,34,0.48) !important;
+}
+
+/* ── Inputs ──────────────────────────────────────────────────────────────── */
+[data-baseweb="select"] > div:first-child {
+    border-radius: 8px !important; border-color: #e5e7eb !important;
+    font-size: 0.87rem !important; transition: border-color 0.2s, box-shadow 0.2s !important;
+}
+[data-baseweb="select"] > div:first-child:focus-within {
+    border-color: #cc2222 !important;
+    box-shadow: 0 0 0 3px rgba(204,34,34,0.1) !important;
+}
+[data-baseweb="input"] input, [data-baseweb="textarea"] textarea {
+    border-radius: 8px !important; font-size: 0.87rem !important;
+}
+
+/* ── Alerts ──────────────────────────────────────────────────────────────── */
+[data-testid="stAlert"] {
+    border-radius: 10px !important; border: none !important;
+    font-size: 0.86rem !important;
+}
+
+/* ── Expanders ───────────────────────────────────────────────────────────── */
+[data-testid="stExpander"] {
+    border: 1px solid #e5e7eb !important;
+    border-radius: 12px !important; overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+[data-testid="stExpander"] > details > summary {
+    background: #fafafa !important; padding: 0.8rem 1.2rem !important;
+    font-weight: 600 !important; font-size: 0.88rem !important; color: #374151 !important;
+}
+[data-testid="stExpander"] > details > summary:hover { background: #f3f4f6 !important; }
+
+/* ── Data editor ─────────────────────────────────────────────────────────── */
+[data-testid="stDataEditor"] {
+    border-radius: 12px !important; overflow: hidden;
+    border: 1px solid #e5e7eb !important;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.05);
+}
+[data-testid="stDataEditor"] th {
+    background: #f9fafb !important; color: #6b7280 !important;
+    font-weight: 700 !important; font-size: 0.69rem !important;
+    text-transform: uppercase; letter-spacing: 0.07em;
+    border-bottom: 1px solid #e5e7eb !important;
+}
+
+/* ── Séparateurs ─────────────────────────────────────────────────────────── */
+hr { border: none !important; border-top: 1px solid #f3f4f6 !important; margin: 1.25rem 0 !important; }
+
+/* ── st.metric (fiches commerciales) ─────────────────────────────────────── */
+[data-testid="stMetric"] {
+    background: #fff; border: 1px solid #f0f2f5; border-radius: 10px;
+    padding: 12px 16px !important; box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+[data-testid="stMetricLabel"] {
+    color: #9ca3af !important; font-size: 0.69rem !important;
+    text-transform: uppercase; letter-spacing: 0.07em; font-weight: 600 !important;
+}
+[data-testid="stMetricValue"] {
+    color: #111827 !important; font-size: 1.55rem !important;
+    font-weight: 800 !important; letter-spacing: -0.02em;
+}
+
+/* ── Cartes KPI custom ───────────────────────────────────────────────────── */
+.kpi-grid {
+    display: flex; gap: 12px; margin: 0.2rem 0 1.2rem 0; flex-wrap: nowrap;
+}
+.kpi-card {
+    flex: 1; background: #fff; border-radius: 12px;
+    padding: 18px 20px 14px; position: relative; overflow: hidden;
+    border: 1px solid #f0f2f5;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.03);
+    transition: box-shadow 0.2s, transform 0.2s;
+}
+.kpi-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.1); transform: translateY(-2px); }
+.kpi-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, #cc2222, #e55555);
+}
+.kpi-card.green::before  { background: linear-gradient(90deg, #16a34a, #4ade80); }
+.kpi-card.blue::before   { background: linear-gradient(90deg, #2563eb, #60a5fa); }
+.kpi-card.orange::before { background: linear-gradient(90deg, #d97706, #fbbf24); }
+.kpi-card.purple::before { background: linear-gradient(90deg, #7c3aed, #a78bfa); }
+.kpi-card.teal::before   { background: linear-gradient(90deg, #0891b2, #22d3ee); }
+.kpi-value {
+    font-size: 1.85rem; font-weight: 800; color: #111827;
+    line-height: 1.1; margin-bottom: 5px; letter-spacing: -0.02em;
+}
+.kpi-label {
+    font-size: 0.67rem; font-weight: 600; color: #9ca3af;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.kpi-sub { font-size: 0.71rem; font-weight: 700; color: #6b7280; margin-top: 2px; }
+
+/* ── En-tête de page ─────────────────────────────────────────────────────── */
+.page-header {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    padding: 0.25rem 0 1.2rem 0; border-bottom: 2px solid #f3f4f6; margin-bottom: 1.5rem;
+}
+.page-header h1 {
+    font-size: 1.7rem !important; font-weight: 800 !important;
+    color: #111827 !important; letter-spacing: -0.03em;
+    margin: 0 0 2px 0 !important; line-height: 1.2 !important;
+}
+.page-header h1 em { font-style: normal; color: #cc2222; }
+.page-header p { font-size: 0.77rem; color: #9ca3af; margin: 0; }
+.page-header-badge {
+    background: #fef2f2; border: 1px solid #fecaca; border-radius: 20px;
+    padding: 4px 12px; font-size: 0.72rem; font-weight: 700;
+    color: #cc2222; white-space: nowrap;
+}
+
+/* ── Titres de section ───────────────────────────────────────────────────── */
+.section-header { margin: 1.5rem 0 0.8rem 0; }
+.section-title {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 1rem; font-weight: 700; color: #111827;
+    padding-bottom: 10px; border-bottom: 2px solid #f3f4f6;
+}
+.section-dot {
+    width: 8px; height: 8px; background: #cc2222;
+    border-radius: 50%; flex-shrink: 0;
+}
+.section-subtitle { font-size: 0.75rem; color: #9ca3af; margin: 4px 0 0 18px; }
+
+/* ── Label CA pipeline ───────────────────────────────────────────────────── */
+.ca-label {
+    font-size: 0.69rem; font-weight: 700; color: #9ca3af;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin: 0.8rem 0 0 0; padding-top: 0.6rem;
+    border-top: 1px dashed #e5e7eb;
+}
+</style>
+""", unsafe_allow_html=True)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -155,6 +368,279 @@ def _gonogo(score: int) -> str:
     return "🔴 Passer"
 
 
+def _kpi_row(items: list[tuple], colors: list[str] | None = None) -> str:
+    if colors is None:
+        colors = [""] * len(items)
+    cards = "".join(
+        f'<div class="kpi-card {c}"><div class="kpi-value">{v}</div><div class="kpi-label">{l}</div></div>'
+        for (l, v), c in zip(items, colors)
+    )
+    return f'<div class="kpi-grid">{cards}</div>'
+
+
+def _section_html(title: str, subtitle: str | None = None) -> str:
+    sub = f'<p class="section-subtitle">{subtitle}</p>' if subtitle else ""
+    return f'<div class="section-header"><div class="section-title"><span class="section-dot"></span>{title}</div>{sub}</div>'
+
+
+def _render_strategic_analysis(t, a: dict, domaine: str, territoire: str, score: int) -> None:
+    """Analyse stratégique structurée d'un signal/marché."""
+    import re
+    from datetime import date as _date
+
+    type_m = a.get("type_marche") or getattr(t, "type_opportunite", None) or "Inconnu"
+    territoire_ia = a.get("territoire_ia") or territoire
+    domaines = a.get("domaines_concernes", [])
+    justif = a.get("justification_score", "")
+    concurrents = a.get("marques_concurrentes_citees", [])
+    desc_text = f" {(t.description or '').lower()} "
+    title_l = (t.title or "").lower()
+
+    # ── Sous-scores (estimation affichage) ────────────────────────────────────
+    if "🔥 SSI" in domaine:          sm = 45
+    elif "💨 CMSI" in domaine:       sm = 40
+    elif "📷 Vidéo" in domaine:      sm = 40
+    elif "⚡ Courants" in domaine:   sm = 30
+    else:                              sm = 5
+
+    if "La Réunion" in territoire or "Mayotte" in territoire:   sg = 30
+    elif "Madagascar" in territoire or "Maurice" in territoire:  sg = 22
+    elif "Comores" in territoire:                                 sg = 18
+    elif "France" in territoire:                                  sg = 10
+    else:                                                         sg = 0
+
+    sk = 15 if any(kw in title_l for kw in [
+        "ssi", "cmsi", "détection", "alarme incendie", "désenfumage",
+        "vidéosurveillance", "cctv", "courants faibles",
+    ]) else 0
+    smaint = 10 if t.is_maintenance else 0
+
+    # ── Délai restant ─────────────────────────────────────────────────────────
+    jours_restants = None
+    if t.deadline:
+        try:
+            today = _date.today()
+            dl = t.deadline.date() if hasattr(t.deadline, "date") else t.deadline
+            jours_restants = (dl - today).days
+        except Exception:
+            pass
+
+    # ── Plan d'action ─────────────────────────────────────────────────────────
+    if score >= 65:
+        if jours_restants is not None and jours_restants < 0:
+            label_action = "⚠️ Date limite dépassée"
+            steps = [
+                "Vérifier si une prorogation ou relance est possible",
+                "Archiver dans le suivi commercial CRM",
+            ]
+        elif jours_restants is not None and jours_restants <= 7:
+            label_action = "🚨 Action immédiate — délai critique"
+            steps = [
+                "Désigner un chargé d'affaires **aujourd'hui**",
+                "Évaluer la faisabilité d'une réponse express",
+                "Rassembler références SSI/CMSI et documents de candidature en urgence",
+                "Contacter le pouvoir adjudicateur pour confirmer la date limite",
+            ]
+        elif jours_restants is not None and jours_restants <= 30:
+            label_action = "🟢 Traiter en priorité"
+            steps = [
+                "Affecter un chargé d'affaires et ouvrir une affaire dans le CRM",
+                "Télécharger le DCE complet et analyser le CCTP",
+                "Préparer le mémoire technique + chiffrage détaillé",
+                "Planifier la visite de site si requise par le cahier des charges",
+            ]
+        else:
+            label_action = "🟢 Planifier la réponse"
+            steps = [
+                "Inscrire au planning commercial et assigner un responsable d'offre",
+                "Télécharger le DCE et surveiller les éventuels amendements",
+                "Préparer les documents de candidature (références, Kbis, qualifications Qualifelec/APSAD)",
+                "Anticiper la visite de site et le chiffrage matériels/sous-traitance",
+            ]
+    elif score >= 35:
+        label_action = "🟡 À évaluer — décision requise"
+        steps = [
+            "Lire le CCTP complet : vérifier qu'il y a bien une composante SSI/CMSI/Vidéo ou courants faibles exploitable par DEF OI",
+            "Vérifier si DEF OI a des références sur ce type de prestation **et** sur ce territoire (critères de sélection souvent liés)",
+            "Estimer la concurrence : chercher d'éventuels prix publics antérieurs et identifier les opérateurs déjà positionnés",
+            "Si l'adéquation est confirmée, décision GO/NO-GO à remonter à la direction commerciale sous 48 h",
+        ]
+    else:
+        label_action = "🔴 Hors périmètre DEF OI"
+        steps = [
+            "Archiver — pas de composante SSI/CMSI/Vidéo/courants faibles identifiée dans le périmètre DEF OI",
+            "Ne pas mobiliser de ressources commerciales ; réévaluer uniquement si une nouvelle version du DCE précise une composante électronique de sécurité",
+        ]
+
+    st.markdown("#### 📊 Analyse stratégique")
+
+    # ── Bloc 1 : Recommandation + Calendrier ──────────────────────────────────
+    col_reco, col_cal = st.columns([3, 2])
+
+    with col_reco:
+        st.markdown(f"**{label_action}**")
+        for step in steps:
+            st.markdown(f"- {step}")
+        if justif:
+            st.info(f"💡 {justif}")
+
+    with col_cal:
+        st.markdown("**Calendrier**")
+        if jours_restants is not None:
+            if jours_restants < 0:
+                st.error(f"Date limite dépassée ({abs(jours_restants)} j)")
+            elif jours_restants <= 7:
+                st.error(f"⚡ {jours_restants} jour(s) restant(s)")
+            elif jours_restants <= 21:
+                st.warning(f"⏳ {jours_restants} jour(s) restant(s)")
+            else:
+                st.success(f"🗓️ {jours_restants} jour(s) restant(s)")
+            if t.deadline and hasattr(t.deadline, "strftime"):
+                st.caption(f"Date limite : {t.deadline.strftime('%d/%m/%Y')}")
+        else:
+            st.caption("Date limite non renseignée")
+        if t.publication_date and hasattr(t.publication_date, "strftime"):
+            st.caption(f"Publié le : {t.publication_date.strftime('%d/%m/%Y')}")
+        if t.amount:
+            st.caption(f"Montant estimé : {t.amount:,.0f} €".replace(",", " "))
+
+    # ── Bloc 2 : Score détaillé + Atouts / Risques ────────────────────────────
+    col_score, col_forces = st.columns(2)
+
+    with col_score:
+        st.markdown("**Décomposition du score DEF**")
+        for nom, val, maxval in [
+            ("Pertinence métier", sm, 45),
+            ("Proximité géographique", sg, 30),
+            ("Mots-clés dans le titre", sk, 15),
+            ("Maintenance / Récurrence", smaint, 10),
+        ]:
+            pct = val / maxval if maxval > 0 else 0
+            st.markdown(f"**{nom}** — `{val}/{maxval}`")
+            st.progress(pct)
+
+    with col_forces:
+        st.markdown("**Pourquoi c'est pertinent pour DEF OI**")
+        atouts = []
+        if sm >= 40:
+            atouts.append("✅ **Cœur de métier** — SSI/CMSI/Vidéo : DEF OI dispose de l'expertise technique, des certifications (Qualifelec, APSAD) et des références pour répondre")
+        elif sm >= 30:
+            atouts.append("✅ **Périmètre DEF OI** — Courants faibles : prestation complémentaire au SSI, souvent regroupée dans les mêmes marchés")
+        if sg == 30:
+            atouts.append("✅ **Présence locale 974/976** — DEF OI connaît les donneurs d'ordre, les sites et les exigences locales ; avantage concurrentiel fort sur les entreprises métropolitaines")
+        elif sg >= 18:
+            atouts.append("✅ **Zone Océan Indien** — axe de développement stratégique de DEF OI ; peu de concurrents locaux qualifiés SSI/CMSI sur ces marchés")
+        if smaint == 10:
+            atouts.append("✅ **Maintenance** — CA récurrent et prévisible, taux de marge élevé, et levier pour consolider la relation client sur le long terme")
+        if sk == 15:
+            atouts.append("✅ **Signal direct** — les mots-clés métier SSI/CMSI/Vidéo apparaissent dans le titre : opportunité clairement identifiable sans ambiguïté")
+        if not atouts:
+            atouts.append("ℹ️ **Pertinence limitée** — aucun marqueur fort du cœur de métier DEF OI (SSI/CMSI/Vidéo) ni du territoire prioritaire (974/976) ; étudier le CCTP complet avant d'engager des ressources")
+        for item in atouts:
+            st.markdown(item)
+
+        risques = []
+        if concurrents:
+            risques.append(f"⚠️ Concurrents nommés dans le DCE : {', '.join(concurrents[:4])}")
+        if a.get("risques_penalites"):
+            risques.append(f"⚠️ {a['risques_penalites']}")
+        if jours_restants is not None and 0 <= jours_restants <= 14:
+            risques.append("⚠️ Délai très court — risque de réponse technique insuffisante")
+        if risques:
+            st.markdown("**Risques identifiés**")
+            for item in risques:
+                st.markdown(item)
+
+    # ── Bloc 3 : Mots-clés description + Contexte ────────────────────────────
+    col_kw, col_ctx = st.columns(2)
+
+    with col_kw:
+        st.markdown("**Mots-clés métier détectés dans la description**")
+
+        def _find_kws(kw_list: list, label: str) -> bool:
+            hits = []
+            for kw in kw_list:
+                if kw.startswith(r"\b"):
+                    if re.search(kw, desc_text):
+                        hits.append(re.sub(r"\\b", "", kw).strip())
+                elif kw in desc_text:
+                    hits.append(kw.strip())
+            if hits:
+                chips = " · ".join(f"`{h}`" for h in hits[:6])
+                st.markdown(f"**{label} :** {chips}")
+            return bool(hits)
+
+        # Scan titre + description ensemble
+        full_text = f" {((t.title or '') + ' ' + (t.description or '')).lower()} "
+
+        def _find_kws_full(kw_list: list, label: str) -> bool:
+            hits = []
+            for kw in kw_list:
+                if kw.startswith(r"\b"):
+                    if re.search(kw, full_text):
+                        hits.append(re.sub(r"\\b", "", kw).strip())
+                elif kw in full_text:
+                    hits.append(kw.strip())
+            hits = list(dict.fromkeys(hits))  # dédupliquer
+            if hits:
+                chips = " · ".join(f"`{h}`" for h in hits[:8])
+                st.markdown(f"**{label} :** {chips}")
+            return bool(hits)
+
+        any_hit = any([
+            _find_kws_full(_KW_SSI, "🔥 SSI / Incendie"),
+            _find_kws_full(_KW_CMSI, "💨 CMSI / Désenfumage"),
+            _find_kws_full(_KW_VIDEO, "📷 Vidéosurveillance"),
+            _find_kws_full(_KW_COURANTS_FAIBLES, "⚡ Courants faibles"),
+            _find_kws_full(_KW_MAINTENANCE, "🔧 Maintenance"),
+            _find_kws_full(_KW_ERP, "🏢 Bâtiment ERP"),
+            _find_kws_full(_KW_PENALITES, "⚠️ Pénalités / Risques"),
+        ])
+        if not any_hit:
+            st.caption("Aucun mot-clé métier détecté dans le titre ni la description.")
+
+        # Compteurs bruts si disponibles (analyse locale)
+        nb_ssi_raw = a.get("_nb_ssi", 0)
+        nb_cmsi_raw = a.get("_nb_cmsi", 0)
+        nb_vid_raw = a.get("_nb_vid", 0)
+        nb_cf_raw = a.get("_nb_cf", 0)
+        nb_erp_raw = a.get("_nb_erp", 0)
+        nb_excl_raw = a.get("_nb_excl", 0)
+        if any([nb_ssi_raw, nb_cmsi_raw, nb_vid_raw, nb_cf_raw, nb_erp_raw]):
+            st.caption(
+                f"Indices détectés — SSI: {nb_ssi_raw} · CMSI: {nb_cmsi_raw} · "
+                f"Vidéo: {nb_vid_raw} · CF: {nb_cf_raw} · ERP: {nb_erp_raw}"
+                + (f" · ⚠️ Exclusion: {nb_excl_raw}" if nb_excl_raw else "")
+            )
+
+    with col_ctx:
+        st.markdown("**Contexte & Informations**")
+        st.markdown(f"🏷️ **Type :** {type_m}")
+        st.markdown(f"🌍 **Territoire (IA) :** {territoire_ia}")
+        if domaines:
+            st.markdown(f"🔧 **Domaines :** {', '.join(domaines)}")
+        st.markdown(f"🏢 **Secteur :** {getattr(t, 'secteur', None) or 'Public'}")
+        if concurrents:
+            st.markdown(f"🏭 **Concurrents :** {', '.join(concurrents)}")
+        source_a = a.get("_source", "local")
+        st.caption(
+            "🤖 Score Claude (70%) + règles métier (30%)"
+            if source_a in ("claude", "gemini")
+            else "🔍 Score règles métier DEF (Claude indisponible)"
+        )
+
+    # ── Description brute — toujours affichée ─────────────────────────────────
+    with st.expander("📄 Description brute du marché"):
+        if t.description and t.description.strip():
+            st.write(t.description)
+        else:
+            st.caption("Aucune description textuelle disponible dans la base pour ce marché.")
+            st.markdown(f"**Titre complet :** {t.title or '—'}")
+            if getattr(t, "source", None):
+                st.markdown(f"**Source :** {t.source}")
+            st.info("Consulter directement la plateforme source pour accéder au cahier des charges complet.")
+
+
 # Auto-analyse au démarrage (une seule fois par session)
 if "auto_analyzed" not in st.session_state:
     _run_auto_analysis()
@@ -166,7 +652,7 @@ def load_tenders(status_filter: str, maintenance_only: bool, annee_min: int, sec
     db = new_db()
     try:
         from sqlalchemy import or_, extract
-        q = db.query(Tender)
+        q = db.query(Tender).filter(Tender.is_blacklisted != True)
 
         if secteur == "Public":
             q = q.filter(or_(Tender.secteur == "Public", Tender.secteur == None))
@@ -188,13 +674,9 @@ def load_tenders(status_filter: str, maintenance_only: bool, annee_min: int, sec
         rows = []
         for t in tenders:
             a = t.llm_analysis or {}
-            domaine = detect_domaine(t.title or "")
+            domaine = detect_domaine(t.title or "", t.description or "")
             territoire = detect_territoire(t.title or "", t.description or "")
-            score = (
-                t.relevance_score
-                or a.get("score_pertinence", 0)
-                or calc_score(t.title or "", domaine, territoire)
-            )
+            score = a.get("score_pertinence", t.relevance_score or 0)
             rows.append(
                 {
                     "ID": t.id,
@@ -212,6 +694,9 @@ def load_tenders(status_filter: str, maintenance_only: bool, annee_min: int, sec
                     "Type": a.get("type_marche") or t.type_opportunite or "—",
                     "Maint.": "✓" if t.is_maintenance else "",
                     "Concurrents": ", ".join(a.get("marques_concurrentes_citees", [])),
+                    "Montant (€)": t.amount,
+                    "⭐": bool(t.is_saved),
+                    "Secteur": t.secteur or "Public",
                 }
             )
         return rows
@@ -220,12 +705,55 @@ def load_tenders(status_filter: str, maintenance_only: bool, annee_min: int, sec
 
 
 def delete_tender(tender_id: str) -> None:
+    """Suppression douce : marque comme blacklisté pour ne jamais réapparaître après collecte."""
     db = new_db()
     try:
         t = db.query(Tender).filter(Tender.id == tender_id).first()
         if t:
-            db.delete(t)
+            t.is_blacklisted = True
             db.commit()
+    finally:
+        db.close()
+
+
+def toggle_saved(tender_id: str, value: bool) -> None:
+    db = new_db()
+    try:
+        t = db.query(Tender).filter(Tender.id == tender_id).first()
+        if t:
+            t.is_saved = value
+            db.commit()
+    finally:
+        db.close()
+
+
+@st.cache_data(ttl=60)
+def load_saved_tenders() -> list[dict]:
+    db = new_db()
+    try:
+        tenders = (
+            db.query(Tender)
+            .filter(Tender.is_saved == True, Tender.is_blacklisted != True)
+            .order_by(Tender.publication_date.desc())
+            .all()
+        )
+        rows = []
+        for t in tenders:
+            a = t.llm_analysis or {}
+            domaine = detect_domaine(t.title or "", t.description or "")
+            territoire = detect_territoire(t.title or "", t.description or "")
+            rows.append({
+                "ID": t.id,
+                "Titre": t.title or "Sans titre",
+                "Source": t.source or "",
+                "Territoire": territoire,
+                "Domaine": domaine,
+                "Statut": t.status or "À qualifier",
+                "Type": a.get("type_marche") or t.type_opportunite or "—",
+                "Publication": t.publication_date.strftime("%d/%m/%Y") if t.publication_date else "—",
+                "Secteur": t.secteur or "Public",
+            })
+        return rows
     finally:
         db.close()
 
@@ -241,13 +769,27 @@ def save_status(tender_id: str, new_status: str) -> None:
         db.close()
 
 
+def save_amount(tender_id: str, amount: int | None) -> None:
+    db = new_db()
+    try:
+        t = db.query(Tender).filter(Tender.id == tender_id).first()
+        if t:
+            t.amount = amount
+            db.commit()
+    finally:
+        db.close()
+
+
 def run_analysis(tender_id: str) -> None:
     db = new_db()
     try:
         t = db.query(Tender).filter(Tender.id == tender_id).first()
         if not t:
             return
-        result = analyze_tender(f"{t.title or ''} {t.description or ''}")
+        result = analyze_tender(
+            f"{t.title or ''} {t.description or ''}",
+            source_url=t.source if t.source and t.source.startswith("http") else None,
+        )
         t.llm_analysis = result
         t.relevance_score = result.get("score_pertinence", 0)
         t.is_maintenance = result.get("type_marche", "").lower() == "maintenance"
@@ -276,7 +818,11 @@ def _collect_selected_sources(selected_source_ids: list[int]) -> None:
             if source.is_manual or not source.scraper_module:
                 continue
             try:
-                mod = importlib.import_module(source.scraper_module)
+                import sys as _sys
+                if source.scraper_module in _sys.modules:
+                    mod = importlib.reload(_sys.modules[source.scraper_module])
+                else:
+                    mod = importlib.import_module(source.scraper_module)
                 func = getattr(mod, source.scraper_func)
                 count = func()
                 total += count
@@ -335,6 +881,17 @@ with st.sidebar:
         "Filtrer par statut",
         ["Tous", "À qualifier", "En cours", "Soumis", "Gagné", "Perdu"],
     )
+    selected_decisions = st.multiselect(
+        "Filtrer par décision",
+        options=["🟢 GO", "🟡 Étudier", "🔴 Passer"],
+        placeholder="Toutes les décisions",
+    )
+    selected_secteurs = st.multiselect(
+        "Filtrer par secteur",
+        options=["Public", "Privé"],
+        default=["Public", "Privé"],
+        placeholder="Tous les secteurs",
+    )
 
     st.markdown("---")
     st.markdown("### ⚡ Sources de collecte")
@@ -379,6 +936,35 @@ with st.sidebar:
                  disabled=len(selected_source_ids) == 0):
         _collect_selected_sources(selected_source_ids)
 
+    if st.button("🤖 Analyser en lot (Claude)", use_container_width=True,
+                 help="Analyse les 10 marchés prioritaires non encore traités par Claude"):
+        _prog_bar = st.progress(0.0)
+        _prog_text = st.empty()
+
+        def _claude_progress(i, n, title):
+            if n > 0:
+                _prog_bar.progress(i / n)
+            _prog_text.text(f"({i}/{n}) {title[:50]}…" if title else "Terminé")
+
+        _db_g = new_db()
+        try:
+            _nb_done, _retry_after = auto_analyze_claude(_db_g, max_per_run=10, progress_cb=_claude_progress)
+        finally:
+            _db_g.close()
+
+        _prog_bar.empty()
+        _prog_text.empty()
+        st.cache_data.clear()
+
+        if _nb_done:
+            st.success(f"✅ {_nb_done} marché(s) analysé(s) via Claude.")
+
+        if _retry_after >= 0:  # quota atteint
+            _mins = max(1, _retry_after // 60)
+            st.warning(f"⚠️ Quota Claude atteint — réessayez dans ~{_mins} min.")
+        elif not _nb_done:
+            st.info("Tous les marchés ont déjà été analysés par Claude.")
+
     st.markdown("---")
     col_nav1, col_nav2 = st.columns(2)
     with col_nav1:
@@ -389,10 +975,15 @@ with st.sidebar:
 
 # ── header + export ───────────────────────────────────────────────────────────
 
-st.title("🔥 DEF Océan Indien — Veille Marchés Publics")
-st.caption(
-    "Périmètre : La Réunion (974) & Mayotte (976) · SSI · CMSI · Détection incendie · Vidéosurveillance"
-)
+st.markdown("""
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>🔥 DEF Océan Indien — <em>Veille Marchés</em></h1>
+    <p>Périmètre : La Réunion (974) &amp; Mayotte (976) · SSI · CMSI · Détection incendie · Vidéosurveillance</p>
+  </div>
+  <div class="page-header-badge">Marchés Publics &amp; Privés</div>
+</div>
+""", unsafe_allow_html=True)
 
 # Large export button
 _, col_btn, _ = st.columns([1, 2, 1])
@@ -428,159 +1019,44 @@ try:
 finally:
     db_kpi.close()
 
-c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Total", total)
-c2.metric("À qualifier", a_qualifier)
-c3.metric("En cours", en_cours)
-c4.metric("Soumis", soumis)
-c5.metric("Gagnés 🏆", gagnes)
+st.markdown(_kpi_row([
+    ("Total marchés", total),
+    ("À qualifier", a_qualifier),
+    ("En cours", en_cours),
+    ("Soumis", soumis),
+    ("Gagnés 🏆", gagnes),
+], colors=["", "orange", "blue", "purple", "green"]), unsafe_allow_html=True)
+
+# KPI CA pipeline
+db_ca = new_db()
+try:
+    def _sum_amount(statuts):
+        from sqlalchemy import func, or_
+        _pub = or_(Tender.secteur == "Public", Tender.secteur == None)
+        res = db_ca.query(func.sum(Tender.amount)).filter(
+            _pub, Tender.status.in_(statuts), Tender.amount != None
+        ).scalar()
+        return res or 0
+
+    ca_en_cours = _sum_amount(["En cours"])
+    ca_soumis = _sum_amount(["Soumis"])
+    ca_gagne = _sum_amount(["Gagné"])
+    ca_pipeline = ca_en_cours + ca_soumis
+finally:
+    db_ca.close()
+
+if ca_pipeline > 0 or ca_gagne > 0:
+    st.markdown('<p class="ca-label">CA Pipeline — montants renseignés</p>', unsafe_allow_html=True)
+    st.markdown(_kpi_row([
+        ("CA En cours", f"{ca_en_cours:,.0f} €".replace(",", " ")),
+        ("CA Soumis", f"{ca_soumis:,.0f} €".replace(",", " ")),
+        ("CA Gagné 🏆", f"{ca_gagne:,.0f} €".replace(",", " ")),
+        ("CA Total pipeline", f"{ca_pipeline:,.0f} €".replace(",", " ")),
+    ], colors=["blue", "orange", "green", ""]), unsafe_allow_html=True)
 
 st.markdown("---")
 
-# ── interactive table ─────────────────────────────────────────────────────────
-
-rows = load_tenders(selected_status, maintenance_only, annee_min, secteur="Public")
-
-# Filtres territoire côté affichage
-terr_actifs = selected_territoires[:]
-if selected_groupe != "Tous":
-    terr_actifs = list(set(terr_actifs + GROUPES[selected_groupe]))
-if terr_actifs:
-    rows = [r for r in rows if any(t in r["Territoire"] for t in terr_actifs)]
-if selected_domaines:
-    rows = [r for r in rows if any(d in r["Domaine"] for d in selected_domaines)]
-
-if not rows:
-    st.info(
-        "Aucun marché trouvé. Lancez la collecte depuis le menu latéral, "
-        "ou ajustez les filtres."
-    )
-else:
-    st.subheader(f"📋 Marchés qualifiés ({len(rows)} résultats) — cochez pour supprimer")
-
-    df = pd.DataFrame(rows)
-    df.insert(0, "🗑️", False)
-    status_options = ["À qualifier", "En cours", "Soumis", "Gagné", "Perdu"]
-
-    edited = st.data_editor(
-        df,
-        column_config={
-            "🗑️": st.column_config.CheckboxColumn("🗑️", width="small"),
-            "ID": st.column_config.TextColumn("ID", disabled=True, width="small"),
-            "Go/No-Go": st.column_config.TextColumn("Décision", width="small", disabled=True),
-            "Titre": st.column_config.TextColumn("Titre du Marché", width="large"),
-            "Source": st.column_config.LinkColumn("Source", width="small"),
-            "Territoire": st.column_config.TextColumn("Territoire", width="medium", disabled=True),
-            "Domaine": st.column_config.TextColumn("Domaine", width="medium", disabled=True),
-            "Score": st.column_config.NumberColumn(
-                "Score DEF", min_value=0, max_value=100, width="small"
-            ),
-            "Date Limite": st.column_config.TextColumn("Date Limite", width="small"),
-            "Publication": st.column_config.TextColumn("Publication", width="small"),
-            "Statut": st.column_config.SelectboxColumn(
-                "Statut", options=status_options, width="medium"
-            ),
-            "Type": st.column_config.TextColumn("Type", width="small"),
-            "Maint.": st.column_config.TextColumn("Maint.", width="small", disabled=True),
-            "Concurrents": st.column_config.TextColumn("Concurrents", width="medium"),
-        },
-        column_order=["🗑️", "Go/No-Go", "Titre", "Source", "Territoire", "Domaine", "Score", "Date Limite", "Publication", "Statut", "Type", "Maint.", "Concurrents", "ID"],
-        use_container_width=True,
-        hide_index=True,
-        num_rows="fixed",
-        key="tenders_editor",
-    )
-
-    # Suppression des lignes cochées
-    to_delete_pub = edited[edited["🗑️"] == True]["ID"].tolist()
-    if to_delete_pub:
-        if st.button(f"🗑️ Supprimer {len(to_delete_pub)} marché(s) sélectionné(s)", type="secondary"):
-            for tid in to_delete_pub:
-                delete_tender(tid)
-            st.cache_data.clear()
-            st.rerun()
-
-    # Persist status changes
-    editor_state = st.session_state.get("tenders_editor", {})
-    for row_idx, changes in editor_state.get("edited_rows", {}).items():
-        if "Statut" in changes:
-            save_status(df.iloc[row_idx]["ID"], changes["Statut"])
-            st.cache_data.clear()
-            st.rerun()
-
-    st.markdown("---")
-
-    # ── per-tender AI analysis ─────────────────────────────────────────────────
-
-    st.subheader("📋 Fiche commerciale")
-    title_to_id = {r["Titre"]: r["ID"] for r in rows}
-    chosen_title = st.selectbox("Sélectionner un marché", list(title_to_id.keys()))
-
-    if chosen_title:
-        chosen_id = title_to_id[chosen_title]
-        db_det = new_db()
-        try:
-            t = db_det.query(Tender).filter(Tender.id == chosen_id).first()
-            if t:
-                a = t.llm_analysis or {}
-                domaine = detect_domaine(t.title or "")
-                territoire = detect_territoire(t.title or "", t.description or "")
-                score = t.relevance_score or a.get("score_pertinence", 0) or calc_score(t.title or "", domaine, territoire)
-                decision = _gonogo(score)
-
-                # Bandeau Go/No-Go
-                tag = a.get("tag_pertinence") or decision
-                if score >= 65:
-                    st.success(f"**{tag}** — Score {score}/100 · {domaine} · {territoire}")
-                elif score >= 35:
-                    st.warning(f"**{tag}** — Score {score}/100 · {domaine} · {territoire}")
-                else:
-                    st.error(f"**{tag}** — Score {score}/100 · {domaine} · {territoire}")
-
-                domaines = a.get("domaines_concernes", [])
-                if domaines:
-                    chips = " · ".join([f"`{d}`" for d in domaines])
-                    st.markdown(f"**Domaines :** {chips}")
-
-                if a.get("justification_score"):
-                    st.caption(f"💡 {a['justification_score']}")
-
-                m1, m2, m3, m4 = st.columns(4)
-                m1.metric("Type", a.get("type_marche", "—"))
-                m2.metric("Score DEF", f"{score} / 100")
-                m3.metric("Concurrents", len(a.get("marques_concurrentes_citees", [])))
-                m4.metric("Maintenance", "Oui" if t.is_maintenance else "Non")
-
-                if a.get("marques_concurrentes_citees"):
-                    st.write("**Marques concurrentes citées :**", ", ".join(a["marques_concurrentes_citees"]))
-                if a.get("risques_penalites"):
-                    st.warning(f"⚠️ Risques / Pénalités : {a['risques_penalites']}")
-
-                source = a.get("_source", "local")
-                if source == "gemini":
-                    st.caption("🤖 Analyse Gemini (score combiné 70 % IA + 30 % règles métier)")
-                else:
-                    st.caption("🔍 Analyse locale (règles métier DEF — Gemini indisponible ou quota dépassé)")
-
-                if t.description:
-                    with st.expander("Description complète du marché"):
-                        st.write(t.description)
-        finally:
-            db_det.close()
-
-st.markdown("---")
-
-# ── section marché privé ──────────────────────────────────────────────────────
-
-st.subheader("🏗️ Signaux & Opportunités Marché Privé")
-st.caption("Sources : Permis de construire · Presse locale IO · Institutions · Banques de développement")
-
-rows_priv = load_tenders(selected_status, maintenance_only, annee_min, secteur="Privé")
-
-if terr_actifs:
-    rows_priv = [r for r in rows_priv if any(t in r["Territoire"] for t in terr_actifs)]
-if selected_domaines:
-    rows_priv = [r for r in rows_priv if any(d in r["Domaine"] for d in selected_domaines)]
+# ── signaux privés KPI ────────────────────────────────────────────────────────
 
 db_priv = new_db()
 try:
@@ -596,87 +1072,173 @@ try:
     nb_devbanks = db_priv.query(Tender).filter(
         Tender.type_opportunite == "Banque Dev."
     ).count()
-    nb_qualif = db_priv.query(Tender).filter(
+    nb_qualif_priv = db_priv.query(Tender).filter(
         Tender.secteur == "Privé", Tender.status == "À qualifier"
     ).count()
 finally:
     db_priv.close()
 
-kp1, kp2, kp3, kp4, kp5 = st.columns(5)
-kp1.metric("Permis construire", nb_permis)
-kp2.metric("Articles presse", nb_presse)
-kp3.metric("Institutions", nb_instit)
-kp4.metric("Banques Dev.", nb_devbanks)
-kp5.metric("À qualifier", nb_qualif)
+st.markdown('<p class="ca-label">Signaux privés</p>', unsafe_allow_html=True)
+st.markdown(_kpi_row([
+    ("Permis construire", nb_permis),
+    ("Articles presse", nb_presse),
+    ("Institutions", nb_instit),
+    ("Banques Dev.", nb_devbanks),
+    ("Privé — À qualifier", nb_qualif_priv),
+], colors=["teal", "blue", "purple", "orange", ""]), unsafe_allow_html=True)
 
-if not rows_priv:
-    st.info("Aucun signal privé. Lancez la collecte Permis / Presse / Banques Dev. depuis le menu latéral.")
+st.markdown("---")
+
+# ── tableau unifié marchés publics & signaux privés ───────────────────────────
+
+rows = load_tenders(selected_status, maintenance_only, annee_min, secteur="Tous")
+
+# Filtres côté affichage
+terr_actifs = selected_territoires[:]
+if selected_groupe != "Tous":
+    terr_actifs = list(set(terr_actifs + GROUPES[selected_groupe]))
+if terr_actifs:
+    rows = [r for r in rows if any(terr in r["Territoire"] for terr in terr_actifs)]
+if selected_domaines:
+    rows = [r for r in rows if any(d in r["Domaine"] for d in selected_domaines)]
+if selected_decisions:
+    rows = [r for r in rows if r["Go/No-Go"] in selected_decisions]
+if selected_secteurs and len(selected_secteurs) < 2:
+    rows = [r for r in rows if r["Secteur"] in selected_secteurs]
+
+if not rows:
+    st.info(
+        "Aucun marché ou signal trouvé. Lancez la collecte depuis le menu latéral, "
+        "ou ajustez les filtres."
+    )
 else:
-    st.caption(f"{len(rows_priv)} signal(s) affiché(s) — cochez pour supprimer")
-    df_priv = pd.DataFrame(rows_priv)
-    df_priv.insert(0, "🗑️", False)
+    st.markdown(_section_html(
+        f"📋 Marchés & Signaux — {len(rows)} résultats",
+        "Cliquez sur une ligne pour afficher la fiche détaillée"
+    ), unsafe_allow_html=True)
 
-    edited_priv = st.data_editor(
-        df_priv,
+    df = pd.DataFrame(rows)
+    status_options = ["À qualifier", "En cours", "Soumis", "Gagné", "Perdu"]
+
+    event = st.dataframe(
+        df,
         column_config={
-            "🗑️": st.column_config.CheckboxColumn("🗑️", width="small"),
-            "ID": st.column_config.TextColumn("ID", disabled=True, width="small"),
-            "Go/No-Go": st.column_config.TextColumn("Décision", width="small", disabled=True),
-            "Titre": st.column_config.TextColumn("Titre", width="large"),
+            "ID": None,
+            "Secteur": st.column_config.TextColumn("Secteur", width="small"),
+            "⭐": st.column_config.CheckboxColumn("⭐", width="small"),
+            "Go/No-Go": st.column_config.TextColumn("Décision", width="small"),
+            "Titre": st.column_config.TextColumn("Titre du Marché", width="large"),
             "Source": st.column_config.LinkColumn("Source", width="small"),
-            "Territoire": st.column_config.TextColumn("Territoire", width="medium", disabled=True),
-            "Domaine": st.column_config.TextColumn("Domaine", width="medium", disabled=True),
-            "Score": st.column_config.NumberColumn("Score", min_value=0, max_value=100, width="small"),
+            "Territoire": st.column_config.TextColumn("Territoire", width="medium"),
+            "Domaine": st.column_config.TextColumn("Domaine", width="medium"),
+            "Score": st.column_config.NumberColumn("Score DEF", min_value=0, max_value=100, width="small"),
             "Date Limite": st.column_config.TextColumn("Date Limite", width="small"),
             "Publication": st.column_config.TextColumn("Publication", width="small"),
-            "Statut": st.column_config.SelectboxColumn(
-                "Statut", options=["À qualifier", "En cours", "Soumis", "Gagné", "Perdu"], width="medium"
-            ),
-            "Type": st.column_config.TextColumn("Type", width="small", disabled=True),
-            "Maint.": st.column_config.TextColumn("Maint.", width="small", disabled=True),
+            "Statut": st.column_config.TextColumn("Statut", width="medium"),
+            "Type": st.column_config.TextColumn("Type", width="small"),
+            "Maint.": st.column_config.TextColumn("Maint.", width="small"),
             "Concurrents": st.column_config.TextColumn("Concurrents", width="medium"),
+            "Montant (€)": st.column_config.NumberColumn("Montant (€)", format="%d €", width="small"),
         },
-        column_order=["🗑️", "Go/No-Go", "Titre", "Source", "Territoire", "Domaine", "Type", "Score", "Publication", "Statut", "Maint.", "Concurrents", "ID"],
+        column_order=["⭐", "Secteur", "Go/No-Go", "Titre", "Source", "Territoire", "Domaine", "Score", "Montant (€)", "Date Limite", "Publication", "Statut", "Type", "Maint.", "Concurrents"],
         use_container_width=True,
         hide_index=True,
-        num_rows="fixed",
-        key="priv_editor",
+        on_select="rerun",
+        selection_mode="single-row",
+        key="unified_df",
     )
 
-    # Suppression des lignes cochées
-    to_delete = edited_priv[edited_priv["🗑️"] == True]["ID"].tolist()
-    if to_delete:
-        if st.button(f"🗑️ Supprimer {len(to_delete)} signal(s) sélectionné(s)", type="secondary"):
-            for tid in to_delete:
-                delete_tender(tid)
-            st.cache_data.clear()
-            st.rerun()
+    sel_rows = event.selection.rows
+    if sel_rows:
+        st.session_state["_sel_title"] = df.iloc[sel_rows[0]]["Titre"]
 
-    # Persistance des changements de statut
-    editor_state_priv = st.session_state.get("priv_editor", {})
-    for row_idx, changes in editor_state_priv.get("edited_rows", {}).items():
-        if "Statut" in changes:
-            save_status(df_priv.iloc[row_idx]["ID"], changes["Statut"])
-            st.cache_data.clear()
-            st.rerun()
+    # ── Panneau d'édition (dépliable) ──────────────────────────────────────────
+    with st.expander("✏️ Modifier statut / montant / étoile / suppression"):
+        _all = st.session_state.get("_sel_all", False)
+        _, col_selall = st.columns([8, 1])
+        with col_selall:
+            if st.button("☑️ Tout" if not _all else "☐ Aucun", key="btn_sel_all"):
+                st.session_state["_sel_all"] = not _all
+                st.session_state.pop("tenders_editor", None)
+                st.rerun()
+
+        df_edit = df.copy()
+        df_edit.insert(0, "🗑️", st.session_state.get("_sel_all", False))
+
+        edited = st.data_editor(
+            df_edit,
+            column_config={
+                "🗑️": st.column_config.CheckboxColumn("🗑️", width="small"),
+                "⭐": st.column_config.CheckboxColumn("⭐", width="small", help="Sauvegarder cet article"),
+                "ID": st.column_config.TextColumn("ID", disabled=True, width="small"),
+                "Secteur": st.column_config.TextColumn("Secteur", disabled=True, width="small"),
+                "Go/No-Go": st.column_config.TextColumn("Décision", width="small", disabled=True),
+                "Titre": st.column_config.TextColumn("Titre du Marché", width="large"),
+                "Source": st.column_config.LinkColumn("Source", width="small"),
+                "Territoire": st.column_config.TextColumn("Territoire", width="medium", disabled=True),
+                "Domaine": st.column_config.TextColumn("Domaine", width="medium", disabled=True),
+                "Score": st.column_config.NumberColumn("Score DEF", min_value=0, max_value=100, width="small"),
+                "Date Limite": st.column_config.TextColumn("Date Limite", width="small"),
+                "Publication": st.column_config.TextColumn("Publication", width="small"),
+                "Statut": st.column_config.SelectboxColumn("Statut", options=status_options, width="medium"),
+                "Type": st.column_config.TextColumn("Type", width="small"),
+                "Maint.": st.column_config.TextColumn("Maint.", width="small", disabled=True),
+                "Concurrents": st.column_config.TextColumn("Concurrents", width="medium"),
+                "Montant (€)": st.column_config.NumberColumn("Montant (€)", min_value=0, step=1000, format="%d €", width="small"),
+            },
+            column_order=["🗑️", "⭐", "Secteur", "Go/No-Go", "Titre", "Source", "Territoire", "Domaine", "Score", "Montant (€)", "Date Limite", "Publication", "Statut", "Type", "Maint.", "Concurrents", "ID"],
+            use_container_width=True,
+            hide_index=True,
+            num_rows="fixed",
+            key="tenders_editor",
+        )
+
+        to_delete = edited[edited["🗑️"] == True]["ID"].tolist()
+        if to_delete:
+            if st.button(f"🗑️ Supprimer {len(to_delete)} marché(s) sélectionné(s)", type="secondary"):
+                for tid in to_delete:
+                    delete_tender(tid)
+                st.session_state.pop("_sel_all", None)
+                st.cache_data.clear()
+                st.rerun()
+
+        editor_state = st.session_state.get("tenders_editor", {})
+        for row_idx, changes in editor_state.get("edited_rows", {}).items():
+            if "Statut" in changes:
+                save_status(df_edit.iloc[row_idx]["ID"], changes["Statut"])
+                st.cache_data.clear()
+                st.rerun()
+            if "Montant (€)" in changes:
+                save_amount(df_edit.iloc[row_idx]["ID"], changes["Montant (€)"])
+                st.cache_data.clear()
+                st.rerun()
+            if "⭐" in changes:
+                toggle_saved(df_edit.iloc[row_idx]["ID"], changes["⭐"])
+                st.cache_data.clear()
+                st.rerun()
 
     st.markdown("---")
 
-    # ── fiche commerciale privé ────────────────────────────────────────────────
-    st.subheader("📋 Fiche commerciale — Signal privé")
-    title_to_id_priv = {r["Titre"]: r["ID"] for r in rows_priv}
-    chosen_priv = st.selectbox("Sélectionner un signal", list(title_to_id_priv.keys()), key="sel_priv")
+    # ── fiche commerciale unifiée ──────────────────────────────────────────────
+    st.markdown(_section_html("📋 Fiche commerciale", "Analyse détaillée du marché ou signal sélectionné"), unsafe_allow_html=True)
+    title_to_id = {r["Titre"]: r["ID"] for r in rows}
+    _titles = list(title_to_id.keys())
+    _default = 0
+    _sel_t = st.session_state.get("_sel_title")
+    if _sel_t and _sel_t in _titles:
+        _default = _titles.index(_sel_t)
+    chosen_title = st.selectbox("Sélectionner un marché / signal", _titles, index=_default)
 
-    if chosen_priv:
-        chosen_priv_id = title_to_id_priv[chosen_priv]
-        db_fp = new_db()
+    if chosen_title:
+        chosen_id = title_to_id[chosen_title]
+        db_det = new_db()
         try:
-            t = db_fp.query(Tender).filter(Tender.id == chosen_priv_id).first()
+            t = db_det.query(Tender).filter(Tender.id == chosen_id).first()
             if t:
                 a = t.llm_analysis or {}
-                domaine = detect_domaine(t.title or "")
+                domaine = detect_domaine(t.title or "", t.description or "")
                 territoire = detect_territoire(t.title or "", t.description or "")
-                score = t.relevance_score or a.get("score_pertinence", 0) or calc_score(t.title or "", domaine, territoire)
+                score = a.get("score_pertinence", t.relevance_score or 0)
                 decision = _gonogo(score)
 
                 tag = a.get("tag_pertinence") or decision
@@ -696,7 +1258,7 @@ else:
                     st.caption(f"💡 {a['justification_score']}")
 
                 m1, m2, m3, m4 = st.columns(4)
-                m1.metric("Type signal", a.get("type_marche") or t.type_opportunite or "—")
+                m1.metric("Type", a.get("type_marche") or t.type_opportunite or "—")
                 m2.metric("Score DEF", f"{score} / 100")
                 m3.metric("Concurrents", len(a.get("marques_concurrentes_citees", [])))
                 m4.metric("Maintenance", "Oui" if t.is_maintenance else "Non")
@@ -706,11 +1268,22 @@ else:
                 if a.get("risques_penalites"):
                     st.warning(f"⚠️ Risques / Pénalités : {a['risques_penalites']}")
 
-                if t.description:
-                    with st.expander("Description complète du signal"):
-                        st.write(t.description)
+                source_a = a.get("_source", "local")
+                if source_a in ("claude", "gemini"):
+                    st.caption("🤖 Analyse Claude (score combiné 70 % IA + 30 % règles métier)")
+                else:
+                    st.caption("🔍 Analyse locale (règles métier DEF — Claude indisponible)")
+
+                _render_strategic_analysis(t, a, domaine, territoire, score)
+                st.markdown("---")
+                if st.button("🤖 Réanalyser avec Claude", key=f"reanalyze_{chosen_id}",
+                             help="Relance l'analyse Claude pour affiner le score et la justification"):
+                    with st.spinner("Analyse Claude en cours…"):
+                        run_analysis(chosen_id)
+                    st.cache_data.clear()
+                    st.rerun()
         finally:
-            db_fp.close()
+            db_det.close()
 
 st.markdown("---")
 
@@ -751,7 +1324,11 @@ with st.expander("➕ Ajouter une opportunité manuellement (AWS, achatpublic.co
                         st.warning("Cette opportunité existe déjà.")
                     else:
                         from models import Tender as T
-                        analyse = analyze_tender(f"{m_title.strip()} {m_desc.strip()}")
+                        _url = m_url.strip()
+                        analyse = analyze_tender(
+                            f"{m_title.strip()} {m_desc.strip()}",
+                            source_url=_url if _url.startswith("http") else None,
+                        )
                         db_m.add(T(
                             id=tid,
                             title=m_title.strip(),
@@ -845,6 +1422,50 @@ with st.expander("⚙️ Gérer les sources de veille"):
                 st.success(f"✅ « {new_name} » ajoutée comme source {new_cat}.")
                 st.cache_data.clear()
                 st.rerun()
+
+st.markdown("---")
+
+# ── Mes sauvegardes ───────────────────────────────────────────────────────────
+
+st.markdown(_section_html("⭐ Mes sauvegardes", "Articles et marchés mis de côté pour référence"), unsafe_allow_html=True)
+
+saved_rows = load_saved_tenders()
+
+if not saved_rows:
+    st.info("Aucune sauvegarde. Cochez la colonne ⭐ dans les tableaux ci-dessus pour garder un article de côté.")
+else:
+    st.caption(f"{len(saved_rows)} élément(s) sauvegardé(s)")
+    df_saved = pd.DataFrame(saved_rows)
+    df_saved.insert(0, "Retirer", False)
+
+    edited_saved = st.data_editor(
+        df_saved,
+        column_config={
+            "Retirer": st.column_config.CheckboxColumn("🗑️ Retirer", width="small", help="Décocher pour retirer des sauvegardes"),
+            "ID": st.column_config.TextColumn("ID", disabled=True, width="small"),
+            "Titre": st.column_config.TextColumn("Titre", width="large", disabled=True),
+            "Source": st.column_config.LinkColumn("Source", width="small"),
+            "Territoire": st.column_config.TextColumn("Territoire", width="medium", disabled=True),
+            "Domaine": st.column_config.TextColumn("Domaine", width="medium", disabled=True),
+            "Statut": st.column_config.TextColumn("Statut", width="small", disabled=True),
+            "Type": st.column_config.TextColumn("Type", width="small", disabled=True),
+            "Publication": st.column_config.TextColumn("Publication", width="small", disabled=True),
+            "Secteur": st.column_config.TextColumn("Secteur", width="small", disabled=True),
+        },
+        column_order=["Retirer", "Titre", "Source", "Territoire", "Domaine", "Statut", "Type", "Publication", "Secteur", "ID"],
+        use_container_width=True,
+        hide_index=True,
+        num_rows="fixed",
+        key="saved_editor",
+    )
+
+    to_unsave = edited_saved[edited_saved["Retirer"] == True]["ID"].tolist()
+    if to_unsave:
+        if st.button(f"Retirer {len(to_unsave)} élément(s) des sauvegardes", type="secondary"):
+            for tid in to_unsave:
+                toggle_saved(tid, False)
+            st.cache_data.clear()
+            st.rerun()
 
 st.markdown("---")
 st.caption("DEF Océan Indien © 2025 · Outil de Veille Commerciale Interne")

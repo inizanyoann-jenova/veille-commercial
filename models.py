@@ -19,6 +19,9 @@ class Tender(Base):
     llm_analysis = Column(JSON)
     secteur = Column(String, default=None)
     type_opportunite = Column(String, default="Marché Public")
+    amount = Column(Integer, default=None)
+    is_blacklisted = Column(Boolean, default=False)
+    is_saved = Column(Boolean, default=False)
 
 
 class Credential(Base):

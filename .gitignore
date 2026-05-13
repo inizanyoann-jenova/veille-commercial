@@ -1,0 +1,27 @@
+# Secrets et configuration locale
+.env
+.env.*
+
+# Bases de données locales
+*.db
+*.sqlite
+*.sqlite3
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# Mémoire Claude Code (données locales)
+.claude/
+
+# Fichiers Streamlit locaux
+.streamlit/
+
+# Fichiers temporaires / artefacts accidentels
+=*
+*.docx
+
+# Logs
+*.log

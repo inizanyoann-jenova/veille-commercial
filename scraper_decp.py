@@ -12,20 +12,17 @@ DECP_API = (
     "/catalog/datasets/decp_augmente/records"
 )
 
-_DEPT_FILTER = 'codeDepartementAcheteur in ("974", "976")'
+_DEPT_FILTER = 'codedepartementexecution in ("974", "976")'
 
 _KEYWORD_FILTER = (
-    'objet like "%SSI%"'
-    ' OR objet like "%CMSI%"'
-    ' OR objet like "%incendie%"'
-    ' OR objet like "%désenfumage%"'
-    ' OR objet like "%desenfumage%"'
-    ' OR objet like "%vidéosurveillance%"'
-    ' OR objet like "%videosurveillance%"'
-    ' OR objet like "%caméra%"'
-    ' OR objet like "%camera%"'
-    ' OR objet like "%CCTV%"'
-    ' OR objet like "%courants faibles%"'
+    'search(objetmarche, "SSI")'
+    ' OR search(objetmarche, "CMSI")'
+    ' OR search(objetmarche, "incendie")'
+    ' OR search(objetmarche, "desenfumage")'
+    ' OR search(objetmarche, "videosurveillance")'
+    ' OR search(objetmarche, "camera")'
+    ' OR search(objetmarche, "CCTV")'
+    ' OR search(objetmarche, "courants faibles")'
 )
 
 
@@ -41,9 +38,9 @@ def _parse_date(value: str | None) -> datetime | None:
     return None
 
 
-def fetch_decp_tenders(years_back: int = 2) -> int:
+def fetch_decp_tenders(years_back: int = 3) -> int:
     date_min = (datetime.now() - timedelta(days=365 * years_back)).strftime("%Y-%m-%d")
-    date_filter = f'dateNotification >= "{date_min}"'
+    date_filter = f'datenotification >= "{date_min}"'
     where = f"({_DEPT_FILTER}) AND ({_KEYWORD_FILTER}) AND ({date_filter})"
 
     init_db()
@@ -59,7 +56,7 @@ def fetch_decp_tenders(years_back: int = 2) -> int:
                 "where": where,
                 "limit": limit,
                 "offset": offset,
-                "order_by": "dateNotification DESC",
+                "order_by": "datenotification DESC",
             }
             response = requests.get(DECP_API, params=params, timeout=30)
             response.raise_for_status()
@@ -70,33 +67,27 @@ def fetch_decp_tenders(years_back: int = 2) -> int:
                 break
 
             for record in records:
-                # Supporte les champs imbriqués et plats selon la version API
-                acheteur = record.get("acheteur") or {}
-                if isinstance(acheteur, dict):
-                    acheteur_nom = acheteur.get("nom", "")
-                else:
-                    acheteur_nom = str(acheteur)
-
-                objet = record.get("objet") or ""
+                acheteur_nom = record.get("nomacheteur") or ""
+                objet = record.get("objetmarche") or ""
                 full_text = f"{objet} {acheteur_nom}"
 
                 if not is_relevant_def(full_text):
                     continue
 
-                uid = record.get("uid") or hashlib.md5(full_text.encode()).hexdigest()
+                uid = record.get("id") or hashlib.md5(full_text.encode()).hexdigest()
                 tender_id = f"DECP-{uid}"
 
                 if db.query(Tender).filter(Tender.id == tender_id).first():
                     continue
 
-                url = record.get("urlpublication") or "https://data.economie.gouv.fr"
+                url = "https://data.economie.gouv.fr"
 
                 db.add(Tender(
                     id=tender_id,
                     title=objet,
                     description=f"Acheteur : {acheteur_nom}",
                     source=url,
-                    publication_date=_parse_date(record.get("dateNotification")),
+                    publication_date=_parse_date(record.get("datenotification")),
                     deadline=None,
                     status="À qualifier",
                     relevance_score=0,
