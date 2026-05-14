@@ -105,9 +105,36 @@ st.caption("Les mots de passe sont chiffrés en base de données. Les variables 
 
 configured = {c["site"]: c for c in CredentialManager.list_configured()}
 
+from database import SessionLocal as _SL_cred
+from source_registry import Source as _SrcCred
+
+_SITE_TO_SOURCE_NAME = {
+    "vaao":               "VAAO",
+    "marcheonline":       "Marché Online",
+    "dept974":            "Marchés Publics — Dép. 974",
+    "nukema":             "Nukema",
+    "marchespublicsinfo": "Marchés Public Info",
+    "marches_securises":  "Marchés Sécurisés",
+    "instao":             "Instao",
+    "tendersgo":          "Tenders Go",
+}
+
+_db_cred = _SL_cred()
+try:
+    _sources_by_name = {s.name: s for s in _db_cred.query(_SrcCred).all()}
+finally:
+    _db_cred.close()
+
 for site_key, (site_label, category) in _SITE_LABELS.items():
     cred = configured.get(site_key)
-    icon = "✅" if cred else "⬜"
+    _src_obj = _sources_by_name.get(_SITE_TO_SOURCE_NAME.get(site_key, ""))
+    _is_validated = _src_obj.is_validated if _src_obj else False
+    if cred and _is_validated:
+        icon = "✅"
+    elif cred:
+        icon = "🔌"
+    else:
+        icon = "⬜"
     with st.expander(f"{icon} {site_label} — {category}"):
         if cred and cred.get("has_env_override"):
             st.success(f"Configuré via `.env` — email : `{cred['email']}`")
