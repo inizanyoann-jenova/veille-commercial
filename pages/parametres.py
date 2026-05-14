@@ -217,6 +217,18 @@ for site_key, (site_label, category) in _SITE_LABELS.items():
                                         diag = json.loads(proc.stdout)
                                         if diag.get("ok"):
                                             st.success(f"✅ Connexion réussie — redirigé vers `{diag.get('url_finale', '—')}`")
+                                            _src_name = _SITE_TO_SOURCE_NAME.get(site_key)
+                                            if _src_name:
+                                                from database import SessionLocal as _SL2
+                                                from source_registry import validate_source as _val_src
+                                                _db_val = _SL2()
+                                                try:
+                                                    _src = _db_val.query(_SrcCred).filter(_SrcCred.name == _src_name).first()
+                                                    if _src:
+                                                        _val_src(_db_val, _src.id)
+                                                finally:
+                                                    _db_val.close()
+                                            st.rerun()
                                         elif "erreur_worker" in diag:
                                             st.error(f"❌ Erreur : {diag['erreur_worker']}")
                                             st.code(diag.get("traceback", ""), language="python")
