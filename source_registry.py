@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean
+from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from models import Base
 
 
@@ -15,7 +15,9 @@ class Source(Base):
     enabled = Column(Boolean, default=True)
     notes = Column(String, default=None)
     display_order = Column(Integer, default=99)
-    is_validated = Column(Boolean, default=False)
+    is_validated        = Column(Boolean, default=False)
+    ping_failures_count = Column(Integer, default=0)
+    last_ping_at        = Column(DateTime, default=None)
 
 
 _DEFAULT_SOURCES = [
@@ -174,4 +176,12 @@ def validate_source(db, source_id: int) -> None:
     s = db.query(Source).filter(Source.id == source_id).first()
     if s:
         s.is_validated = True
+        db.commit()
+
+
+def invalidate_source(db, source_id: int) -> None:
+    """Remet is_validated à False (credentials modifiés ou source inaccessible)."""
+    s = db.query(Source).filter(Source.id == source_id).first()
+    if s:
+        s.is_validated = False
         db.commit()

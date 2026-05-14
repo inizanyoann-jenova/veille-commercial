@@ -22,6 +22,8 @@ class Tender(Base):
     amount = Column(Integer, default=None)
     is_blacklisted = Column(Boolean, default=False)
     is_saved = Column(Boolean, default=False)
+    notes = Column(String, default=None)
+    tags  = Column(JSON, default=list)
 
 
 class Credential(Base):
@@ -31,3 +33,16 @@ class Credential(Base):
     site     = Column(String, unique=True, nullable=False)
     email    = Column(String, nullable=False)
     password = Column(String, nullable=False)  # chiffré Fernet
+
+
+class ScraperRun(Base):
+    __tablename__ = "scraper_runs"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    source_name = Column(String, nullable=False)
+    started_at  = Column(DateTime, nullable=False)
+    finished_at = Column(DateTime, nullable=True)
+    nb_found    = Column(Integer, default=0)
+    nb_new      = Column(Integer, default=0)
+    error       = Column(String, nullable=True)
+    status      = Column(String, default="running")

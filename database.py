@@ -12,6 +12,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 def init_db():
     # Import lazy pour éviter la dépendance circulaire au niveau module
     from source_registry import Source, init_sources  # noqa: enregistre Source avec Base
+    from models import ScraperRun  # noqa: registers ScraperRun with Base
 
     Base.metadata.create_all(bind=engine)
 
@@ -36,6 +37,28 @@ def init_db():
     with engine.connect() as conn:
         try:
             conn.execute(text("ALTER TABLE sources ADD COLUMN is_validated BOOLEAN DEFAULT 0"))
+            conn.commit()
+        except OperationalError as e:
+            if "already exists" not in str(e) and "duplicate column" not in str(e):
+                raise
+
+    # Migration colonnes Source : ping
+    with engine.connect() as conn:
+        for col_name, col_def in [
+            ("ping_failures_count", "INTEGER DEFAULT 0"),
+            ("last_ping_at", "DATETIME DEFAULT NULL"),
+        ]:
+            try:
+                conn.execute(text(f"ALTER TABLE sources ADD COLUMN {col_name} {col_def}"))
+                conn.commit()
+            except OperationalError as e:
+                if "already exists" not in str(e) and "duplicate column" not in str(e):
+                    raise
+
+    # Migration colonne Tender : tags
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE tenders ADD COLUMN tags JSON DEFAULT '[]'"))
             conn.commit()
         except OperationalError as e:
             if "already exists" not in str(e) and "duplicate column" not in str(e):
