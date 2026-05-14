@@ -74,3 +74,38 @@ def test_prive_exclusion_gardiennage():
 def test_prive_rentre_scolaire_rejetee():
     """Rentrée scolaire → NON pertinent."""
     assert is_prive_relevant("Rentrée scolaire 2024 : tout ce qu'il faut savoir pour les lycéens") is False
+
+
+# ── Tests recherche plein texte ───────────────────────────────────────────────
+
+def _make_row(titre: str, source: str = "") -> dict:
+    return {"Titre": titre, "Source": source, "Date Limite": "—", "Go/No-Go": "🟢 GO"}
+
+
+def test_search_query_titre():
+    rows = [_make_row("Maintenance SSI CHU"), _make_row("Vidéosurveillance port")]
+    q = "ssi"
+    result = [r for r in rows if q in r["Titre"].lower() or q in r["Source"].lower()]
+    assert len(result) == 1
+    assert result[0]["Titre"] == "Maintenance SSI CHU"
+
+
+def test_search_query_source():
+    rows = [_make_row("Marché 1", source="boamp.fr"), _make_row("Marché 2", source="ted.europa.eu")]
+    q = "boamp"
+    result = [r for r in rows if q in r["Titre"].lower() or q in r["Source"].lower()]
+    assert len(result) == 1
+
+
+def test_search_query_empty_returns_all():
+    rows = [_make_row("A"), _make_row("B")]
+    q = ""
+    result = rows if not q else [r for r in rows if q in r["Titre"].lower() or q in r["Source"].lower()]
+    assert len(result) == 2
+
+
+def test_search_query_case_insensitive():
+    rows = [_make_row("Alarme INCENDIE")]
+    q = "incendie"
+    result = [r for r in rows if q in r["Titre"].lower() or q in r["Source"].lower()]
+    assert len(result) == 1

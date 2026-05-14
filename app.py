@@ -967,6 +967,7 @@ with st.sidebar:
     st.markdown("## 🔥 DEF Océan Indien")
     st.markdown("**Veille Marchés Publics**")
     st.markdown("---")
+    search_query = st.text_input("🔍 Rechercher", placeholder="Titre, source…", key="search_query")
 
     _now = datetime.now()
     _cy = _now.year
@@ -1416,6 +1417,9 @@ def _render_editor_section(
 # ── Tableau Marchés Publics ───────────────────────────────────────────────────
 
 rows_pub = load_tenders(selected_status, maintenance_only, date_from, strict_date, secteur="Public", only_recent=only_recent)
+if search_query:
+    _sq = search_query.lower()
+    rows_pub = [r for r in rows_pub if _sq in r["Titre"].lower() or _sq in r["Source"].lower()]
 if terr_actifs:
     rows_pub = [r for r in rows_pub if any(terr in r["Territoire"] for terr in terr_actifs)]
 if selected_domaines:
@@ -1439,6 +1443,9 @@ _render_editor_section(
 # ── Tableau Signaux Privés ────────────────────────────────────────────────────
 
 rows_priv = load_tenders(selected_status, maintenance_only, date_from, strict_date, secteur="Privé", only_recent=only_recent)
+if search_query:
+    _sq = search_query.lower()
+    rows_priv = [r for r in rows_priv if _sq in r["Titre"].lower() or _sq in r["Source"].lower()]
 if terr_actifs:
     rows_priv = [r for r in rows_priv if any(terr in r["Territoire"] for terr in terr_actifs)]
 if selected_domaines:
