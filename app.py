@@ -870,21 +870,21 @@ def _collect_selected_sources(selected_source_ids: list[int]) -> None:
             _new_tenders = _db_res.query(Tender).filter(
                 Tender.id.in_(st.session_state["new_tender_ids"])
             ).all()
+
+            def _sc(t) -> int:
+                return (t.llm_analysis or {}).get("score_pertinence", t.relevance_score or 0)
+
+            _go = sum(1 for t in _new_tenders if _sc(t) >= 65)
+            _etude = sum(1 for t in _new_tenders if 35 <= _sc(t) < 65)
+            _pass = sum(1 for t in _new_tenders if _sc(t) < 35)
+            _claude_ok = sum(1 for t in _new_tenders if (t.llm_analysis or {}).get("_source") in ("claude", "gemini"))
         finally:
             _db_res.close()
-
-        def _sc(t) -> int:
-            return (t.llm_analysis or {}).get("score_pertinence", t.relevance_score or 0)
-
-        _go    = sum(1 for t in _new_tenders if _sc(t) >= 65)
-        _etude = sum(1 for t in _new_tenders if 35 <= _sc(t) < 65)
-        _pass  = sum(1 for t in _new_tenders if _sc(t) < 35)
-        _claude_ok = sum(1 for t in _new_tenders if (t.llm_analysis or {}).get("_source") in ("claude", "gemini"))
 
         st.success(
             f"✅ {total} nouveau(x) marché(s) importé(s) — "
             f"🟢 {_go} GO · 🟡 {_etude} À étudier · 🔴 {_pass} Passer"
-            + (f" · 🤖 {_claude_ok} analysé(s) par Claude" if _claude_ok else "")
+            + (f" · 🤖 {_claude_ok} analysé(s) par IA" if _claude_ok else "")
         )
     elif total:
         st.success(f"✅ {total} nouveau(x) marché(s) importé(s) — analyse automatique effectuée.")
