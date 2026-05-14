@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import html as _html
 
 import pandas as pd
@@ -661,7 +661,6 @@ def load_tenders(
     db = new_db()
     try:
         from sqlalchemy import or_
-        from datetime import timedelta
         q = db.query(Tender).filter(Tender.is_blacklisted != True)
 
         if secteur == "Public":
@@ -969,7 +968,6 @@ with st.sidebar:
     st.markdown("**Veille Marchés Publics**")
     st.markdown("---")
 
-    from datetime import timedelta
     _now = datetime.now()
     _cy = _now.year
     periode_labels = {
@@ -1315,8 +1313,6 @@ def _render_editor_section(
             "Publication": st.column_config.TextColumn("Publication", width="small"),
             "Statut": st.column_config.TextColumn("Statut", width="small"),
             "Type": st.column_config.TextColumn("Type", width="small"),
-            "Maint.": st.column_config.TextColumn("Maint.", width="small"),
-            "Concurrents": st.column_config.TextColumn("Concurrents", width="medium"),
             "Montant (€)": st.column_config.NumberColumn("Montant (€)", format="%d €", width="small"),
             "⭐": st.column_config.CheckboxColumn("⭐", width="small"),
         },
