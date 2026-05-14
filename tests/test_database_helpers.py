@@ -47,3 +47,38 @@ def test_source_has_ping_columns(engine):
     cols = {c["name"] for c in inspector.get_columns("sources")}
     assert "ping_failures_count" in cols
     assert "last_ping_at" in cols
+
+
+def test_start_scraper_run_creates_record(db):
+    from database import start_scraper_run
+    from models import ScraperRun
+    run_id = start_scraper_run(db, "BOAMP — Journal Officiel")
+    assert isinstance(run_id, int)
+    record = db.query(ScraperRun).filter(ScraperRun.id == run_id).first()
+    assert record is not None
+    assert record.source_name == "BOAMP — Journal Officiel"
+    assert record.status == "running"
+    assert record.started_at is not None
+
+
+def test_finish_scraper_run_ok(db):
+    from database import start_scraper_run, finish_scraper_run
+    from models import ScraperRun
+    run_id = start_scraper_run(db, "TED Europe")
+    finish_scraper_run(db, run_id, nb_found=10, nb_new=3)
+    record = db.query(ScraperRun).filter(ScraperRun.id == run_id).first()
+    assert record.status == "ok"
+    assert record.nb_found == 10
+    assert record.nb_new == 3
+    assert record.finished_at is not None
+    assert record.error is None
+
+
+def test_finish_scraper_run_error(db):
+    from database import start_scraper_run, finish_scraper_run
+    from models import ScraperRun
+    run_id = start_scraper_run(db, "VAAO")
+    finish_scraper_run(db, run_id, nb_found=0, nb_new=0, error="Connection timeout")
+    record = db.query(ScraperRun).filter(ScraperRun.id == run_id).first()
+    assert record.status == "error"
+    assert record.error == "Connection timeout"

@@ -78,3 +78,28 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+from datetime import datetime as _dt, timezone as _tz
+
+
+def start_scraper_run(db, source_name: str) -> int:
+    from models import ScraperRun
+    run = ScraperRun(source_name=source_name, started_at=_dt.now(_tz.utc), status="running")
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    return run.id
+
+
+def finish_scraper_run(db, run_id: int, nb_found: int, nb_new: int, error: str | None = None) -> None:
+    from models import ScraperRun
+    run = db.query(ScraperRun).filter(ScraperRun.id == run_id).first()
+    if not run:
+        return
+    run.finished_at = _dt.now(_tz.utc)
+    run.nb_found = nb_found
+    run.nb_new = nb_new
+    run.error = error
+    run.status = "error" if error else "ok"
+    db.commit()
