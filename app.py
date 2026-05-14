@@ -29,6 +29,15 @@ from models import Tender
 
 from fiche_logic import SCORE_GO, SCORE_ETUDE, _compute_fiche_data
 
+TENDER_TAGS = [
+    "Partenaire requis",
+    "En attente DCE",
+    "Budget bloqué",
+    "À voir avec DG",
+    "Offre déposée",
+    "Recours prévu",
+]
+
 # ── domaine detection ─────────────────────────────────────────────────────────
 
 DOMAINES = {
@@ -463,6 +472,7 @@ def load_tenders(
                     "Secteur": t.secteur or "Public",
                     "_deadline_dt": t.deadline,
                     "_desc": (t.description or "").lower(),
+                    "_tags": t.tags or [],
                 }
             )
         return rows
@@ -590,6 +600,17 @@ def save_notes(tender_id: str, notes: str) -> None:
         t = db.query(Tender).filter(Tender.id == tender_id).first()
         if t:
             t.notes = notes or None
+            db.commit()
+    finally:
+        db.close()
+
+
+def save_tags(tender_id: str, tags: list[str]) -> None:
+    db = new_db()
+    try:
+        t = db.query(Tender).filter(Tender.id == tender_id).first()
+        if t:
+            t.tags = tags
             db.commit()
     finally:
         db.close()
@@ -914,6 +935,11 @@ with st.sidebar:
         "Trier par",
         ["Date limite ↑", "Score ↓", "Publication ↓"],
         index=0,
+    )
+    selected_tags = st.multiselect(
+        "🏷️ Filtrer par tag",
+        options=TENDER_TAGS,
+        placeholder="Tous les tags",
     )
     st.markdown("---")
     st.markdown("### ⚡ Sources de collecte")
@@ -1333,6 +1359,18 @@ def _render_fiche(tender_id: str, key_suffix: str) -> None:
             if st.button("💾 Enregistrer", key=f"save_notes_{key_suffix}_{tender_id}"):
                 save_notes(tender_id, _notes_new)
                 st.success("Notes enregistrées.")
+
+        with st.expander("🏷️ Tags", expanded=bool(t.tags)):
+            _selected_tags = st.multiselect(
+                "Étiquettes",
+                options=TENDER_TAGS,
+                default=[tg for tg in (t.tags or []) if tg in TENDER_TAGS],
+                key=f"tags_ms_{key_suffix}_{tender_id}",
+            )
+            if st.button("💾 Sauvegarder les tags", key=f"save_tags_{key_suffix}_{tender_id}"):
+                save_tags(tender_id, _selected_tags)
+                st.cache_data.clear()
+                st.success("Tags sauvegardés.")
     finally:
         db_det.close()
 
@@ -1534,6 +1572,8 @@ if selected_domaines:
     rows_pub = [r for r in rows_pub if any(d in r["Domaine"] for d in selected_domaines)]
 if selected_decisions:
     rows_pub = [r for r in rows_pub if r["Go/No-Go"] in selected_decisions]
+if selected_tags:
+    rows_pub = [r for r in rows_pub if any(tg in (r["_tags"] or []) for tg in selected_tags)]
 rows_pub = _sort_rows(rows_pub, sort_by)
 
 _render_editor_section(
@@ -1569,6 +1609,8 @@ if selected_domaines:
     rows_priv = [r for r in rows_priv if any(d in r["Domaine"] for d in selected_domaines)]
 if selected_decisions:
     rows_priv = [r for r in rows_priv if r["Go/No-Go"] in selected_decisions]
+if selected_tags:
+    rows_priv = [r for r in rows_priv if any(tg in (r["_tags"] or []) for tg in selected_tags)]
 rows_priv = _sort_rows(rows_priv, sort_by)
 
 _render_editor_section(
