@@ -191,8 +191,7 @@ kc3.metric(
 
 if _wr:
     st.markdown("**Win rate par source (top 5)**")
-    import pandas as _pd_wr
-    _df_wr = _pd_wr.DataFrame(
+    _df_wr = pd.DataFrame(
         [{"Source": src, "Gagnés": ng, "Soumis": ns,
           "Win rate": f"{round(ng/ns*100)}%" if ns > 0 else "—"}
          for src, ng, ns in _wr]
