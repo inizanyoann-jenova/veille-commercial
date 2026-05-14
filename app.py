@@ -798,6 +798,32 @@ def load_chart_data() -> list[dict]:
         db.close()
 
 
+@st.cache_data(ttl=60)
+def load_pipeline() -> dict[str, list[dict]]:
+    """Retourne les marchés publics groupés par statut pour la vue pipeline."""
+    db = new_db()
+    try:
+        from sqlalchemy import or_
+        tenders = (
+            db.query(Tender)
+            .filter(
+                Tender.is_blacklisted != True,
+                or_(Tender.secteur == "Public", Tender.secteur == None),
+            )
+            .all()
+        )
+        result: dict[str, list[dict]] = {
+            s: [] for s in ["À qualifier", "En cours", "Soumis", "Gagné", "Perdu"]
+        }
+        for t in tenders:
+            s = t.status or "À qualifier"
+            if s in result:
+                result[s].append({"id": t.id, "title": t.title or "Sans titre", "amount": t.amount})
+        return result
+    finally:
+        db.close()
+
+
 def save_status(tender_id: str, new_status: str) -> None:
     db = new_db()
     try:
@@ -1134,11 +1160,13 @@ with st.sidebar:
             st.info("Tous les marchés ont déjà été analysés par Claude.")
 
     st.markdown("---")
-    col_nav1, col_nav2 = st.columns(2)
+    col_nav1, col_nav2, col_nav3 = st.columns(3)
     with col_nav1:
         st.page_link("pages/parametres.py", label="⚙️ Paramètres", use_container_width=True)
     with col_nav2:
         st.page_link("pages/guide.py", label="📖 Guide", use_container_width=True)
+    with col_nav3:
+        st.page_link("pages/analytics.py", label="📈 Analytics", use_container_width=True)
 
 
 # ── header + export ───────────────────────────────────────────────────────────
@@ -1609,6 +1637,36 @@ _render_editor_section(
     del_btn_key="del_priv",
     sel_box_key="sel_priv",
 )
+
+# ── Pipeline commercial ───────────────────────────────────────────────────────
+
+st.markdown(_section_html("🗂️ Pipeline Commercial", "Marchés publics — vue par statut"), unsafe_allow_html=True)
+
+_pipeline = load_pipeline()
+_STATUS_ICONS = {
+    "À qualifier": "📋",
+    "En cours": "🔄",
+    "Soumis": "📤",
+    "Gagné": "🏆",
+    "Perdu": "❌",
+}
+_pipe_cols = st.columns(5)
+for _pipe_col, _pipe_status in zip(_pipe_cols, ["À qualifier", "En cours", "Soumis", "Gagné", "Perdu"]):
+    _items = _pipeline.get(_pipe_status, [])
+    _ca = sum(it["amount"] for it in _items if it["amount"])
+    with _pipe_col:
+        st.markdown(f"**{_STATUS_ICONS[_pipe_status]} {_pipe_status}**")
+        st.markdown(f"`{len(_items)}` marché(s)")
+        if _ca:
+            st.caption(f"{_ca:,.0f} €".replace(",", " "))
+        for _it in _items[:3]:
+            _short = _it["title"][:55]
+            if st.button(_short, key=f"pipe_{_pipe_status}_{_it['id']}", use_container_width=True):
+                st.session_state["_sel_title_pub"] = _it["title"]
+        if len(_items) > 3:
+            st.caption(f"+ {len(_items) - 3} autres")
+
+st.markdown("---")
 
 # ── saisie manuelle ───────────────────────────────────────────────────────────
 
