@@ -708,6 +708,37 @@ def load_kpis_priv() -> dict:
         db.close()
 
 
+@st.cache_data(ttl=300)
+def load_last_scraper_runs() -> dict[str, dict]:
+    """Retourne le dernier run par source_name."""
+    from models import ScraperRun
+    from sqlalchemy import func as _f
+    db = new_db()
+    try:
+        subq = (
+            db.query(
+                ScraperRun.source_name,
+                _f.max(ScraperRun.started_at).label("last_started"),
+            )
+            .group_by(ScraperRun.source_name)
+            .subquery()
+        )
+        rows = (
+            db.query(ScraperRun)
+            .join(subq, (ScraperRun.source_name == subq.c.source_name) &
+                        (ScraperRun.started_at == subq.c.last_started))
+            .all()
+        )
+        return {r.source_name: {
+            "status": r.status,
+            "started_at": r.started_at,
+            "nb_new": r.nb_new,
+            "error": r.error,
+        } for r in rows}
+    finally:
+        db.close()
+
+
 # ── sidebar ───────────────────────────────────────────────────────────────────
 
 def _collect_selected_sources(selected_source_ids: list[int]) -> None:
@@ -981,6 +1012,17 @@ with st.sidebar:
                 )
                 if checked:
                     selected_source_ids.append(s.id)
+                _runs = load_last_scraper_runs()
+                _last = _runs.get(s.name)
+                if _last:
+                    _ago = datetime.utcnow() - _last["started_at"].replace(tzinfo=None)
+                    _d = _ago.days
+                    _h = int(_ago.total_seconds() // 3600)
+                    if _last["status"] == "error":
+                        st.caption(f"⚠️ Erreur il y a {'%dj' % _d if _d else '%dh' % _h}")
+                    else:
+                        _label = f"{_d}j" if _d >= 1 else f"{_h}h"
+                        st.caption(f"Collecte il y a {_label} — {_last['nb_new']} nouveaux")
 
     st.markdown("")
     if st.button("⚡ Collecter la sélection", use_container_width=True, type="primary",

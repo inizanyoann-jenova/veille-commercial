@@ -106,7 +106,8 @@ st.caption("Les mots de passe sont chiffrés en base de données. Les variables 
 configured = {c["site"]: c for c in CredentialManager.list_configured()}
 
 from database import SessionLocal as _SL_cred
-from source_registry import Source as _SrcCred
+from source_registry import Source as _SrcCred, validate_source as _validate_src, invalidate_source as _invalidate_src
+import requests as _req
 
 _SITE_TO_SOURCE_NAME = {
     "vaao":               "VAAO",
@@ -166,6 +167,12 @@ for site_key, (site_label, category) in _SITE_LABELS.items():
             with btn2:
                 if cred and st.button("🗑️ Supprimer", key=f"del_{site_key}"):
                     CredentialManager.delete(site_key)
+                    if _src_obj:
+                        _db_inv = _SL_cred()
+                        try:
+                            _invalidate_src(_db_inv, _src_obj.id)
+                        finally:
+                            _db_inv.close()
                     st.rerun()
             with btn3:
                 if cred and st.button("🔌 Tester la connexion", key=f"test_{site_key}"):
@@ -223,7 +230,7 @@ for site_key, (site_label, category) in _SITE_LABELS.items():
                                                 try:
                                                     _src = _db_val.query(_SrcCred).filter(_SrcCred.name == _src_name).first()
                                                     if _src:
-                                                        _val3(_db_val, _src.id)
+                                                        _validate_src(_db_val, _src.id)
                                                 finally:
                                                     _db_val.close()
                                             st.rerun()
@@ -249,20 +256,39 @@ st.markdown("---")
 st.header("📡 Sources automatiques")
 st.caption("Un test HTTP vérifie que chaque source est accessible. Valider une source la fait apparaître dans la sidebar de collecte.")
 
-import requests as _req
-from database import SessionLocal as _SL3
-from source_registry import Source as _Src3, validate_source as _val3
-
-_db_auto = _SL3()
+_db_auto = _SL_cred()
 try:
     _auto_sources = (
-        _db_auto.query(_Src3)
-        .filter(_Src3.is_manual == False)
-        .order_by(_Src3.display_order, _Src3.name)
+        _db_auto.query(_SrcCred)
+        .filter(_SrcCred.is_manual == False)
+        .order_by(_SrcCred.display_order, _SrcCred.name)
         .all()
     )
 finally:
     _db_auto.close()
+
+_col_all, _ = st.columns([3, 5])
+with _col_all:
+    if st.button("🔌 Tout tester", key="ping_all", help="Teste toutes les sources automatiques en une fois"):
+        _nb_ok, _nb_fail = 0, 0
+        _db_batch = _SL_cred()
+        try:
+            with st.spinner("Test en cours…"):
+                for _sa in _auto_sources:
+                    try:
+                        _r = _req.get(_sa.url, timeout=8, allow_redirects=True,
+                                      headers={"User-Agent": "Mozilla/5.0 DEF-OI-Checker"})
+                        if _r.status_code < 400 and len(_r.content) > 200:
+                            _validate_src(_db_batch, _sa.id)
+                            _nb_ok += 1
+                        else:
+                            _nb_fail += 1
+                    except Exception:
+                        _nb_fail += 1
+        finally:
+            _db_batch.close()
+        st.success(f"✅ {_nb_ok} source(s) validée(s) — ❌ {_nb_fail} inaccessible(s)")
+        st.rerun()
 
 for _s in _auto_sources:
     _badge = "✅" if _s.is_validated else "⬜"
@@ -279,13 +305,16 @@ for _s in _auto_sources:
                     _resp = _req.get(_s.url, timeout=8, allow_redirects=True,
                                      headers={"User-Agent": "Mozilla/5.0 DEF-OI-Checker"})
                     if _resp.status_code < 400:
-                        _db_v3 = _SL3()
-                        try:
-                            _val3(_db_v3, _s.id)
-                        finally:
-                            _db_v3.close()
-                        st.success(f"✅ Accessible (HTTP {_resp.status_code})")
-                        st.rerun()
+                        if len(_resp.content) < 200:
+                            st.warning(f"⚠️ HTTP {_resp.status_code} mais réponse vide — possible CAPTCHA ou redirection. Source non validée.")
+                        else:
+                            _db_v = _SL_cred()
+                            try:
+                                _validate_src(_db_v, _s.id)
+                            finally:
+                                _db_v.close()
+                            st.success(f"✅ Accessible (HTTP {_resp.status_code})")
+                            st.rerun()
                     else:
                         st.error(f"❌ HTTP {_resp.status_code}")
                 except Exception as _exc:
@@ -306,9 +335,9 @@ if st.button("🔄 Régénérer la clé de chiffrement"):
     if st.checkbox("Je comprends, procéder quand même"):
         from cryptography.fernet import Fernet
         from dotenv import set_key
-        new_key = Fernet.generate_key().decode()
-        set_key(".env", "CREDENTIAL_KEY", new_key)
-        os.environ["CREDENTIAL_KEY"] = new_key
+        _new_fernet_key = Fernet.generate_key().decode()
+        set_key(".env", "CREDENTIAL_KEY", _new_fernet_key)
+        os.environ["CREDENTIAL_KEY"] = _new_fernet_key
         st.success("Nouvelle clé générée et sauvegardée dans `.env`. Relancez l'application.")
 
 # ── Blacklist ─────────────────────────────────────────────────────────────────
@@ -373,3 +402,50 @@ with col_b:
             st.success("Sources vérifiées et initialisées ✓")
         finally:
             db.close()
+
+st.markdown("---")
+st.header("📊 Historique de collecte")
+st.caption("Les derniers runs par source. Mis à jour après chaque collecte.")
+
+from database import SessionLocal as _SL_hist
+from models import ScraperRun as _SR
+_db_hist = _SL_hist()
+try:
+    _all_runs = (
+        _db_hist.query(_SR)
+        .order_by(_SR.started_at.desc())
+        .limit(100)
+        .all()
+    )
+finally:
+    _db_hist.close()
+
+if not _all_runs:
+    st.info("Aucune collecte enregistrée. Lancez une collecte depuis la page principale.")
+else:
+    import pandas as _pd_hist
+    from datetime import datetime as _dt_hist
+    _rows_hist = []
+    for r in _all_runs:
+        _ago = _dt_hist.utcnow() - r.started_at.replace(tzinfo=None)
+        _d = _ago.days
+        _h = int(_ago.total_seconds() // 3600)
+        _rows_hist.append({
+            "Source": r.source_name,
+            "Il y a": f"{_d}j" if _d >= 1 else f"{_h}h",
+            "Nouveaux": r.nb_new,
+            "Statut": "✅" if r.status == "ok" else ("⚠️" if r.status == "error" else "🔄"),
+            "Erreur": r.error or "",
+        })
+    st.dataframe(
+        _pd_hist.DataFrame(_rows_hist),
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Source": st.column_config.TextColumn(width="medium"),
+            "Il y a": st.column_config.TextColumn(width="small"),
+            "Nouveaux": st.column_config.NumberColumn(width="small"),
+            "Statut": st.column_config.TextColumn(width="small"),
+            "Erreur": st.column_config.TextColumn(width="large"),
+        },
+    )
