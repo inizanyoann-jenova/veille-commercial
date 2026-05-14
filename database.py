@@ -23,6 +23,7 @@ def init_db():
             ("amount", "INTEGER"),
             ("is_blacklisted", "BOOLEAN DEFAULT 0"),
             ("is_saved", "BOOLEAN DEFAULT 0"),
+            ("notes", "TEXT"),
         ]:
             try:
                 conn.execute(text(f"ALTER TABLE tenders ADD COLUMN {col_name} {col_def}"))
@@ -30,6 +31,15 @@ def init_db():
             except OperationalError as e:
                 if "already exists" not in str(e) and "duplicate column" not in str(e):
                     raise
+
+    # Migration table sources
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE sources ADD COLUMN is_validated BOOLEAN DEFAULT 0"))
+            conn.commit()
+        except OperationalError as e:
+            if "already exists" not in str(e) and "duplicate column" not in str(e):
+                raise
 
     # Seeding des sources par défaut si la table est vide
     db = SessionLocal()
