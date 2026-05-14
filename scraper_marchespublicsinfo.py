@@ -1,7 +1,7 @@
 import hashlib
 import logging
 from playwright.sync_api import sync_playwright
-from database import SessionLocal, init_db
+from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from filters import is_relevant_def
 from models import Tender
 from playwright_base import extract_cards, paginate
@@ -37,6 +37,7 @@ def fetch_marchespublicsinfo_tenders() -> int:
     db = SessionLocal()
     inserted = 0
     seen_ids: set[str] = set()
+    _run_id = start_scraper_run(db, "Marchés Public Info")
     try:
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=True)
@@ -47,6 +48,7 @@ def fetch_marchespublicsinfo_tenders() -> int:
                     page.wait_for_load_state("networkidle", timeout=15000)
                 except Exception as exc:
                     log.warning("Marchés Public Info inaccessible : %s", exc)
+                    finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
                     return 0
                 page_count = 0
                 while page_count < 5:
@@ -81,6 +83,10 @@ def fetch_marchespublicsinfo_tenders() -> int:
                 browser.close()
         if inserted:
             db.commit()
+        finish_scraper_run(db, _run_id, nb_found=inserted, nb_new=inserted)
+    except Exception as _e:
+        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(_e))
+        raise
     finally:
         db.close()
     return inserted

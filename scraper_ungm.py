@@ -4,7 +4,7 @@ from datetime import datetime
 
 import requests
 
-from database import SessionLocal, init_db
+from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from filters import is_relevant_def
 from models import Tender
 
@@ -69,6 +69,7 @@ def fetch_ungm_tenders() -> int:
     db = SessionLocal()
     inserted = 0
     seen_ids: set[str] = set()
+    _run_id = start_scraper_run(db, "UNGM")
 
     try:
         for keyword in _UNGM_KEYWORDS:
@@ -123,6 +124,10 @@ def fetch_ungm_tenders() -> int:
         if inserted:
             db.commit()
 
+        finish_scraper_run(db, _run_id, nb_found=inserted, nb_new=inserted)
+    except Exception as _e:
+        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(_e))
+        raise
     finally:
         db.close()
 

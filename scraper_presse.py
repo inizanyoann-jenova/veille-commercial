@@ -9,7 +9,7 @@ from email.utils import parsedate_to_datetime
 
 import feedparser
 
-from database import SessionLocal, init_db
+from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from filters import is_prive_relevant
 from models import Tender
 
@@ -124,11 +124,16 @@ def fetch_presse_io() -> int:
     init_db()
     db = SessionLocal()
     total = 0
+    _run_id = start_scraper_run(db, "Presse & Institutions IO")
     try:
         for territoire, nom, url in FLUX_PRESSE:
             total += _fetch_feed(territoire, nom, url, db, "Presse", is_prive_relevant)
         for territoire, nom, url in FLUX_INSTITUTIONS:
             total += _fetch_feed(territoire, nom, url, db, "Institution", is_prive_relevant)
+        finish_scraper_run(db, _run_id, nb_found=total, nb_new=total)
+    except Exception as _e:
+        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(_e))
+        raise
     finally:
         db.close()
     return total

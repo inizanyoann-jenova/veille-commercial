@@ -3,7 +3,7 @@ from datetime import datetime
 
 import requests
 
-from database import SessionLocal, init_db
+from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from filters import is_relevant_def
 from models import Tender
 
@@ -132,12 +132,17 @@ def fetch_ted_tenders(zones: list[str] | None = None) -> int:
     db = SessionLocal()
     inserted_ids: set = set()
     total = 0
+    _run_id = start_scraper_run(db, "TED Europe")
 
     selected = {k: v for k, v in QUERIES.items() if zones is None or k in zones}
 
     try:
         for zone, query in selected.items():
             total += _fetch_query(db, query, inserted_ids)
+        finish_scraper_run(db, _run_id, nb_found=total, nb_new=total)
+    except Exception as _e:
+        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(_e))
+        raise
     finally:
         db.close()
 

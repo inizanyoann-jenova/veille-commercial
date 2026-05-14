@@ -1,7 +1,7 @@
 import hashlib
 import re
 from playwright.sync_api import sync_playwright
-from database import SessionLocal, init_db
+from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from filters import is_relevant_def
 from models import Tender
 from playwright_base import login
@@ -96,6 +96,7 @@ def fetch_marcheonline_tenders() -> int:
     inserted = 0
     creds = CredentialManager.get("marcheonline")
     seen_ids: set[str] = set()
+    _run_id = start_scraper_run(db, "Marché Online")
     try:
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=True)
@@ -145,6 +146,10 @@ def fetch_marcheonline_tenders() -> int:
                 browser.close()
         if inserted:
             db.commit()
+        finish_scraper_run(db, _run_id, nb_found=inserted, nb_new=inserted)
+    except Exception as _e:
+        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(_e))
+        raise
     finally:
         db.close()
     return inserted

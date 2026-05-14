@@ -8,7 +8,7 @@ from datetime import datetime
 
 import requests
 
-from database import SessionLocal, init_db
+from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from models import Tender
 
 WB_API = "https://search.worldbank.org/api/v2/projects"
@@ -55,6 +55,7 @@ def fetch_worldbank_projects(years_back: int = 3) -> int:
     inserted = 0
     from datetime import timedelta
     date_min = datetime.now() - timedelta(days=365 * years_back)
+    _run_id = start_scraper_run(db, "Banque Mondiale")
 
     try:
         for code, country_name in COUNTRIES.items():
@@ -106,6 +107,10 @@ def fetch_worldbank_projects(years_back: int = 3) -> int:
 
             db.commit()
 
+        finish_scraper_run(db, _run_id, nb_found=inserted, nb_new=inserted)
+    except Exception as _e:
+        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(_e))
+        raise
     finally:
         db.close()
 

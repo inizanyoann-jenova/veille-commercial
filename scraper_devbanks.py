@@ -9,7 +9,7 @@ from email.utils import parsedate_to_datetime
 
 import feedparser
 
-from database import SessionLocal, init_db
+from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from filters import INCLUSION_KEYWORDS
 from models import Tender
 
@@ -71,6 +71,7 @@ def fetch_devbanks() -> int:
     init_db()
     db = SessionLocal()
     total = 0
+    _run_id = start_scraper_run(db, "Banques Dev. (BAD/BEI/COI)")
 
     try:
         for territoire, nom, url in FLUX_DEVBANKS:
@@ -110,6 +111,10 @@ def fetch_devbanks() -> int:
 
             db.commit()
 
+        finish_scraper_run(db, _run_id, nb_found=total, nb_new=total)
+    except Exception as _e:
+        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(_e))
+        raise
     finally:
         db.close()
 

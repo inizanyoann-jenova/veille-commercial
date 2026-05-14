@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 import requests
 
-from database import SessionLocal, init_db
+from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from filters import is_relevant_def
 from models import Tender
 
@@ -46,6 +46,7 @@ def fetch_decp_tenders(years_back: int = 3) -> int:
     init_db()
     db = SessionLocal()
     inserted = 0
+    _run_id = start_scraper_run(db, "DECP / PLACE")
 
     try:
         offset = 0
@@ -105,6 +106,10 @@ def fetch_decp_tenders(years_back: int = 3) -> int:
         if inserted:
             db.commit()
 
+        finish_scraper_run(db, _run_id, nb_found=inserted, nb_new=inserted)
+    except Exception as _e:
+        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(_e))
+        raise
     finally:
         db.close()
 

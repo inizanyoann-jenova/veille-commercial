@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 import requests
 
-from database import SessionLocal, init_db
+from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from models import Tender
 
 AFD_API = "https://opendata.afd.fr/api/explore/v2.1/catalog/datasets/les-projets-de-l-afd/records"
@@ -53,6 +53,7 @@ def fetch_afd_projects(years_back: int = 3) -> int:
     db = SessionLocal()
     inserted = 0
     date_min = (datetime.now() - timedelta(days=365 * years_back)).strftime("%Y-%m-%d")
+    _run_id = start_scraper_run(db, "AFD — Agence Française de Développement")
 
     try:
         for pays_label, pays_kw in PAYS_OI.items():
@@ -112,6 +113,10 @@ def fetch_afd_projects(years_back: int = 3) -> int:
                     break
                 offset += limit
 
+        finish_scraper_run(db, _run_id, nb_found=inserted, nb_new=inserted)
+    except Exception as _e:
+        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(_e))
+        raise
     finally:
         db.close()
 

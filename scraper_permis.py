@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 import requests
 
-from database import SessionLocal, init_db
+from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from models import Tender
 
 SITADEL_API = (
@@ -51,6 +51,7 @@ def fetch_permis_construire(years_back: int = 1) -> int:
     db = SessionLocal()
     inserted = 0
     date_min = (datetime.now() - timedelta(days=365 * years_back)).strftime("%Y-%m-%d")
+    _run_id = start_scraper_run(db, "Permis de construire")
 
     try:
         for dept in ["974", "976"]:
@@ -137,6 +138,10 @@ def fetch_permis_construire(years_back: int = 1) -> int:
                     break
                 offset += limit
 
+        finish_scraper_run(db, _run_id, nb_found=inserted, nb_new=inserted)
+    except Exception as _e:
+        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(_e))
+        raise
     finally:
         db.close()
 
