@@ -864,8 +864,30 @@ def _collect_selected_sources(selected_source_ids: list[int]) -> None:
         _db_snap2.close()
     st.session_state["new_tender_ids"] = ids_after - ids_before
 
-    if total:
-        st.success(f"{total} nouveau(x) marché(s) importé(s) — analyse automatique effectuée.")
+    if total and st.session_state.get("new_tender_ids"):
+        _db_res = new_db()
+        try:
+            _new_tenders = _db_res.query(Tender).filter(
+                Tender.id.in_(st.session_state["new_tender_ids"])
+            ).all()
+        finally:
+            _db_res.close()
+
+        def _sc(t) -> int:
+            return (t.llm_analysis or {}).get("score_pertinence", t.relevance_score or 0)
+
+        _go    = sum(1 for t in _new_tenders if _sc(t) >= 65)
+        _etude = sum(1 for t in _new_tenders if 35 <= _sc(t) < 65)
+        _pass  = sum(1 for t in _new_tenders if _sc(t) < 35)
+        _claude_ok = sum(1 for t in _new_tenders if (t.llm_analysis or {}).get("_source") in ("claude", "gemini"))
+
+        st.success(
+            f"✅ {total} nouveau(x) marché(s) importé(s) — "
+            f"🟢 {_go} GO · 🟡 {_etude} À étudier · 🔴 {_pass} Passer"
+            + (f" · 🤖 {_claude_ok} analysé(s) par Claude" if _claude_ok else "")
+        )
+    elif total:
+        st.success(f"✅ {total} nouveau(x) marché(s) importé(s) — analyse automatique effectuée.")
     elif not errors:
         st.info("Aucune nouvelle offre trouvée pour les sources sélectionnées.")
     for err in errors:
