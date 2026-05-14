@@ -134,7 +134,7 @@ init_db()
 
 if "scheduler_started" not in st.session_state:
     from source_registry import _run_weekly_ping as _rwp, Source as _SrcSched
-    from datetime import datetime as _dts, timedelta as _td2
+    from datetime import datetime as _dts
 
     def _maybe_run_catchup():
         from database import SessionLocal as _SL_c
