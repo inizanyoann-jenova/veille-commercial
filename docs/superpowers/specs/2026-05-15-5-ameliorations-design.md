@@ -27,7 +27,7 @@ Cinq améliorations indépendantes implémentées en une seule session :
 
 - Barre `st.text_input("🔍 Rechercher un marché…")` placée en haut de `app.py`, au-dessus de la liste des marchés
 - Filtre sur `Tender.title` et `Tender.description` via `func.lower(col).contains(term.lower())`
-- Cumulable avec tous les filtres existants (territoire, domaine, statut, score)
+- Cumulable avec tous les filtres existants (territoire, domaine, statut, score) — logique **AND** : tous les filtres actifs s'appliquent simultanément
 - Champ vide = aucun filtre supplémentaire (comportement neutre)
 
 ### Ce qui ne change pas
@@ -68,6 +68,8 @@ def finish_scraper_run(db, run_id: int, nb_found: int, nb_new: int, error: str |
 ```
 
 ### Intégration dans les scrapers
+
+Les 15 scrapers suivants sont concernés : `scraper_boamp`, `scraper_ted`, `scraper_afd`, `scraper_worldbank`, `scraper_permis`, `scraper_devbanks`, `scraper_presse`, `scraper_ungm`, `scraper_decp`, `scraper_marcheonline`, `scraper_vaao`, `scraper_dept974`, `scraper_tendersgo`, `scraper_nukema`, `scraper_marchespublicsinfo`, `scraper_instao`, `scraper_marchessecurises`.
 
 Chaque scraper encadre sa collecte :
 ```python
