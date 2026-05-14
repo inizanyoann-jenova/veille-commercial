@@ -1,0 +1,153 @@
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+from fiche_logic import _compute_fiche_data
+
+
+# ── label_action & steps ─────────────────────────────────────────────────────
+
+def test_go_deadline_passe():
+    d = _compute_fiche_data(70, -3, "🔥 SSI / Détection incendie", "🏝️ La Réunion", False, "", {})
+    assert d["label_action"] == "⚠️ Date limite dépassée"
+    assert len(d["steps"]) == 2
+
+def test_go_delai_critique():
+    d = _compute_fiche_data(70, 5, "🔥 SSI / Détection incendie", "🏝️ La Réunion", False, "", {})
+    assert d["label_action"] == "🚨 Action immédiate — délai critique"
+    assert len(d["steps"]) == 4
+
+def test_go_priorite():
+    d = _compute_fiche_data(70, 20, "🔥 SSI / Détection incendie", "🏝️ La Réunion", False, "", {})
+    assert d["label_action"] == "🟢 Traiter en priorité"
+
+def test_go_planifier():
+    d = _compute_fiche_data(70, None, "🔥 SSI / Détection incendie", "🏝️ La Réunion", False, "", {})
+    assert d["label_action"] == "🟢 Planifier la réponse"
+
+def test_etude():
+    d = _compute_fiche_data(50, 30, "Autre", "Non précisé", False, "", {})
+    assert d["label_action"] == "🟡 À évaluer — décision requise"
+
+def test_passer():
+    d = _compute_fiche_data(10, None, "Autre", "Non précisé", False, "", {})
+    assert d["label_action"] == "🔴 Hors périmètre DEF OI"
+
+
+# ── sous-scores sm / sg / sk / smaint ────────────────────────────────────────
+
+def test_sm_ssi():
+    d = _compute_fiche_data(70, None, "🔥 SSI / Détection incendie", "Non précisé", False, "", {})
+    assert d["sm"] == 45
+
+def test_sm_cmsi():
+    d = _compute_fiche_data(70, None, "💨 CMSI / Désenfumage", "Non précisé", False, "", {})
+    assert d["sm"] == 40
+
+def test_sm_video():
+    d = _compute_fiche_data(70, None, "📷 Vidéosurveillance / CCTV", "Non précisé", False, "", {})
+    assert d["sm"] == 40
+
+def test_sm_courants():
+    d = _compute_fiche_data(70, None, "⚡ Courants faibles", "Non précisé", False, "", {})
+    assert d["sm"] == 30
+
+def test_sm_autre():
+    d = _compute_fiche_data(70, None, "Autre", "Non précisé", False, "", {})
+    assert d["sm"] == 5
+
+def test_sg_reunion():
+    d = _compute_fiche_data(70, None, "Autre", "🏝️ La Réunion", False, "", {})
+    assert d["sg"] == 30
+
+def test_sg_mayotte():
+    d = _compute_fiche_data(70, None, "Autre", "🏝️ Mayotte", False, "", {})
+    assert d["sg"] == 30
+
+def test_sg_madagascar():
+    d = _compute_fiche_data(70, None, "Autre", "🌍 Madagascar", False, "", {})
+    assert d["sg"] == 22
+
+def test_sg_france():
+    d = _compute_fiche_data(70, None, "Autre", "🇫🇷 France métropole", False, "", {})
+    assert d["sg"] == 10
+
+def test_sg_inconnu():
+    d = _compute_fiche_data(70, None, "Autre", "Non précisé", False, "", {})
+    assert d["sg"] == 0
+
+def test_sk_ssi_in_title():
+    d = _compute_fiche_data(70, None, "Autre", "Non précisé", False, "Installation SSI bâtiment", {})
+    assert d["sk"] == 15
+
+def test_sk_cmsi_in_title():
+    d = _compute_fiche_data(70, None, "Autre", "Non précisé", False, "Marché CMSI désenfumage", {})
+    assert d["sk"] == 15
+
+def test_sk_absent():
+    d = _compute_fiche_data(70, None, "Autre", "Non précisé", False, "Nettoyage parkings", {})
+    assert d["sk"] == 0
+
+def test_smaint_true():
+    d = _compute_fiche_data(70, None, "Autre", "Non précisé", True, "", {})
+    assert d["smaint"] == 10
+
+def test_smaint_false():
+    d = _compute_fiche_data(70, None, "Autre", "Non précisé", False, "", {})
+    assert d["smaint"] == 0
+
+
+# ── atouts ────────────────────────────────────────────────────────────────────
+
+def test_atout_coeur_metier_ssi():
+    d = _compute_fiche_data(70, None, "🔥 SSI / Détection incendie", "Non précisé", False, "", {})
+    assert any("Cœur de métier" in a for a in d["atouts"])
+
+def test_atout_coeur_metier_video():
+    d = _compute_fiche_data(70, None, "📷 Vidéosurveillance / CCTV", "Non précisé", False, "", {})
+    assert any("Cœur de métier" in a for a in d["atouts"])
+
+def test_atout_perimetre_courants():
+    d = _compute_fiche_data(70, None, "⚡ Courants faibles", "Non précisé", False, "", {})
+    assert any("Périmètre DEF OI" in a for a in d["atouts"])
+
+def test_atout_presence_locale_974():
+    d = _compute_fiche_data(70, None, "🔥 SSI / Détection incendie", "🏝️ La Réunion", False, "", {})
+    assert any("974/976" in a for a in d["atouts"])
+
+def test_atout_ocean_indien():
+    d = _compute_fiche_data(70, None, "🔥 SSI / Détection incendie", "🌍 Madagascar", False, "", {})
+    assert any("Océan Indien" in a for a in d["atouts"])
+
+def test_atout_maintenance():
+    d = _compute_fiche_data(70, None, "🔥 SSI / Détection incendie", "Non précisé", True, "", {})
+    assert any("Maintenance" in a for a in d["atouts"])
+
+def test_atout_signal_direct():
+    d = _compute_fiche_data(70, None, "Autre", "Non précisé", False, "Mise en place SSI", {})
+    assert any("Signal direct" in a for a in d["atouts"])
+
+def test_atout_pertinence_limitee_si_aucun():
+    d = _compute_fiche_data(70, None, "Autre", "Non précisé", False, "Nettoyage", {})
+    assert any("Pertinence limitée" in a for a in d["atouts"])
+    assert len(d["atouts"]) == 1
+
+
+# ── risques ───────────────────────────────────────────────────────────────────
+
+def test_risque_concurrent():
+    a = {"marques_concurrentes_citees": ["Siemens", "Bosch"]}
+    d = _compute_fiche_data(70, 30, "🔥 SSI / Détection incendie", "🏝️ La Réunion", False, "", a)
+    assert any("Siemens" in r for r in d["risques"])
+
+def test_risque_delai_court():
+    d = _compute_fiche_data(70, 7, "🔥 SSI / Détection incendie", "🏝️ La Réunion", False, "", {})
+    assert any("Délai très court" in r for r in d["risques"])
+
+def test_risque_penalites():
+    a = {"risques_penalites": "Pénalités de retard élevées"}
+    d = _compute_fiche_data(70, 30, "🔥 SSI / Détection incendie", "🏝️ La Réunion", False, "", a)
+    assert any("Pénalités" in r for r in d["risques"])
+
+def test_risque_vide_si_tout_ok():
+    d = _compute_fiche_data(70, 60, "🔥 SSI / Détection incendie", "🏝️ La Réunion", False, "", {})
+    assert d["risques"] == []
