@@ -1674,7 +1674,8 @@ with st.expander("⚙️ Gérer les sources de veille"):
     for s in all_gs:
         col_name, col_cat, col_type, col_toggle, col_del = st.columns([3, 1, 1, 1, 1])
         with col_name:
-            st.markdown(f"**{s.name}**")
+            _valid_badge = "✅" if s.is_validated else "⬜"
+            st.markdown(f"{_valid_badge} **{s.name}**")
         with col_cat:
             st.caption(s.category)
         with col_type:
