@@ -4,7 +4,7 @@ SCORE_ETUDE = 35
 
 def _compute_fiche_data(
     score: int,
-    jours_restants,
+    jours_restants: int | None,
     domaine: str,
     territoire: str,
     is_maintenance: bool,

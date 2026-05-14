@@ -96,6 +96,25 @@ def test_smaint_false():
     assert d["smaint"] == 0
 
 
+# ── bornes exactes ────────────────────────────────────────────────────────────
+
+def test_score_exactement_go():
+    d = _compute_fiche_data(65, None, "🔥 SSI / Détection incendie", "🏝️ La Réunion", False, "", {})
+    assert d["label_action"] == "🟢 Planifier la réponse"
+
+def test_score_exactement_etude():
+    d = _compute_fiche_data(35, None, "Autre", "Non précisé", False, "", {})
+    assert d["label_action"] == "🟡 À évaluer — décision requise"
+
+def test_jours_restants_zero_label():
+    d = _compute_fiche_data(70, 0, "🔥 SSI / Détection incendie", "🏝️ La Réunion", False, "", {})
+    assert d["label_action"] == "🚨 Action immédiate — délai critique"
+
+def test_jours_restants_zero_risque():
+    d = _compute_fiche_data(70, 0, "🔥 SSI / Détection incendie", "🏝️ La Réunion", False, "", {})
+    assert any("Délai très court" in r for r in d["risques"])
+
+
 # ── atouts ────────────────────────────────────────────────────────────────────
 
 def test_atout_coeur_metier_ssi():
