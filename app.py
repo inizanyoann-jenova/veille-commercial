@@ -774,6 +774,30 @@ def load_saved_tenders() -> list[dict]:
         db.close()
 
 
+@st.cache_data(ttl=300)
+def load_chart_data() -> list[dict]:
+    """Charge les données légères pour les graphiques (sans description)."""
+    db = new_db()
+    try:
+        rows = db.query(
+            Tender.publication_date,
+            Tender.title,
+            Tender.description,
+            Tender.secteur,
+        ).filter(Tender.is_blacklisted != True).all()
+        return [
+            {
+                "pub": r.publication_date,
+                "title": r.title or "",
+                "desc": r.description or "",
+                "secteur": r.secteur,
+            }
+            for r in rows
+        ]
+    finally:
+        db.close()
+
+
 def save_status(tender_id: str, new_status: str) -> None:
     db = new_db()
     try:
@@ -1233,6 +1257,90 @@ st.markdown(_kpi_row([
     ("Banques Dev.", nb_devbanks),
     ("Privé — À qualifier", nb_qualif_priv),
 ], colors=["teal", "blue", "purple", "orange", ""]), unsafe_allow_html=True)
+
+# ── Tendances & Statistiques ──────────────────────────────────────────────────
+
+with st.expander("📈 Tendances & Statistiques", expanded=False):
+    import plotly.express as px
+    from collections import Counter, defaultdict
+
+    _chart_rows = load_chart_data()
+
+    if not _chart_rows:
+        st.caption("Aucune donnée disponible — lancez une collecte d'abord.")
+    else:
+        _col1, _col2, _col3 = st.columns(3)
+
+        # ── Graphique 1 : Publications par semaine (30 dernières semaines) ──
+        with _col1:
+            _cutoff = datetime.now() - timedelta(weeks=30)
+            _week_counts: dict[str, int] = defaultdict(int)
+            for r in _chart_rows:
+                if r["pub"] and r["pub"] >= _cutoff:
+                    _wk = r["pub"].strftime("%Y-W%V")
+                    _week_counts[_wk] += 1
+            _weeks = sorted(_week_counts.keys())
+            _fig1 = px.bar(
+                x=[f"S{w.split('-W')[1]}\n{w.split('-W')[0]}" for w in _weeks],
+                y=[_week_counts[w] for w in _weeks],
+                color_discrete_sequence=["#cc2222"],
+                labels={"x": "", "y": "Marchés"},
+            )
+            _fig1.update_layout(
+                title="Publications / semaine",
+                showlegend=False,
+                margin=dict(t=40, b=10, l=0, r=0),
+                height=260,
+            )
+            st.plotly_chart(_fig1, use_container_width=True)
+
+        # ── Graphique 2 : Donut territoire ───────────────────────────────────
+        with _col2:
+            _terr_counts: Counter = Counter()
+            for r in _chart_rows:
+                _terr = detect_territoire(r["title"], r["desc"])
+                for _lbl in _terr.split(", "):
+                    _terr_counts[_lbl.strip()] += 1
+            _top4 = _terr_counts.most_common(4)
+            _autres_terr = sum(v for k, v in _terr_counts.items() if k not in dict(_top4))
+            _t_labels = [k for k, _ in _top4] + (["Autres"] if _autres_terr > 0 else [])
+            _t_values = [v for _, v in _top4] + ([_autres_terr] if _autres_terr > 0 else [])
+            _fig2 = px.pie(
+                values=_t_values,
+                names=_t_labels,
+                hole=0.5,
+                color_discrete_sequence=px.colors.qualitative.Set2,
+            )
+            _fig2.update_layout(
+                title="Par territoire",
+                margin=dict(t=40, b=10, l=0, r=0),
+                height=260,
+            )
+            st.plotly_chart(_fig2, use_container_width=True)
+
+        # ── Graphique 3 : Barres domaine ─────────────────────────────────────
+        with _col3:
+            _dom_counts: Counter = Counter()
+            for r in _chart_rows:
+                _dom = detect_domaine(r["title"], r["desc"])
+                for _lbl in _dom.split(", "):
+                    _dom_counts[_lbl.strip()] += 1
+            _d_labels = list(reversed([k for k, _ in _dom_counts.most_common()]))
+            _d_values = list(reversed([v for _, v in _dom_counts.most_common()]))
+            _fig3 = px.bar(
+                x=_d_values,
+                y=_d_labels,
+                orientation="h",
+                color_discrete_sequence=["#cc2222"],
+                labels={"x": "Marchés", "y": ""},
+            )
+            _fig3.update_layout(
+                title="Par domaine",
+                showlegend=False,
+                margin=dict(t=40, b=10, l=0, r=0),
+                height=260,
+            )
+            st.plotly_chart(_fig3, use_container_width=True)
 
 st.markdown("---")
 
