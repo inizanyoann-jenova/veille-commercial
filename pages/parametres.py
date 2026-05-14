@@ -246,6 +246,52 @@ for site_key, (site_label, category) in _SITE_LABELS.items():
                                 except subprocess.TimeoutExpired:
                                     st.error("❌ Timeout — la page de connexion n'a pas répondu en 60 secondes.")
 
+# ── Section sources automatiques (HTTP ping) ──────────────────────────────────
+st.markdown("---")
+st.header("📡 Sources automatiques")
+st.caption("Un test HTTP vérifie que chaque source est accessible. Valider une source la fait apparaître dans la sidebar de collecte.")
+
+import requests as _req
+from database import SessionLocal as _SL3
+from source_registry import Source as _Src3, validate_source as _val3
+
+_db_auto = _SL3()
+try:
+    _auto_sources = (
+        _db_auto.query(_Src3)
+        .filter(_Src3.is_manual == False)
+        .order_by(_Src3.display_order, _Src3.name)
+        .all()
+    )
+finally:
+    _db_auto.close()
+
+for _s in _auto_sources:
+    _badge = "✅" if _s.is_validated else "⬜"
+    _col_badge, _col_name, _col_btn = st.columns([1, 6, 2])
+    with _col_badge:
+        st.markdown(_badge)
+    with _col_name:
+        st.markdown(f"**{_s.name}**")
+        st.caption(_s.url)
+    with _col_btn:
+        if st.button("🔌 Tester", key=f"ping_{_s.id}"):
+            with st.spinner(f"Test {_s.name}…"):
+                try:
+                    _resp = _req.get(_s.url, timeout=8, allow_redirects=True)
+                    if _resp.status_code < 400:
+                        _db_v3 = _SL3()
+                        try:
+                            _val3(_db_v3, _s.id)
+                        finally:
+                            _db_v3.close()
+                        st.success(f"✅ Accessible (HTTP {_resp.status_code})")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ HTTP {_resp.status_code}")
+                except Exception as _exc:
+                    st.error(f"❌ Inaccessible — {_exc}")
+
 # ── Section sécurité ──────────────────────────────────────────────────────────
 st.markdown("---")
 st.header("🔑 Sécurité")
