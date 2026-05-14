@@ -219,13 +219,11 @@ for site_key, (site_label, category) in _SITE_LABELS.items():
                                             st.success(f"✅ Connexion réussie — redirigé vers `{diag.get('url_finale', '—')}`")
                                             _src_name = _SITE_TO_SOURCE_NAME.get(site_key)
                                             if _src_name:
-                                                from database import SessionLocal as _SL2
-                                                from source_registry import validate_source as _val_src
-                                                _db_val = _SL2()
+                                                _db_val = _SL_cred()
                                                 try:
                                                     _src = _db_val.query(_SrcCred).filter(_SrcCred.name == _src_name).first()
                                                     if _src:
-                                                        _val_src(_db_val, _src.id)
+                                                        _val3(_db_val, _src.id)
                                                 finally:
                                                     _db_val.close()
                                             st.rerun()
@@ -278,7 +276,8 @@ for _s in _auto_sources:
         if st.button("🔌 Tester", key=f"ping_{_s.id}"):
             with st.spinner(f"Test {_s.name}…"):
                 try:
-                    _resp = _req.get(_s.url, timeout=8, allow_redirects=True)
+                    _resp = _req.get(_s.url, timeout=8, allow_redirects=True,
+                                     headers={"User-Agent": "Mozilla/5.0 DEF-OI-Checker"})
                     if _resp.status_code < 400:
                         _db_v3 = _SL3()
                         try:
