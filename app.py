@@ -927,7 +927,7 @@ with st.sidebar:
     selected_source_ids: list[int] = []
 
     for cat in ["Public", "Privé", "International"]:
-        cat_sources = [s for s in all_sources if s.category == cat and s.enabled]
+        cat_sources = [s for s in all_sources if s.category == cat and s.enabled and s.is_validated]
         if not cat_sources:
             continue
         st.markdown(f"**{CATEGORY_ICONS[cat]}**")
