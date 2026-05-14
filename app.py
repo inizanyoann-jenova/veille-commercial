@@ -462,6 +462,7 @@ def load_tenders(
                     "⭐": bool(t.is_saved),
                     "Secteur": t.secteur or "Public",
                     "_deadline_dt": t.deadline,
+                    "_desc": (t.description or "").lower(),
                 }
             )
         return rows
@@ -861,7 +862,7 @@ with st.sidebar:
     st.markdown("## 🔥 DEF Océan Indien")
     st.markdown("**Veille Marchés Publics**")
     st.markdown("---")
-    search_query = st.text_input("🔍 Rechercher", placeholder="Titre, source…", key="search_query")
+    search_query = ""  # défini dans la page principale
 
     _now = datetime.now()
     _cy = _now.year
@@ -1495,6 +1496,14 @@ def _render_editor_section(
     st.markdown("---")
 
 
+# ── Recherche ─────────────────────────────────────────────────────────────────
+
+search_query = st.text_input(
+    "🔍 Rechercher un marché",
+    placeholder="Mot-clé dans le titre ou la description…",
+    key="search_query_main",
+)
+
 # ── Tableau Marchés Publics ───────────────────────────────────────────────────
 
 rows_pub = load_tenders(selected_status, maintenance_only, date_from, strict_date, secteur="Public", only_recent=only_recent)
@@ -1505,6 +1514,7 @@ if search_query:
         or _sq in r["Source"].lower()
         or _sq in r["Territoire"].lower()
         or _sq in r["Domaine"].lower()
+        or _sq in r["_desc"]
     )]
 def _is_urgent(r: dict) -> bool:
     dl = r.get("_deadline_dt")
@@ -1549,6 +1559,7 @@ if search_query:
         or _sq in r["Source"].lower()
         or _sq in r["Territoire"].lower()
         or _sq in r["Domaine"].lower()
+        or _sq in r["_desc"]
     )]
 if urgent_only:
     rows_priv = [r for r in rows_priv if _is_urgent(r)]
