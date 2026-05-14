@@ -650,10 +650,18 @@ st.session_state.setdefault("new_tender_ids", set())
 
 
 @st.cache_data(ttl=60)
-def load_tenders(status_filter: str, maintenance_only: bool, date_from: datetime | None, strict_date: bool = False, secteur: str = "Public") -> list[dict]:
+def load_tenders(
+    status_filter: str,
+    maintenance_only: bool,
+    date_from: datetime | None,
+    strict_date: bool = False,
+    secteur: str = "Public",
+    only_recent: bool = False,
+) -> list[dict]:
     db = new_db()
     try:
         from sqlalchemy import or_
+        from datetime import timedelta
         q = db.query(Tender).filter(Tender.is_blacklisted != True)
 
         if secteur == "Public":
@@ -661,13 +669,16 @@ def load_tenders(status_filter: str, maintenance_only: bool, date_from: datetime
         elif secteur == "Privé":
             q = q.filter(Tender.secteur == "Privé")
 
+        if only_recent:
+            cutoff = datetime.now() - timedelta(hours=24)
+            q = q.filter(Tender.publication_date >= cutoff)
+
         if status_filter != "Tous":
             q = q.filter(Tender.status == status_filter)
         if maintenance_only:
             q = q.filter(Tender.is_maintenance == True)
         if date_from is not None:
             if strict_date:
-                # Mode "30 derniers jours" : uniquement la date de publication
                 q = q.filter(Tender.publication_date >= date_from)
             else:
                 q = q.filter(or_(
@@ -994,6 +1005,7 @@ with st.sidebar:
     )
 
     maintenance_only = st.checkbox("Maintenance uniquement")
+    only_recent = st.checkbox("🆕 Nouveaux (24h)")
     selected_status = st.selectbox(
         "Filtrer par statut",
         ["Tous", "À qualifier", "En cours", "Soumis", "Gagné", "Perdu"],
@@ -1298,7 +1310,7 @@ def _render_editor_section(
             "Source": st.column_config.LinkColumn("Source", width="small"),
             "Territoire": st.column_config.TextColumn("Territoire", width="medium"),
             "Domaine": st.column_config.TextColumn("Domaine", width="medium"),
-            "Score": st.column_config.NumberColumn("Score DEF", min_value=0, max_value=100, width="small"),
+            "Score": st.column_config.ProgressColumn("Score DEF", min_value=0, max_value=100, format="%d"),
             "Date Limite": st.column_config.TextColumn("Date Limite", width="small"),
             "Publication": st.column_config.TextColumn("Publication", width="small"),
             "Statut": st.column_config.TextColumn("Statut", width="small"),
@@ -1308,7 +1320,7 @@ def _render_editor_section(
             "Montant (€)": st.column_config.NumberColumn("Montant (€)", format="%d €", width="small"),
             "⭐": st.column_config.CheckboxColumn("⭐", width="small"),
         },
-        column_order=["Go/No-Go", "Titre", "Source", "Territoire", "Domaine", "Score", "Montant (€)", "Date Limite", "Publication", "Statut", "Type", "Maint.", "Concurrents", "⭐"],
+        column_order=["Go/No-Go", "Titre", "Source", "Territoire", "Domaine", "Score", "Montant (€)", "Date Limite", "Publication", "Statut", "Type", "⭐"],
         use_container_width=True,
         hide_index=True,
         on_select="rerun",
@@ -1407,7 +1419,7 @@ def _render_editor_section(
 
 # ── Tableau Marchés Publics ───────────────────────────────────────────────────
 
-rows_pub = load_tenders(selected_status, maintenance_only, date_from, strict_date, secteur="Public")
+rows_pub = load_tenders(selected_status, maintenance_only, date_from, strict_date, secteur="Public", only_recent=only_recent)
 if terr_actifs:
     rows_pub = [r for r in rows_pub if any(terr in r["Territoire"] for terr in terr_actifs)]
 if selected_domaines:
@@ -1430,7 +1442,7 @@ _render_editor_section(
 
 # ── Tableau Signaux Privés ────────────────────────────────────────────────────
 
-rows_priv = load_tenders(selected_status, maintenance_only, date_from, strict_date, secteur="Privé")
+rows_priv = load_tenders(selected_status, maintenance_only, date_from, strict_date, secteur="Privé", only_recent=only_recent)
 if terr_actifs:
     rows_priv = [r for r in rows_priv if any(terr in r["Territoire"] for terr in terr_actifs)]
 if selected_domaines:
