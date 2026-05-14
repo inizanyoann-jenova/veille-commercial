@@ -109,3 +109,49 @@ def test_search_query_case_insensitive():
     q = "incendie"
     result = [r for r in rows if q in r["Titre"].lower() or q in r["Source"].lower()]
     assert len(result) == 1
+
+
+# ── Tests filtre urgences ─────────────────────────────────────────────────────
+
+from datetime import datetime, timedelta
+
+
+def _urgent_row(days_remaining: int) -> dict:
+    d = (datetime.now() + timedelta(days=days_remaining)).strftime("%d/%m/%Y")
+    return {"Titre": "Test", "Source": "", "Date Limite": d, "Go/No-Go": "🟢 GO"}
+
+
+def _is_urgent(r: dict) -> bool:
+    dl = r["Date Limite"]
+    if dl == "—":
+        return False
+    try:
+        d = datetime.strptime(dl, "%d/%m/%Y").date()
+        return (d - datetime.now().date()).days <= 14
+    except ValueError:
+        return False
+
+
+def test_urgent_within_14_days():
+    row = _urgent_row(7)
+    assert _is_urgent(row) is True
+
+
+def test_urgent_exactly_14_days():
+    row = _urgent_row(14)
+    assert _is_urgent(row) is True
+
+
+def test_urgent_15_days_not_urgent():
+    row = _urgent_row(15)
+    assert _is_urgent(row) is False
+
+
+def test_urgent_overdue_is_urgent():
+    row = _urgent_row(-3)
+    assert _is_urgent(row) is True
+
+
+def test_urgent_no_deadline_not_urgent():
+    row = {"Titre": "Test", "Source": "", "Date Limite": "—", "Go/No-Go": "🟢 GO"}
+    assert _is_urgent(row) is False

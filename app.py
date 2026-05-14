@@ -1005,6 +1005,7 @@ with st.sidebar:
 
     maintenance_only = st.checkbox("Maintenance uniquement")
     only_recent = st.checkbox("🆕 Nouveaux (24h)")
+    urgent_only = st.checkbox("🚨 Délais < 14 jours")
     selected_status = st.selectbox(
         "Filtrer par statut",
         ["Tous", "À qualifier", "En cours", "Soumis", "Gagné", "Perdu"],
@@ -1420,6 +1421,17 @@ rows_pub = load_tenders(selected_status, maintenance_only, date_from, strict_dat
 if search_query:
     _sq = search_query.lower()
     rows_pub = [r for r in rows_pub if _sq in r["Titre"].lower() or _sq in r["Source"].lower()]
+if urgent_only:
+    def _is_urgent(r: dict) -> bool:
+        dl = r["Date Limite"]
+        if dl == "—":
+            return False
+        try:
+            d = datetime.strptime(dl, "%d/%m/%Y").date()
+            return (d - datetime.now().date()).days <= 14
+        except ValueError:
+            return False
+    rows_pub = [r for r in rows_pub if _is_urgent(r)]
 if terr_actifs:
     rows_pub = [r for r in rows_pub if any(terr in r["Territoire"] for terr in terr_actifs)]
 if selected_domaines:
@@ -1446,6 +1458,8 @@ rows_priv = load_tenders(selected_status, maintenance_only, date_from, strict_da
 if search_query:
     _sq = search_query.lower()
     rows_priv = [r for r in rows_priv if _sq in r["Titre"].lower() or _sq in r["Source"].lower()]
+if urgent_only:
+    rows_priv = [r for r in rows_priv if _is_urgent(r)]
 if terr_actifs:
     rows_priv = [r for r in rows_priv if any(terr in r["Territoire"] for terr in terr_actifs)]
 if selected_domaines:
