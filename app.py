@@ -776,7 +776,7 @@ def load_saved_tenders() -> list[dict]:
 
 @st.cache_data(ttl=300)
 def load_chart_data() -> list[dict]:
-    """Charge les données légères pour les graphiques (sans description)."""
+    """Charge les données pour les graphiques (title + description pour détection territoire/domaine)."""
     db = new_db()
     try:
         rows = db.query(
@@ -1277,7 +1277,7 @@ with st.expander("📈 Tendances & Statistiques", expanded=False):
             _week_counts: dict[str, int] = defaultdict(int)
             for r in _chart_rows:
                 if r["pub"] and r["pub"] >= _cutoff:
-                    _wk = r["pub"].strftime("%Y-W%V")
+                    _wk = r["pub"].strftime("%G-W%V")
                     _week_counts[_wk] += 1
             _weeks = sorted(_week_counts.keys())
             _fig1 = px.bar(
