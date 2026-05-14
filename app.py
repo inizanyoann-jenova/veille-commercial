@@ -10,6 +10,7 @@ import streamlit as st
 from sqlalchemy import func as _func, or_
 
 from database import SessionLocal, init_db
+from apscheduler.schedulers.background import BackgroundScheduler as _BgScheduler
 from export_excel import generate_executive_report
 from llm_analyzer import (
     analyze_tender,
@@ -128,6 +129,33 @@ st.set_page_config(
 )
 
 init_db()
+
+# ── Scheduler ré-validation hebdomadaire ──────────────────────────────────────
+
+if "scheduler_started" not in st.session_state:
+    from source_registry import _run_weekly_ping as _rwp, Source as _SrcSched
+    from datetime import datetime as _dts, timedelta as _td2
+
+    def _maybe_run_catchup():
+        from database import SessionLocal as _SL_c
+        from source_registry import Source as _SrcC, _ping_source as _ps
+        _db_c = _SL_c()
+        try:
+            _now_c = _dts.utcnow()
+            stale = _db_c.query(_SrcC).filter(_SrcC.is_validated == True).all()
+            for s in stale:
+                if s.last_ping_at is None or (_now_c - s.last_ping_at.replace(tzinfo=None)).days >= 8:
+                    _ps(_db_c, s)
+        finally:
+            _db_c.close()
+
+    import threading as _threading
+    _threading.Thread(target=_maybe_run_catchup, daemon=True).start()
+
+    _scheduler = _BgScheduler()
+    _scheduler.add_job(_rwp, "interval", weeks=1, id="weekly_ping")
+    _scheduler.start()
+    st.session_state["scheduler_started"] = True
 
 st.markdown("""
 <style>
@@ -1023,6 +1051,8 @@ with st.sidebar:
                     else:
                         _label = f"{_d}j" if _d >= 1 else f"{_h}h"
                         st.caption(f"Collecte il y a {_label} — {_last['nb_new']} nouveaux")
+                if s.ping_failures_count and s.ping_failures_count >= 1 and s.is_validated:
+                    st.caption(f"⚠️ Ping échoué {s.ping_failures_count}x")
 
     st.markdown("")
     if st.button("⚡ Collecter la sélection", use_container_width=True, type="primary",

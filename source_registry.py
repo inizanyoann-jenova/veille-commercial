@@ -1,5 +1,7 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from models import Base
+import requests
+from datetime import datetime as _dt_src
 
 
 class Source(Base):
@@ -185,3 +187,34 @@ def invalidate_source(db, source_id: int) -> None:
     if s:
         s.is_validated = False
         db.commit()
+
+
+def _ping_source(db, source) -> bool:
+    try:
+        resp = requests.get(source.url, timeout=8, allow_redirects=True,
+                            headers={"User-Agent": "DEF-OI-Monitor/1.0"})
+        ok = resp.status_code < 400
+    except Exception:
+        ok = False
+
+    if ok:
+        source.ping_failures_count = 0
+    else:
+        source.ping_failures_count = (source.ping_failures_count or 0) + 1
+        if source.ping_failures_count >= 3:
+            source.is_validated = False
+
+    source.last_ping_at = _dt_src.utcnow()
+    db.commit()
+    return ok
+
+
+def _run_weekly_ping() -> None:
+    from database import SessionLocal as _SL_ping
+    db = _SL_ping()
+    try:
+        sources = db.query(Source).filter(Source.is_validated == True).all()
+        for s in sources:
+            _ping_source(db, s)
+    finally:
+        db.close()
