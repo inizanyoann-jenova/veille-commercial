@@ -15,6 +15,7 @@ class Source(Base):
     enabled = Column(Boolean, default=True)
     notes = Column(String, default=None)
     display_order = Column(Integer, default=99)
+    is_validated = Column(Boolean, default=False)
 
 
 _DEFAULT_SOURCES = [
@@ -166,3 +167,11 @@ def toggle_enabled(db, source_id: int) -> bool | None:
     s.enabled = not s.enabled
     db.commit()
     return s.enabled
+
+
+def validate_source(db, source_id: int) -> None:
+    """Marque une source comme validée (test de connexion réussi)."""
+    s = db.query(Source).filter(Source.id == source_id).first()
+    if s:
+        s.is_validated = True
+        db.commit()

@@ -110,3 +110,25 @@ def test_defunct_urls_not_in_sources():
     assert "https://www.nukema.fr" not in urls
     assert "https://www.marcheonline.com" not in urls
     db.close()
+
+
+def test_sources_default_not_validated(db):
+    from source_registry import init_sources, list_sources
+    init_sources(db)
+    sources = list_sources(db)
+    assert all(s.is_validated is False for s in sources)
+
+
+def test_validate_source(db):
+    from source_registry import init_sources, list_sources, validate_source
+    init_sources(db)
+    source = list_sources(db)[0]
+    assert source.is_validated is False
+    validate_source(db, source.id)
+    db.refresh(source)
+    assert source.is_validated is True
+
+
+def test_validate_source_unknown_id_noop(db):
+    from source_registry import validate_source
+    validate_source(db, 99999)  # ne doit pas lever d'exception
