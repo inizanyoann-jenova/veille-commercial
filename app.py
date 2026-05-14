@@ -1,8 +1,13 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date as _date
+import hashlib as _hl
 import html as _html
+import re
+from collections import Counter, defaultdict
 
 import pandas as pd
+import plotly.express as px
 import streamlit as st
+from sqlalchemy import func as _func, or_
 
 from database import SessionLocal, init_db
 from export_excel import generate_executive_report
@@ -21,6 +26,8 @@ from llm_analyzer import (
 )
 from source_registry import list_sources, add_source, remove_source, toggle_enabled
 from models import Tender
+
+from fiche_logic import SCORE_GO, SCORE_ETUDE, _compute_fiche_data
 
 # ── domaine detection ─────────────────────────────────────────────────────────
 
@@ -362,9 +369,9 @@ def _run_auto_analysis():
 
 
 def _gonogo(score: int) -> str:
-    if score >= 65:
+    if score >= SCORE_GO:
         return "🟢 GO"
-    elif score >= 35:
+    elif score >= SCORE_ETUDE:
         return "🟡 Étudier"
     return "🔴 Passer"
 
@@ -382,264 +389,6 @@ def _kpi_row(items: list[tuple], colors: list[str] | None = None) -> str:
 def _section_html(title: str, subtitle: str | None = None) -> str:
     sub = f'<p class="section-subtitle">{subtitle}</p>' if subtitle else ""
     return f'<div class="section-header"><div class="section-title"><span class="section-dot"></span>{title}</div>{sub}</div>'
-
-
-def _render_strategic_analysis(t, a: dict, domaine: str, territoire: str, score: int) -> None:
-    """Analyse stratégique structurée d'un signal/marché."""
-    import re
-    from datetime import date as _date
-
-    type_m = a.get("type_marche") or getattr(t, "type_opportunite", None) or "Inconnu"
-    territoire_ia = a.get("territoire_ia") or territoire
-    domaines = a.get("domaines_concernes", [])
-    justif = a.get("justification_score", "")
-    concurrents = a.get("marques_concurrentes_citees", [])
-    desc_text = f" {(t.description or '').lower()} "
-    title_l = (t.title or "").lower()
-
-    # ── Sous-scores (estimation affichage) ────────────────────────────────────
-    if "🔥 SSI" in domaine:          sm = 45
-    elif "💨 CMSI" in domaine:       sm = 40
-    elif "📷 Vidéo" in domaine:      sm = 40
-    elif "⚡ Courants" in domaine:   sm = 30
-    else:                              sm = 5
-
-    if "La Réunion" in territoire or "Mayotte" in territoire:   sg = 30
-    elif "Madagascar" in territoire or "Maurice" in territoire:  sg = 22
-    elif "Comores" in territoire:                                 sg = 18
-    elif "France" in territoire:                                  sg = 10
-    else:                                                         sg = 0
-
-    sk = 15 if any(kw in title_l for kw in [
-        "ssi", "cmsi", "détection", "alarme incendie", "désenfumage",
-        "vidéosurveillance", "cctv", "courants faibles",
-    ]) else 0
-    smaint = 10 if t.is_maintenance else 0
-
-    # ── Délai restant ─────────────────────────────────────────────────────────
-    jours_restants = None
-    if t.deadline:
-        try:
-            today = _date.today()
-            dl = t.deadline.date() if hasattr(t.deadline, "date") else t.deadline
-            jours_restants = (dl - today).days
-        except Exception:
-            pass
-
-    # ── Plan d'action ─────────────────────────────────────────────────────────
-    if score >= 65:
-        if jours_restants is not None and jours_restants < 0:
-            label_action = "⚠️ Date limite dépassée"
-            steps = [
-                "Vérifier si une prorogation ou relance est possible",
-                "Archiver dans le suivi commercial CRM",
-            ]
-        elif jours_restants is not None and jours_restants <= 7:
-            label_action = "🚨 Action immédiate — délai critique"
-            steps = [
-                "Désigner un chargé d'affaires **aujourd'hui**",
-                "Évaluer la faisabilité d'une réponse express",
-                "Rassembler références SSI/CMSI et documents de candidature en urgence",
-                "Contacter le pouvoir adjudicateur pour confirmer la date limite",
-            ]
-        elif jours_restants is not None and jours_restants <= 30:
-            label_action = "🟢 Traiter en priorité"
-            steps = [
-                "Affecter un chargé d'affaires et ouvrir une affaire dans le CRM",
-                "Télécharger le DCE complet et analyser le CCTP",
-                "Préparer le mémoire technique + chiffrage détaillé",
-                "Planifier la visite de site si requise par le cahier des charges",
-            ]
-        else:
-            label_action = "🟢 Planifier la réponse"
-            steps = [
-                "Inscrire au planning commercial et assigner un responsable d'offre",
-                "Télécharger le DCE et surveiller les éventuels amendements",
-                "Préparer les documents de candidature (références, Kbis, qualifications Qualifelec/APSAD)",
-                "Anticiper la visite de site et le chiffrage matériels/sous-traitance",
-            ]
-    elif score >= 35:
-        label_action = "🟡 À évaluer — décision requise"
-        steps = [
-            "Lire le CCTP complet : vérifier qu'il y a bien une composante SSI/CMSI/Vidéo ou courants faibles exploitable par DEF OI",
-            "Vérifier si DEF OI a des références sur ce type de prestation **et** sur ce territoire (critères de sélection souvent liés)",
-            "Estimer la concurrence : chercher d'éventuels prix publics antérieurs et identifier les opérateurs déjà positionnés",
-            "Si l'adéquation est confirmée, décision GO/NO-GO à remonter à la direction commerciale sous 48 h",
-        ]
-    else:
-        label_action = "🔴 Hors périmètre DEF OI"
-        steps = [
-            "Archiver — pas de composante SSI/CMSI/Vidéo/courants faibles identifiée dans le périmètre DEF OI",
-            "Ne pas mobiliser de ressources commerciales ; réévaluer uniquement si une nouvelle version du DCE précise une composante électronique de sécurité",
-        ]
-
-    st.markdown("#### 📊 Analyse stratégique")
-
-    # ── Bloc 1 : Recommandation + Calendrier ──────────────────────────────────
-    col_reco, col_cal = st.columns([3, 2])
-
-    with col_reco:
-        st.markdown(f"**{label_action}**")
-        for step in steps:
-            st.markdown(f"- {step}")
-        if justif:
-            st.info(f"💡 {justif}")
-
-    with col_cal:
-        st.markdown("**Calendrier**")
-        if jours_restants is not None:
-            if jours_restants < 0:
-                st.error(f"Date limite dépassée ({abs(jours_restants)} j)")
-            elif jours_restants <= 7:
-                st.error(f"⚡ {jours_restants} jour(s) restant(s)")
-            elif jours_restants <= 21:
-                st.warning(f"⏳ {jours_restants} jour(s) restant(s)")
-            else:
-                st.success(f"🗓️ {jours_restants} jour(s) restant(s)")
-            if t.deadline and hasattr(t.deadline, "strftime"):
-                st.caption(f"Date limite : {t.deadline.strftime('%d/%m/%Y')}")
-        else:
-            st.caption("Date limite non renseignée")
-        if t.publication_date and hasattr(t.publication_date, "strftime"):
-            st.caption(f"Publié le : {t.publication_date.strftime('%d/%m/%Y')}")
-        if t.amount:
-            st.caption(f"Montant estimé : {t.amount:,.0f} €".replace(",", " "))
-
-    # ── Bloc 2 : Score détaillé + Atouts / Risques ────────────────────────────
-    col_score, col_forces = st.columns(2)
-
-    with col_score:
-        st.markdown("**Décomposition du score DEF**")
-        for nom, val, maxval in [
-            ("Pertinence métier", sm, 45),
-            ("Proximité géographique", sg, 30),
-            ("Mots-clés dans le titre", sk, 15),
-            ("Maintenance / Récurrence", smaint, 10),
-        ]:
-            pct = val / maxval if maxval > 0 else 0
-            st.markdown(f"**{nom}** — `{val}/{maxval}`")
-            st.progress(pct)
-
-    with col_forces:
-        st.markdown("**Pourquoi c'est pertinent pour DEF OI**")
-        atouts = []
-        if sm >= 40:
-            atouts.append("✅ **Cœur de métier** — SSI/CMSI/Vidéo : DEF OI dispose de l'expertise technique, des certifications (Qualifelec, APSAD) et des références pour répondre")
-        elif sm >= 30:
-            atouts.append("✅ **Périmètre DEF OI** — Courants faibles : prestation complémentaire au SSI, souvent regroupée dans les mêmes marchés")
-        if sg == 30:
-            atouts.append("✅ **Présence locale 974/976** — DEF OI connaît les donneurs d'ordre, les sites et les exigences locales ; avantage concurrentiel fort sur les entreprises métropolitaines")
-        elif sg >= 18:
-            atouts.append("✅ **Zone Océan Indien** — axe de développement stratégique de DEF OI ; peu de concurrents locaux qualifiés SSI/CMSI sur ces marchés")
-        if smaint == 10:
-            atouts.append("✅ **Maintenance** — CA récurrent et prévisible, taux de marge élevé, et levier pour consolider la relation client sur le long terme")
-        if sk == 15:
-            atouts.append("✅ **Signal direct** — les mots-clés métier SSI/CMSI/Vidéo apparaissent dans le titre : opportunité clairement identifiable sans ambiguïté")
-        if not atouts:
-            atouts.append("ℹ️ **Pertinence limitée** — aucun marqueur fort du cœur de métier DEF OI (SSI/CMSI/Vidéo) ni du territoire prioritaire (974/976) ; étudier le CCTP complet avant d'engager des ressources")
-        for item in atouts:
-            st.markdown(item)
-
-        risques = []
-        if concurrents:
-            risques.append(f"⚠️ Concurrents nommés dans le DCE : {', '.join(concurrents[:4])}")
-        if a.get("risques_penalites"):
-            risques.append(f"⚠️ {a['risques_penalites']}")
-        if jours_restants is not None and 0 <= jours_restants <= 14:
-            risques.append("⚠️ Délai très court — risque de réponse technique insuffisante")
-        if risques:
-            st.markdown("**Risques identifiés**")
-            for item in risques:
-                st.markdown(item)
-
-    # ── Bloc 3 : Mots-clés description + Contexte ────────────────────────────
-    col_kw, col_ctx = st.columns(2)
-
-    with col_kw:
-        st.markdown("**Mots-clés métier détectés dans la description**")
-
-        def _find_kws(kw_list: list, label: str) -> bool:
-            hits = []
-            for kw in kw_list:
-                if kw.startswith(r"\b"):
-                    if re.search(kw, desc_text):
-                        hits.append(re.sub(r"\\b", "", kw).strip())
-                elif kw in desc_text:
-                    hits.append(kw.strip())
-            if hits:
-                chips = " · ".join(f"`{h}`" for h in hits[:6])
-                st.markdown(f"**{label} :** {chips}")
-            return bool(hits)
-
-        # Scan titre + description ensemble
-        full_text = f" {((t.title or '') + ' ' + (t.description or '')).lower()} "
-
-        def _find_kws_full(kw_list: list, label: str) -> bool:
-            hits = []
-            for kw in kw_list:
-                if kw.startswith(r"\b"):
-                    if re.search(kw, full_text):
-                        hits.append(re.sub(r"\\b", "", kw).strip())
-                elif kw in full_text:
-                    hits.append(kw.strip())
-            hits = list(dict.fromkeys(hits))  # dédupliquer
-            if hits:
-                chips = " · ".join(f"`{h}`" for h in hits[:8])
-                st.markdown(f"**{label} :** {chips}")
-            return bool(hits)
-
-        any_hit = any([
-            _find_kws_full(_KW_SSI, "🔥 SSI / Incendie"),
-            _find_kws_full(_KW_CMSI, "💨 CMSI / Désenfumage"),
-            _find_kws_full(_KW_VIDEO, "📷 Vidéosurveillance"),
-            _find_kws_full(_KW_COURANTS_FAIBLES, "⚡ Courants faibles"),
-            _find_kws_full(_KW_MAINTENANCE, "🔧 Maintenance"),
-            _find_kws_full(_KW_ERP, "🏢 Bâtiment ERP"),
-            _find_kws_full(_KW_PENALITES, "⚠️ Pénalités / Risques"),
-        ])
-        if not any_hit:
-            st.caption("Aucun mot-clé métier détecté dans le titre ni la description.")
-
-        # Compteurs bruts si disponibles (analyse locale)
-        nb_ssi_raw = a.get("_nb_ssi", 0)
-        nb_cmsi_raw = a.get("_nb_cmsi", 0)
-        nb_vid_raw = a.get("_nb_vid", 0)
-        nb_cf_raw = a.get("_nb_cf", 0)
-        nb_erp_raw = a.get("_nb_erp", 0)
-        nb_excl_raw = a.get("_nb_excl", 0)
-        if any([nb_ssi_raw, nb_cmsi_raw, nb_vid_raw, nb_cf_raw, nb_erp_raw]):
-            st.caption(
-                f"Indices détectés — SSI: {nb_ssi_raw} · CMSI: {nb_cmsi_raw} · "
-                f"Vidéo: {nb_vid_raw} · CF: {nb_cf_raw} · ERP: {nb_erp_raw}"
-                + (f" · ⚠️ Exclusion: {nb_excl_raw}" if nb_excl_raw else "")
-            )
-
-    with col_ctx:
-        st.markdown("**Contexte & Informations**")
-        st.markdown(f"🏷️ **Type :** {type_m}")
-        st.markdown(f"🌍 **Territoire (IA) :** {territoire_ia}")
-        if domaines:
-            st.markdown(f"🔧 **Domaines :** {', '.join(domaines)}")
-        st.markdown(f"🏢 **Secteur :** {getattr(t, 'secteur', None) or 'Public'}")
-        if concurrents:
-            st.markdown(f"🏭 **Concurrents :** {', '.join(concurrents)}")
-        source_a = a.get("_source", "local")
-        st.caption(
-            "🤖 Score Claude (70%) + règles métier (30%)"
-            if source_a in ("claude", "gemini")
-            else "🔍 Score règles métier DEF (Claude indisponible)"
-        )
-
-    # ── Description brute — toujours affichée ─────────────────────────────────
-    with st.expander("📄 Description brute du marché"):
-        if t.description and t.description.strip():
-            st.write(t.description)
-        else:
-            st.caption("Aucune description textuelle disponible dans la base pour ce marché.")
-            st.markdown(f"**Titre complet :** {t.title or '—'}")
-            if getattr(t, "source", None):
-                st.markdown(f"**Source :** {t.source}")
-            st.info("Consulter directement la plateforme source pour accéder au cahier des charges complet.")
 
 
 # Auto-analyse au démarrage (une seule fois par session)
@@ -660,7 +409,6 @@ def load_tenders(
 ) -> list[dict]:
     db = new_db()
     try:
-        from sqlalchemy import or_
         q = db.query(Tender).filter(Tender.is_blacklisted != True)
 
         if secteur == "Public":
@@ -713,6 +461,7 @@ def load_tenders(
                     "Montant (€)": t.amount,
                     "⭐": bool(t.is_saved),
                     "Secteur": t.secteur or "Public",
+                    "_deadline_dt": t.deadline,
                 }
             )
         return rows
@@ -803,7 +552,6 @@ def load_pipeline() -> dict[str, list[dict]]:
     """Retourne les marchés publics groupés par statut pour la vue pipeline."""
     db = new_db()
     try:
-        from sqlalchemy import or_
         tenders = (
             db.query(Tender)
             .filter(
@@ -835,6 +583,17 @@ def save_status(tender_id: str, new_status: str) -> None:
         db.close()
 
 
+def save_notes(tender_id: str, notes: str) -> None:
+    db = new_db()
+    try:
+        t = db.query(Tender).filter(Tender.id == tender_id).first()
+        if t:
+            t.notes = notes or None
+            db.commit()
+    finally:
+        db.close()
+
+
 def save_amount(tender_id: str, amount: int | None) -> None:
     db = new_db()
     try:
@@ -860,6 +619,69 @@ def run_analysis(tender_id: str) -> None:
         t.relevance_score = result.get("score_pertinence", 0)
         t.is_maintenance = result.get("type_marche", "").lower() == "maintenance"
         db.commit()
+    finally:
+        db.close()
+
+
+def _sort_rows(rows: list[dict], sort_by: str) -> list[dict]:
+    if sort_by == "Score ↓":
+        return sorted(rows, key=lambda r: -(r.get("Score") or 0))
+    elif sort_by == "Publication ↓":
+        return sorted(rows, key=lambda r: r.get("_deadline_dt") or datetime.min, reverse=True)
+    else:  # Date limite ↑ (défaut)
+        return sorted(rows, key=lambda r: (
+            r.get("_deadline_dt") is None,
+            r.get("_deadline_dt") or datetime.max,
+        ))
+
+
+@st.cache_data(ttl=60)
+def load_kpis_public() -> dict:
+    db = new_db()
+    try:
+        pub = or_(Tender.secteur == "Public", Tender.secteur == None)
+        return {
+            "total": db.query(Tender).filter(pub).count(),
+            "a_qualifier": db.query(Tender).filter(pub, Tender.status == "À qualifier").count(),
+            "en_cours": db.query(Tender).filter(pub, Tender.status == "En cours").count(),
+            "gagnes": db.query(Tender).filter(pub, Tender.status == "Gagné").count(),
+            "soumis": db.query(Tender).filter(pub, Tender.status == "Soumis").count(),
+        }
+    finally:
+        db.close()
+
+
+@st.cache_data(ttl=60)
+def load_kpis_ca() -> dict:
+    db = new_db()
+    try:
+        pub = or_(Tender.secteur == "Public", Tender.secteur == None)
+
+        def _sum(statuts):
+            res = db.query(_func.sum(Tender.amount)).filter(
+                pub, Tender.status.in_(statuts), Tender.amount != None
+            ).scalar()
+            return res or 0
+
+        en_cours = _sum(["En cours"])
+        soumis = _sum(["Soumis"])
+        gagne = _sum(["Gagné"])
+        return {"en_cours": en_cours, "soumis": soumis, "gagne": gagne, "pipeline": en_cours + soumis}
+    finally:
+        db.close()
+
+
+@st.cache_data(ttl=60)
+def load_kpis_priv() -> dict:
+    db = new_db()
+    try:
+        return {
+            "permis": db.query(Tender).filter(Tender.secteur == "Privé", Tender.type_opportunite == "Permis Construire").count(),
+            "presse": db.query(Tender).filter(Tender.secteur == "Privé", Tender.type_opportunite == "Presse").count(),
+            "instit": db.query(Tender).filter(Tender.secteur == "Privé", Tender.type_opportunite == "Institution").count(),
+            "devbanks": db.query(Tender).filter(Tender.type_opportunite == "Banque Dev.").count(),
+            "qualif_priv": db.query(Tender).filter(Tender.secteur == "Privé", Tender.status == "À qualifier").count(),
+        }
     finally:
         db.close()
 
@@ -924,9 +746,9 @@ def _collect_selected_sources(selected_source_ids: list[int]) -> None:
             def _sc(t) -> int:
                 return (t.llm_analysis or {}).get("score_pertinence", t.relevance_score or 0)
 
-            _go = sum(1 for t in _new_tenders if _sc(t) >= 65)
-            _etude = sum(1 for t in _new_tenders if 35 <= _sc(t) < 65)
-            _pass = sum(1 for t in _new_tenders if _sc(t) < 35)
+            _go = sum(1 for t in _new_tenders if _sc(t) >= SCORE_GO)
+            _etude = sum(1 for t in _new_tenders if SCORE_ETUDE <= _sc(t) < SCORE_GO)
+            _pass = sum(1 for t in _new_tenders if _sc(t) < SCORE_ETUDE)
             _claude_ok = sum(1 for t in _new_tenders if (t.llm_analysis or {}).get("_source") in ("claude", "gemini"))
         finally:
             _db_res.close()
@@ -988,10 +810,10 @@ def _render_new_tenders_section() -> None:
         justif_raw = (a.get("justification_score") or "")[:120]
         justif = _html.escape(justif_raw)
 
-        if score >= 65:
+        if score >= SCORE_GO:
             color_class = ""
             badge = f"🟢 GO — Score {score}/100"
-        elif score >= 35:
+        elif score >= SCORE_ETUDE:
             color_class = "orange"
             badge = f"🟡 Étudier — Score {score}/100"
         else:
@@ -1087,6 +909,11 @@ with st.sidebar:
         options=["🟢 GO", "🟡 Étudier", "🔴 Passer"],
         placeholder="Toutes les décisions",
     )
+    sort_by = st.selectbox(
+        "Trier par",
+        ["Date limite ↑", "Score ↓", "Publication ↓"],
+        index=0,
+    )
     st.markdown("---")
     st.markdown("### ⚡ Sources de collecte")
 
@@ -1169,6 +996,15 @@ with st.sidebar:
         st.page_link("pages/analytics.py", label="📈 Analytics", use_container_width=True)
 
 
+@st.cache_data(ttl=300)
+def _generate_report_cached() -> bytes:
+    db = new_db()
+    try:
+        return generate_executive_report(db)
+    finally:
+        db.close()
+
+
 # ── header + export ───────────────────────────────────────────────────────────
 
 st.markdown("""
@@ -1184,15 +1020,9 @@ st.markdown("""
 # Large export button
 _, col_btn, _ = st.columns([1, 2, 1])
 with col_btn:
-    db_exp = new_db()
-    try:
-        excel_bytes = generate_executive_report(db_exp)
-    finally:
-        db_exp.close()
-
     st.download_button(
         label="📊  Télécharger le Rapport Direction (Excel)",
-        data=excel_bytes,
+        data=_generate_report_cached(),
         file_name=f"Rapport_Direction_DEF_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,
@@ -1206,92 +1036,43 @@ _render_new_tenders_section()
 
 # ── KPI metrics ───────────────────────────────────────────────────────────────
 
-db_kpi = new_db()
-try:
-    from sqlalchemy import or_ as _or
-    _pub = _or(Tender.secteur == "Public", Tender.secteur == None)
-    total = db_kpi.query(Tender).filter(_pub).count()
-    a_qualifier = db_kpi.query(Tender).filter(_pub, Tender.status == "À qualifier").count()
-    en_cours = db_kpi.query(Tender).filter(_pub, Tender.status == "En cours").count()
-    gagnes = db_kpi.query(Tender).filter(_pub, Tender.status == "Gagné").count()
-    soumis = db_kpi.query(Tender).filter(_pub, Tender.status == "Soumis").count()
-finally:
-    db_kpi.close()
-
+_kpis = load_kpis_public()
 st.markdown(_kpi_row([
-    ("Total marchés", total),
-    ("À qualifier", a_qualifier),
-    ("En cours", en_cours),
-    ("Soumis", soumis),
-    ("Gagnés 🏆", gagnes),
+    ("Total marchés", _kpis["total"]),
+    ("À qualifier", _kpis["a_qualifier"]),
+    ("En cours", _kpis["en_cours"]),
+    ("Soumis", _kpis["soumis"]),
+    ("Gagnés 🏆", _kpis["gagnes"]),
 ], colors=["", "orange", "blue", "purple", "green"]), unsafe_allow_html=True)
 
 # KPI CA pipeline
-db_ca = new_db()
-try:
-    def _sum_amount(statuts):
-        from sqlalchemy import func, or_
-        _pub = or_(Tender.secteur == "Public", Tender.secteur == None)
-        res = db_ca.query(func.sum(Tender.amount)).filter(
-            _pub, Tender.status.in_(statuts), Tender.amount != None
-        ).scalar()
-        return res or 0
-
-    ca_en_cours = _sum_amount(["En cours"])
-    ca_soumis = _sum_amount(["Soumis"])
-    ca_gagne = _sum_amount(["Gagné"])
-    ca_pipeline = ca_en_cours + ca_soumis
-finally:
-    db_ca.close()
-
-if ca_pipeline > 0 or ca_gagne > 0:
+_kpis_ca = load_kpis_ca()
+if _kpis_ca["pipeline"] > 0 or _kpis_ca["gagne"] > 0:
     st.markdown('<p class="ca-label">CA Pipeline — montants renseignés</p>', unsafe_allow_html=True)
     st.markdown(_kpi_row([
-        ("CA En cours", f"{ca_en_cours:,.0f} €".replace(",", " ")),
-        ("CA Soumis", f"{ca_soumis:,.0f} €".replace(",", " ")),
-        ("CA Gagné 🏆", f"{ca_gagne:,.0f} €".replace(",", " ")),
-        ("CA Total pipeline", f"{ca_pipeline:,.0f} €".replace(",", " ")),
+        ("CA En cours", f"{_kpis_ca['en_cours']:,.0f} €".replace(",", " ")),
+        ("CA Soumis", f"{_kpis_ca['soumis']:,.0f} €".replace(",", " ")),
+        ("CA Gagné 🏆", f"{_kpis_ca['gagne']:,.0f} €".replace(",", " ")),
+        ("CA Total pipeline", f"{_kpis_ca['pipeline']:,.0f} €".replace(",", " ")),
     ], colors=["blue", "orange", "green", ""]), unsafe_allow_html=True)
 
 st.markdown("---")
 
 # ── signaux privés KPI ────────────────────────────────────────────────────────
 
-db_priv = new_db()
-try:
-    nb_permis = db_priv.query(Tender).filter(
-        Tender.secteur == "Privé", Tender.type_opportunite == "Permis Construire"
-    ).count()
-    nb_presse = db_priv.query(Tender).filter(
-        Tender.secteur == "Privé", Tender.type_opportunite == "Presse"
-    ).count()
-    nb_instit = db_priv.query(Tender).filter(
-        Tender.secteur == "Privé", Tender.type_opportunite == "Institution"
-    ).count()
-    nb_devbanks = db_priv.query(Tender).filter(
-        Tender.type_opportunite == "Banque Dev."
-    ).count()
-    nb_qualif_priv = db_priv.query(Tender).filter(
-        Tender.secteur == "Privé", Tender.status == "À qualifier"
-    ).count()
-finally:
-    db_priv.close()
-
+_kpis_priv = load_kpis_priv()
 st.markdown('<p class="ca-label">Signaux privés</p>', unsafe_allow_html=True)
 st.markdown(_kpi_row([
-    ("Permis construire", nb_permis),
-    ("Articles presse", nb_presse),
-    ("Institutions", nb_instit),
-    ("Banques Dev.", nb_devbanks),
-    ("Privé — À qualifier", nb_qualif_priv),
+    ("Permis construire", _kpis_priv["permis"]),
+    ("Articles presse", _kpis_priv["presse"]),
+    ("Institutions", _kpis_priv["instit"]),
+    ("Banques Dev.", _kpis_priv["devbanks"]),
+    ("Privé — À qualifier", _kpis_priv["qualif_priv"]),
 ], colors=["teal", "blue", "purple", "orange", ""]), unsafe_allow_html=True)
 
 # ── Tendances & Statistiques ──────────────────────────────────────────────────
 
 with st.expander("📈 Tendances & Statistiques", expanded=False):
-    import plotly.express as px
-    from collections import Counter, defaultdict
-
     _chart_rows = load_chart_data()
 
     if not _chart_rows:
@@ -1391,49 +1172,163 @@ def _render_fiche(tender_id: str, key_suffix: str) -> None:
         domaine = detect_domaine(t.title or "", t.description or "")
         territoire = detect_territoire(t.title or "", t.description or "")
         score = a.get("score_pertinence", t.relevance_score or 0)
-        decision = _gonogo(score)
 
-        tag = a.get("tag_pertinence") or decision
-        if score >= 65:
-            st.success(f"**{tag}** — Score {score}/100 · {domaine} · {territoire}")
-        elif score >= 35:
-            st.warning(f"**{tag}** — Score {score}/100 · {domaine} · {territoire}")
+        # ── Délai restant ─────────────────────────────────────────────────────
+        jours_restants = None
+        if t.deadline:
+            try:
+                today = _date.today()
+                dl = t.deadline.date() if hasattr(t.deadline, "date") else t.deadline
+                jours_restants = (dl - today).days
+            except Exception:
+                pass
+
+        data = _compute_fiche_data(
+            score, jours_restants, domaine, territoire,
+            bool(t.is_maintenance), t.title or "", a,
+        )
+
+        # ── BLOC 1 : Header de décision ───────────────────────────────────────
+        tag = a.get("tag_pertinence") or _gonogo(score)
+        header_line = f"**{tag}** — Score {score}/100 · {domaine} · {territoire}"
+        if score >= SCORE_GO:
+            st.success(header_line)
+        elif score >= SCORE_ETUDE:
+            st.warning(header_line)
         else:
-            st.error(f"**{tag}** — Score {score}/100 · {domaine} · {territoire}")
-
-        domaines = a.get("domaines_concernes", [])
-        if domaines:
-            chips = " · ".join([f"`{d}`" for d in domaines])
-            st.markdown(f"**Domaines :** {chips}")
-
+            st.error(header_line)
         if a.get("justification_score"):
             st.caption(f"💡 {a['justification_score']}")
 
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Type", a.get("type_marche") or t.type_opportunite or "—")
-        m2.metric("Score DEF", f"{score} / 100")
-        m3.metric("Concurrents", len(a.get("marques_concurrentes_citees", [])))
-        m4.metric("Maintenance", "Oui" if t.is_maintenance else "Non")
-
-        if a.get("marques_concurrentes_citees"):
-            st.write("**Marques concurrentes citées :**", ", ".join(a["marques_concurrentes_citees"]))
-        if a.get("risques_penalites"):
-            st.warning(f"⚠️ Risques / Pénalités : {a['risques_penalites']}")
-
-        source_a = a.get("_source", "local")
-        if source_a in ("claude", "gemini"):
-            st.caption("🤖 Analyse Claude (score combiné 70 % IA + 30 % règles métier)")
+        # ── BLOC 2 : Métriques condensées ────────────────────────────────────
+        m1, m2, m3, m4, m5 = st.columns(5)
+        if jours_restants is not None:
+            m1.metric("Délai (j)", jours_restants)
         else:
-            st.caption("🔍 Analyse locale (règles métier DEF — Claude indisponible)")
+            m1.metric("Délai (j)", "—")
+        m2.metric("Type", a.get("type_marche") or t.type_opportunite or "—")
+        m3.metric("Maintenance", "Oui" if t.is_maintenance else "Non")
+        m4.metric("Concurrents", len(a.get("marques_concurrentes_citees", [])))
+        source_a = a.get("_source", "local")
+        m5.metric("Analyse", "Claude IA" if source_a in ("claude", "gemini") else "Règles")
 
-        _render_strategic_analysis(t, a, domaine, territoire, score)
+        # ── BLOC 3 : Plan d'action ────────────────────────────────────────────
+        st.markdown(f"#### {data['label_action']}")
+        for i, step in enumerate(data["steps"], 1):
+            st.markdown(f"{i}. {step}")
+        for risque in data["risques"]:
+            st.warning(risque)
+
+        # ── BLOC 4 : Atouts DEF OI ────────────────────────────────────────────
+        st.markdown("#### Pourquoi c'est pertinent pour DEF OI")
+        for atout in data["atouts"]:
+            st.markdown(atout)
+
+        # ── BLOC 5 : Détail technique (expander) ──────────────────────────────
+        with st.expander("📊 Détail du score & mots-clés"):
+            st.markdown("**Décomposition du score DEF**")
+            if source_a in ("claude", "gemini"):
+                st.caption("Estimation indicative — le score affiché est celui de l'IA, pas la somme ci-dessous.")
+            for nom, val, maxval in [
+                ("Pertinence métier", data["sm"], 45),
+                ("Proximité géographique", data["sg"], 30),
+                ("Mots-clés dans le titre", data["sk"], 15),
+                ("Maintenance / Récurrence", data["smaint"], 10),
+            ]:
+                pct = val / maxval if maxval > 0 else 0
+                st.markdown(f"**{nom}** — `{val}/{maxval}`")
+                st.progress(pct)
+
+            st.markdown("---")
+            st.markdown("**Mots-clés métier détectés**")
+            full_text = f" {((t.title or '') + ' ' + (t.description or '')).lower()} "
+
+            def _find_kws(kw_list: list, label: str) -> bool:
+                hits = []
+                for kw in kw_list:
+                    if kw.startswith(r"\b"):
+                        if re.search(kw, full_text):
+                            hits.append(re.sub(r"\\b", "", kw).strip())
+                    elif kw in full_text:
+                        hits.append(kw.strip())
+                hits = list(dict.fromkeys(hits))
+                if hits:
+                    st.markdown(f"**{label} :** {' · '.join(f'`{h}`' for h in hits[:8])}")
+                return bool(hits)
+
+            any_hit = any([
+                _find_kws(_KW_SSI, "🔥 SSI / Incendie"),
+                _find_kws(_KW_CMSI, "💨 CMSI / Désenfumage"),
+                _find_kws(_KW_VIDEO, "📷 Vidéosurveillance"),
+                _find_kws(_KW_COURANTS_FAIBLES, "⚡ Courants faibles"),
+                _find_kws(_KW_MAINTENANCE, "🔧 Maintenance"),
+                _find_kws(_KW_ERP, "🏢 Bâtiment ERP"),
+                _find_kws(_KW_PENALITES, "⚠️ Pénalités / Risques"),
+            ])
+            if not any_hit:
+                st.caption("Aucun mot-clé métier détecté dans le titre ni la description.")
+
+            st.markdown("---")
+            st.markdown("**Contexte**")
+            territoire_ia = a.get("territoire_ia") or territoire
+            domaines_ia = a.get("domaines_concernes", [])
+            concurrents = a.get("marques_concurrentes_citees", [])
+            st.markdown(f"🏷️ **Type :** {a.get('type_marche') or t.type_opportunite or 'Inconnu'}")
+            st.markdown(f"🌍 **Territoire (IA) :** {territoire_ia}")
+            if domaines_ia:
+                st.markdown(f"🔧 **Domaines :** {', '.join(domaines_ia)}")
+            st.markdown(f"🏢 **Secteur :** {getattr(t, 'secteur', None) or 'Public'}")
+            if concurrents:
+                st.markdown(f"🏭 **Concurrents :** {', '.join(concurrents)}")
+
+            st.markdown("---")
+            st.markdown("**Description brute**")
+            if t.description and t.description.strip():
+                st.write(t.description)
+            else:
+                st.caption("Aucune description textuelle disponible.")
+                st.markdown(f"**Titre complet :** {t.title or '—'}")
+                if getattr(t, "source", None):
+                    st.markdown(f"**Source :** {t.source}")
+                st.info("Consulter directement la plateforme source pour accéder au cahier des charges complet.")
+
         st.markdown("---")
-        if st.button("🤖 Réanalyser avec Claude", key=f"reanalyze_{key_suffix}_{tender_id}",
-                     help="Relance l'analyse Claude pour affiner le score et la justification"):
-            with st.spinner("Analyse Claude en cours…"):
-                run_analysis(tender_id)
-            st.cache_data.clear()
-            st.rerun()
+
+        # ── BLOC 6 : Actions rapides ──────────────────────────────────────────
+        col_save, col_qualify, col_reanalyze, _ = st.columns([2, 2, 2, 4])
+        with col_save:
+            star = bool(t.is_saved)
+            label_star = "⭐ Sauvegardé" if star else "⭐ Sauvegarder"
+            if st.button(label_star, key=f"fiche_save_{key_suffix}_{tender_id}"):
+                toggle_saved(tender_id, not star)
+                st.cache_data.clear()
+                st.rerun()
+        with col_qualify:
+            if t.status not in ("En cours", "Soumis", "Gagné", "Perdu"):
+                if st.button("✅ Qualifier → En cours", key=f"fiche_qualify_{key_suffix}_{tender_id}"):
+                    save_status(tender_id, "En cours")
+                    st.cache_data.clear()
+                    st.rerun()
+            else:
+                st.caption(f"Statut : {t.status}")
+        with col_reanalyze:
+            if st.button("🤖 Réanalyser", key=f"reanalyze_{key_suffix}_{tender_id}",
+                         help="Relance l'analyse Claude pour affiner le score et la justification"):
+                with st.spinner("Analyse Claude en cours…"):
+                    run_analysis(tender_id)
+                st.cache_data.clear()
+                st.rerun()
+
+        with st.expander("📝 Notes internes", expanded=bool(t.notes)):
+            _notes_new = st.text_area(
+                "Annotations commerciales (non exportées)",
+                value=t.notes or "",
+                height=80,
+                key=f"notes_area_{key_suffix}_{tender_id}",
+            )
+            if st.button("💾 Enregistrer", key=f"save_notes_{key_suffix}_{tender_id}"):
+                save_notes(tender_id, _notes_new)
+                st.success("Notes enregistrées.")
     finally:
         db_det.close()
 
@@ -1456,12 +1351,25 @@ def _render_editor_section(
         st.info("Aucun résultat. Lancez la collecte depuis le menu latéral ou ajustez les filtres.")
         return
 
+    import io as _io
     df = pd.DataFrame(rows)
+
+    # ── Export CSV ────────────────────────────────────────────────────────────
+    _export_cols = [c for c in df.columns if not c.startswith("_") and c not in ("ID", "Secteur")]
+    _csv_buf = _io.StringIO()
+    df[_export_cols].to_csv(_csv_buf, index=False)
+    st.download_button(
+        "📥 Exporter vue filtrée (CSV)",
+        data=_csv_buf.getvalue().encode("utf-8-sig"),
+        file_name=f"DEF_export_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+        mime="text/csv",
+        key=f"csv_{editor_key}",
+    )
 
     # ── Tableau principal (clic pour sélectionner) ────────────────────────────
     st.caption("👆 Cliquez sur une ligne pour la sélectionner et afficher son analyse ci-dessous")
     view_event = st.dataframe(
-        df.drop(columns=["ID", "Secteur"], errors="ignore"),
+        df.drop(columns=["ID", "Secteur", "_deadline_dt"], errors="ignore"),
         column_config={
             "Go/No-Go": st.column_config.TextColumn("Décision", width="small"),
             "Titre": st.column_config.TextColumn("Titre du Marché", width="large"),
@@ -1559,16 +1467,27 @@ def _render_editor_section(
     st.markdown("---")
     st.markdown(_section_html(fiche_title, "Analyse détaillée de l'élément sélectionné"), unsafe_allow_html=True)
 
-    title_to_id = {r["Titre"]: r["ID"] for r in rows}
-    _titles = list(title_to_id.keys())
+    # Déduplique les labels pour éviter la collision de titres identiques
+    _seen_titles: dict[str, int] = {}
+    _options: list[tuple[str, str]] = []  # (label affiché, ID)
+    for r in rows:
+        raw = r["Titre"]
+        n = _seen_titles.get(raw, 0)
+        _seen_titles[raw] = n + 1
+        _options.append((raw if n == 0 else f"{raw} [{n + 1}]", r["ID"]))
+    _id_by_label = {label: tid for label, tid in _options}
+    _labels = [label for label, _ in _options]
     _default = 0
     _sel_t = st.session_state.get(sel_title_key)
-    if _sel_t and _sel_t in _titles:
-        _default = _titles.index(_sel_t)
-    chosen_title = st.selectbox(fiche_label, _titles, index=_default, key=sel_box_key)
+    if _sel_t:
+        for _i, _r in enumerate(rows):
+            if _r["Titre"] == _sel_t:
+                _default = _i
+                break
+    chosen_label = st.selectbox(fiche_label, _labels, index=_default, key=sel_box_key)
 
-    if chosen_title:
-        _render_fiche(title_to_id[chosen_title], editor_key)
+    if chosen_label:
+        _render_fiche(_id_by_label[chosen_label], editor_key)
 
     st.markdown("---")
 
@@ -1578,17 +1497,23 @@ def _render_editor_section(
 rows_pub = load_tenders(selected_status, maintenance_only, date_from, strict_date, secteur="Public", only_recent=only_recent)
 if search_query:
     _sq = search_query.lower()
-    rows_pub = [r for r in rows_pub if _sq in r["Titre"].lower() or _sq in r["Source"].lower()]
+    rows_pub = [r for r in rows_pub if (
+        _sq in r["Titre"].lower()
+        or _sq in r["Source"].lower()
+        or _sq in r["Territoire"].lower()
+        or _sq in r["Domaine"].lower()
+    )]
+def _is_urgent(r: dict) -> bool:
+    dl = r.get("_deadline_dt")
+    if dl is None:
+        return False
+    try:
+        d = dl.date() if hasattr(dl, "date") else dl
+        return (d - datetime.now().date()).days <= 14
+    except Exception:
+        return False
+
 if urgent_only:
-    def _is_urgent(r: dict) -> bool:
-        dl = r["Date Limite"]
-        if dl == "—":
-            return False
-        try:
-            d = datetime.strptime(dl, "%d/%m/%Y").date()
-            return (d - datetime.now().date()).days <= 14
-        except ValueError:
-            return False
     rows_pub = [r for r in rows_pub if _is_urgent(r)]
 if terr_actifs:
     rows_pub = [r for r in rows_pub if any(terr in r["Territoire"] for terr in terr_actifs)]
@@ -1596,6 +1521,7 @@ if selected_domaines:
     rows_pub = [r for r in rows_pub if any(d in r["Domaine"] for d in selected_domaines)]
 if selected_decisions:
     rows_pub = [r for r in rows_pub if r["Go/No-Go"] in selected_decisions]
+rows_pub = _sort_rows(rows_pub, sort_by)
 
 _render_editor_section(
     rows=rows_pub,
@@ -1615,7 +1541,12 @@ _render_editor_section(
 rows_priv = load_tenders(selected_status, maintenance_only, date_from, strict_date, secteur="Privé", only_recent=only_recent)
 if search_query:
     _sq = search_query.lower()
-    rows_priv = [r for r in rows_priv if _sq in r["Titre"].lower() or _sq in r["Source"].lower()]
+    rows_priv = [r for r in rows_priv if (
+        _sq in r["Titre"].lower()
+        or _sq in r["Source"].lower()
+        or _sq in r["Territoire"].lower()
+        or _sq in r["Domaine"].lower()
+    )]
 if urgent_only:
     rows_priv = [r for r in rows_priv if _is_urgent(r)]
 if terr_actifs:
@@ -1624,6 +1555,7 @@ if selected_domaines:
     rows_priv = [r for r in rows_priv if any(d in r["Domaine"] for d in selected_domaines)]
 if selected_decisions:
     rows_priv = [r for r in rows_priv if r["Go/No-Go"] in selected_decisions]
+rows_priv = _sort_rows(rows_priv, sort_by)
 
 _render_editor_section(
     rows=rows_priv,
@@ -1697,20 +1629,18 @@ with st.expander("➕ Ajouter une opportunité manuellement (AWS, achatpublic.co
             if not m_title.strip():
                 st.error("Le titre est obligatoire.")
             else:
-                import hashlib as _hl
                 tid = "MANUAL-" + _hl.md5(f"{m_title}{m_url}{m_deadline}".encode()).hexdigest()[:10]
                 db_m = new_db()
                 try:
                     if db_m.query(Tender).filter(Tender.id == tid).first():
                         st.warning("Cette opportunité existe déjà.")
                     else:
-                        from models import Tender as T
                         _url = m_url.strip()
                         analyse = analyze_tender(
                             f"{m_title.strip()} {m_desc.strip()}",
                             source_url=_url if _url.startswith("http") else None,
                         )
-                        db_m.add(T(
+                        db_m.add(Tender(
                             id=tid,
                             title=m_title.strip(),
                             description=m_desc.strip(),
