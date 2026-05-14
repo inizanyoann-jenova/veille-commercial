@@ -1,4 +1,5 @@
 from datetime import datetime
+import html as _html
 
 import pandas as pd
 import streamlit as st
@@ -893,7 +894,7 @@ def _render_new_tenders_section() -> None:
     with col_title:
         st.markdown(f"### 🆕 {total} nouveau(x) marché(s) collecté(s)")
     with col_close:
-        if st.button("✕ Fermer", key="close_new_tenders"):
+        if st.button("✕ Fermer", key="close_new_tenders_section"):
             st.session_state["new_tender_ids"] = set()
             st.rerun(scope="fragment")
 
@@ -902,7 +903,8 @@ def _render_new_tenders_section() -> None:
         score = _score(t)
         domaine = detect_domaine(t.title or "", t.description or "")
         territoire = detect_territoire(t.title or "", t.description or "")
-        justif = (a.get("justification_score") or "")[:120]
+        justif_raw = (a.get("justification_score") or "")[:120]
+        justif = _html.escape(justif_raw)
 
         if score >= 65:
             color_class = ""
@@ -914,7 +916,7 @@ def _render_new_tenders_section() -> None:
             color_class = "teal"
             badge = f"🔴 Passer — Score {score}/100"
 
-        title_short = (t.title or "Sans titre")[:90]
+        title_short = _html.escape((t.title or "Sans titre")[:90])
         justif_html = (
             f"<div style='font-size:0.82rem;color:#374151;font-style:italic;margin-bottom:10px;'>"
             f"💡 {justif}</div>"
