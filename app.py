@@ -1401,12 +1401,9 @@ def _render_editor_section(
     section_title: str,
     section_subtitle: str,
     fiche_title: str,
-    fiche_label: str,
     editor_key: str,
     sel_all_key: str,
-    sel_title_key: str,
     del_btn_key: str,
-    sel_box_key: str,
 ) -> None:
     st.markdown(_section_html(section_title, section_subtitle), unsafe_allow_html=True)
 
@@ -1455,11 +1452,11 @@ def _render_editor_section(
         key=f"{editor_key}_view",
     )
 
-    # Clic sur une ligne → met à jour le dropdown d'analyse
+    _sel_id_key = f"_sel_id_{editor_key}"
     if view_event.selection.rows:
         selected_row_idx = view_event.selection.rows[0]
         if selected_row_idx < len(df):
-            st.session_state[sel_title_key] = df.iloc[selected_row_idx]["Titre"]
+            st.session_state[_sel_id_key] = df.iloc[selected_row_idx]["ID"]
 
     # ── Édition rapide (statut, montant, étoile, suppression) ─────────────────
     with st.expander("✏️ Modifier statut / montant / étoile / supprimer"):
@@ -1530,27 +1527,11 @@ def _render_editor_section(
     st.markdown("---")
     st.markdown(_section_html(fiche_title, "Analyse détaillée de l'élément sélectionné"), unsafe_allow_html=True)
 
-    # Déduplique les labels pour éviter la collision de titres identiques
-    _seen_titles: dict[str, int] = {}
-    _options: list[tuple[str, str]] = []  # (label affiché, ID)
-    for r in rows:
-        raw = r["Titre"]
-        n = _seen_titles.get(raw, 0)
-        _seen_titles[raw] = n + 1
-        _options.append((raw if n == 0 else f"{raw} [{n + 1}]", r["ID"]))
-    _id_by_label = {label: tid for label, tid in _options}
-    _labels = [label for label, _ in _options]
-    _default = 0
-    _sel_t = st.session_state.get(sel_title_key)
-    if _sel_t:
-        for _i, _r in enumerate(rows):
-            if _r["Titre"] == _sel_t:
-                _default = _i
-                break
-    chosen_label = st.selectbox(fiche_label, _labels, index=_default, key=sel_box_key)
-
-    if chosen_label:
-        _render_fiche(_id_by_label[chosen_label], editor_key)
+    _sel_id = st.session_state.get(f"_sel_id_{editor_key}")
+    if _sel_id:
+        _render_fiche(_sel_id, editor_key)
+    else:
+        st.info("👆 Cliquez sur une ligne du tableau pour afficher son analyse.")
 
     st.markdown("---")
 
@@ -1655,12 +1636,9 @@ _render_editor_section(
     section_title=f"📋 Marchés Publics — {len(rows_pub)} résultats",
     section_subtitle="Modifiez le statut, le montant ou l'étoile directement dans le tableau",
     fiche_title="📋 Fiche commerciale — Marché Public",
-    fiche_label="Sélectionner un marché public",
     editor_key="pub_editor",
     sel_all_key="_sel_all_pub",
-    sel_title_key="_sel_title_pub",
     del_btn_key="del_pub",
-    sel_box_key="sel_pub",
 )
 
 # ── Tableau Signaux Privés ────────────────────────────────────────────────────
@@ -1694,12 +1672,9 @@ _render_editor_section(
     section_title=f"🏗️ Signaux Privés — {len(rows_priv)} résultats",
     section_subtitle="Permis de construire, articles presse, institutions, banques de développement",
     fiche_title="🏗️ Fiche commerciale — Signal Privé",
-    fiche_label="Sélectionner un signal privé",
     editor_key="priv_editor",
     sel_all_key="_sel_all_priv",
-    sel_title_key="_sel_title_priv",
     del_btn_key="del_priv",
-    sel_box_key="sel_priv",
 )
 
 # ── Pipeline commercial ───────────────────────────────────────────────────────
