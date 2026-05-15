@@ -1632,7 +1632,7 @@ def _render_urgences():
             bg, border, badge = "#fffbeb", "#fde68a", f"🟡 {j}j restants"
         else:
             bg, border, badge = "#f0fdf4", "#bbf7d0", f"🟢 {j}j restants"
-        title_short = u["title"][:55] + ("…" if len(u["title"]) > 55 else "")
+        title_short = _html.escape(u["title"][:55]) + ("…" if len(u["title"]) > 55 else "")
         col.markdown(
             f'<div style="background:{bg};border:1px solid {border};border-radius:8px;'
             f'padding:10px;font-size:0.82rem"><strong>{title_short}</strong><br>'
