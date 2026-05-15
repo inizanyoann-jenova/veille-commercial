@@ -11,7 +11,11 @@ from models import Tender
 SCORE_GO = 65
 
 st.set_page_config(page_title="Analytics — DEF OI", page_icon="📈", layout="wide")
-init_db()
+@st.cache_resource
+def _ensure_db_init():
+    init_db()
+
+_ensure_db_init()
 
 st.markdown("""
 <style>
@@ -37,9 +41,9 @@ st.markdown("---")
 def _load_analytics_kpis() -> dict:
     db = SessionLocal()
     try:
-        total = db.query(Tender).filter(Tender.is_blacklisted != True).count()
+        total = db.query(Tender).filter(Tender.is_blacklisted == False).count()
         nb_go = db.query(Tender).filter(
-            Tender.relevance_score >= SCORE_GO, Tender.is_blacklisted != True
+            Tender.relevance_score >= SCORE_GO, Tender.is_blacklisted == False
         ).count()
         ca_gagne = db.query(func.sum(Tender.amount)).filter(
             Tender.status == "Gagné", Tender.amount != None
@@ -48,6 +52,9 @@ def _load_analytics_kpis() -> dict:
             func.count(distinct(Tender.source))
         ).filter(Tender.source != None, Tender.source != "").scalar() or 0
         return {"total": total, "nb_go": nb_go, "ca_gagne": ca_gagne, "nb_sources": nb_sources}
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
@@ -57,9 +64,12 @@ def _load_pub_months() -> list[str]:
     db = SessionLocal()
     try:
         rows = db.query(Tender.publication_date).filter(
-            Tender.is_blacklisted != True, Tender.publication_date != None
+            Tender.is_blacklisted == False, Tender.publication_date != None
         ).all()
         return [r[0].strftime("%Y-%m") for r in rows]
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
@@ -70,12 +80,15 @@ def _load_top_sources() -> list[tuple]:
     try:
         return (
             db.query(Tender.source, func.count(Tender.id).label("count"))
-            .filter(Tender.is_blacklisted != True, Tender.source != None, Tender.source != "")
+            .filter(Tender.is_blacklisted == False, Tender.source != None, Tender.source != "")
             .group_by(Tender.source)
             .order_by(func.count(Tender.id).desc())
             .limit(5)
             .all()
         )
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
@@ -85,13 +98,16 @@ def _load_secteur_counts() -> dict:
     db = SessionLocal()
     try:
         nb_public = db.query(Tender).filter(
-            Tender.is_blacklisted != True,
+            Tender.is_blacklisted == False,
             or_(Tender.secteur == "Public", Tender.secteur == None),
         ).count()
         nb_prive = db.query(Tender).filter(
-            Tender.is_blacklisted != True, Tender.secteur == "Privé"
+            Tender.is_blacklisted == False, Tender.secteur == "Privé"
         ).count()
         return {"public": nb_public, "prive": nb_prive}
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
@@ -100,10 +116,13 @@ def _load_secteur_counts() -> dict:
 def _load_conversion_kpis() -> dict:
     db = SessionLocal()
     try:
-        nb_soumis = db.query(Tender).filter(Tender.status == "Soumis").count()
-        nb_gagne = db.query(Tender).filter(Tender.status == "Gagné").count()
+        nb_soumis = db.query(Tender).filter(Tender.status == "Soumis", Tender.is_blacklisted == False).count()
+        nb_gagne = db.query(Tender).filter(Tender.status == "Gagné", Tender.is_blacklisted == False).count()
         taux = round(nb_gagne / nb_soumis * 100) if nb_soumis > 0 else None
         return {"nb_soumis": nb_soumis, "nb_gagne": nb_gagne, "taux_conversion": taux}
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
@@ -116,18 +135,21 @@ def _load_win_rate_by_source() -> list[tuple]:
         rows = (
             db.query(
                 Tender.source,
-                func.count(Tender.id).label("nb_soumis"),
+                func.count(Tender.id).label("nb_total"),
                 func.sum(
                     case((Tender.status == "Gagné", 1), else_=0)
                 ).label("nb_gagne"),
             )
-            .filter(Tender.status.in_(["Soumis", "Gagné"]), Tender.source != None, Tender.source != "")
+            .filter(Tender.status.in_(["Soumis", "Gagné", "Perdu"]), Tender.source != None, Tender.source != "", Tender.is_blacklisted == False)
             .group_by(Tender.source)
             .order_by(func.sum(case((Tender.status == "Gagné", 1), else_=0)).desc())
             .limit(5)
             .all()
         )
-        return [(r.source, r.nb_gagne, r.nb_soumis) for r in rows]
+        return [(r.source, r.nb_gagne, r.nb_total) for r in rows]
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
@@ -142,14 +164,19 @@ def _load_avg_delay_go() -> float | None:
                 Tender.relevance_score >= SCORE_GO,
                 Tender.publication_date != None,
                 Tender.deadline != None,
-                Tender.is_blacklisted != True,
+                Tender.is_blacklisted == False,
             )
             .all()
         )
         if not rows:
             return None
-        delays = [(r.deadline - r.publication_date).days for r in rows if r.deadline > r.publication_date]
+        def _n(dt):
+            return dt.replace(tzinfo=None) if dt and dt.tzinfo else dt
+        delays = [(_n(r.deadline) - _n(r.publication_date)).days for r in rows if _n(r.deadline) > _n(r.publication_date)]
         return round(sum(delays) / len(delays)) if delays else None
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
@@ -192,9 +219,9 @@ kc3.metric(
 if _wr:
     st.markdown("**Win rate par source (top 5)**")
     _df_wr = pd.DataFrame(
-        [{"Source": src, "Gagnés": ng, "Soumis": ns,
-          "Win rate": f"{round(ng/ns*100)}%" if ns > 0 else "—"}
-         for src, ng, ns in _wr]
+        [{"Source": src, "Gagnés": ng, "Total offres": ntot,
+          "Win rate": f"{round(ng/ntot*100)}%" if ntot > 0 else "—"}
+         for src, ng, ntot in _wr]
     )
     st.dataframe(_df_wr, use_container_width=True, hide_index=True)
 

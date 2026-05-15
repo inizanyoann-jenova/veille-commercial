@@ -75,12 +75,18 @@ def test_sg_inconnu():
     d = _compute_fiche_data(70, None, "Autre", "Non précisé", False, "", {})
     assert d["sg"] == 0
 
-def test_sk_ssi_in_title():
+def test_sk_one_keyword_gives_6():
     d = _compute_fiche_data(70, None, "Autre", "Non précisé", False, "Installation SSI bâtiment", {})
-    assert d["sk"] == 15
+    assert d["sk"] == 6
 
-def test_sk_cmsi_in_title():
+
+def test_sk_two_keywords_gives_10():
     d = _compute_fiche_data(70, None, "Autre", "Non précisé", False, "Marché CMSI désenfumage", {})
+    assert d["sk"] == 10
+
+
+def test_sk_three_keywords_gives_15():
+    d = _compute_fiche_data(70, None, "Autre", "Non précisé", False, "SSI CMSI détection incendie", {})
     assert d["sk"] == 15
 
 def test_sk_absent():
@@ -142,7 +148,7 @@ def test_atout_maintenance():
     assert any("Maintenance" in a for a in d["atouts"])
 
 def test_atout_signal_direct():
-    d = _compute_fiche_data(70, None, "Autre", "Non précisé", False, "Mise en place SSI", {})
+    d = _compute_fiche_data(70, None, "Autre", "Non précisé", False, "SSI CMSI détection incendie", {})
     assert any("Signal direct" in a for a in d["atouts"])
 
 def test_atout_pertinence_limitee_si_aucun():
@@ -170,3 +176,27 @@ def test_risque_penalites():
 def test_risque_vide_si_tout_ok():
     d = _compute_fiche_data(70, 60, "🔥 SSI / Détection incendie", "🏝️ La Réunion", False, "", {})
     assert d["risques"] == []
+
+
+# ── validation défensive (entrées invalides) ───────────────────────────────────
+
+def test_none_score_defaults_to_zero():
+    d = _compute_fiche_data(None, None, "Autre", "Non précisé", False, "", {})
+    assert d["label_action"] == "🔴 Hors périmètre DEF OI"
+
+
+def test_score_above_100_clamped():
+    d = _compute_fiche_data(150, None, "🔥 SSI / Détection incendie", "🏝️ La Réunion", False, "", {})
+    assert d["label_action"] == "🟢 Planifier la réponse"
+
+
+def test_none_a_dict_defaults_gracefully():
+    d = _compute_fiche_data(70, 30, "🔥 SSI / Détection incendie", "🏝️ La Réunion", False, "", None)
+    assert isinstance(d["risques"], list)
+
+
+def test_none_domaine_and_territoire():
+    d = _compute_fiche_data(10, None, None, None, False, None, {})
+    assert d["label_action"] == "🔴 Hors périmètre DEF OI"
+    assert d["sm"] == 5
+    assert d["sg"] == 0

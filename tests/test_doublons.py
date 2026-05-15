@@ -107,3 +107,23 @@ def test_detect_does_not_create_duplicate_pair_twice(db):
     count_second = detect_duplicates(db)
 
     assert count_second == 0
+
+
+def test_detect_empty_db_returns_zero(db):
+    from database import detect_duplicates
+    assert detect_duplicates(db) == 0
+
+
+def test_detect_skips_blacklisted_tender(db):
+    from database import detect_duplicates
+    from models import Tender
+    dl = datetime(2026, 6, 1)
+    _make_tender(db, "a6", "SSI Palais des sports", "BOAMP", deadline=dl)
+    t = Tender(
+        id="b6", title="SSI Palais des sports", source="TED",
+        relevance_score=70, deadline=dl,
+        status="À qualifier", is_blacklisted=True,
+    )
+    db.add(t)
+    db.commit()
+    assert detect_duplicates(db) == 0

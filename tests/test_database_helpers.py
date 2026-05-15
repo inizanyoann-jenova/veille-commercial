@@ -82,3 +82,39 @@ def test_finish_scraper_run_error(db):
     record = db.query(ScraperRun).filter(ScraperRun.id == run_id).first()
     assert record.status == "error"
     assert record.error == "Connection timeout"
+
+
+def test_finish_scraper_run_invalid_id_does_not_raise(db):
+    from database import finish_scraper_run
+    finish_scraper_run(db, run_id=99999, nb_found=0, nb_new=0)
+
+
+def test_load_existing_ids_empty_db(db):
+    from scraper_utils import load_existing_ids
+    ids = load_existing_ids(db)
+    assert isinstance(ids, set)
+    assert len(ids) == 0
+
+
+def test_insert_if_new_adds_tender(db):
+    from scraper_utils import load_existing_ids, insert_if_new
+    from models import Tender
+    t = Tender(id="X-001", title="Test", source="https://example.com",
+               status="À qualifier", relevance_score=0, is_blacklisted=False)
+    existing = load_existing_ids(db)
+    inserted = insert_if_new(db, t, existing)
+    assert inserted is True
+    assert "X-001" in existing
+
+
+def test_insert_if_new_skips_duplicate(db):
+    from scraper_utils import load_existing_ids, insert_if_new
+    from models import Tender
+    t1 = Tender(id="X-002", title="Test", source="https://example.com",
+                status="À qualifier", relevance_score=0, is_blacklisted=False)
+    t2 = Tender(id="X-002", title="Test bis", source="https://example.com",
+                status="À qualifier", relevance_score=0, is_blacklisted=False)
+    existing = load_existing_ids(db)
+    insert_if_new(db, t1, existing)
+    inserted_second = insert_if_new(db, t2, existing)
+    assert inserted_second is False

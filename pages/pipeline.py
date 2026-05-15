@@ -28,13 +28,21 @@ def _jours_badge(deadline) -> tuple[str, str]:
     return f"🟢 {days}j", "#f0fdf4"
 
 
+_VALID_STATUSES = {"À qualifier", "GO", "Soumis", "Gagné", "Perdu"}
+
+
 def _set_status(tender_id: str, new_status: str):
+    if new_status not in _VALID_STATUSES:
+        return
     db = SessionLocal()
     try:
         t = db.query(Tender).filter(Tender.id == tender_id).first()
         if t:
             t.status = new_status
             db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
     st.cache_data.clear()

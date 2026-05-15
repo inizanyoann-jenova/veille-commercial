@@ -7,7 +7,12 @@ from database import SessionLocal as _SL_src
 from source_registry import Source as _SrcModel, toggle_enabled as _toggle_enabled
 
 load_dotenv()
-init_db()
+
+@st.cache_resource
+def _ensure_db_init():
+    init_db()
+
+_ensure_db_init()
 
 st.set_page_config(page_title="Paramètres — DEF OI", page_icon="⚙️", layout="wide")
 st.title("⚙️ Paramètres")
@@ -60,7 +65,7 @@ current_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
 _key_ok = bool(current_key and not current_key.startswith("sk-ant-...") and len(current_key) > 20)
 
 if _key_ok:
-    st.success(f"✅ Clé API Claude configurée (`{current_key[:16]}…`)")
+    st.success(f"✅ Clé API Claude configurée (`{current_key[:8]}…{'*' * 8}`)")
 else:
     st.warning("⚠️ Clé API Claude non configurée — l'analyse IA tourne en mode local uniquement (règles métier).")
 
@@ -119,7 +124,7 @@ Collez-la ci-dessous puis cliquez **Enregistrer**.
                         import anthropic as _ant
                         _test_client = _ant.Anthropic(api_key=key_to_test)
                         _test_client.messages.create(
-                            model="claude-haiku-4-5",
+                            model="claude-opus-4-7",
                             max_tokens=5,
                             messages=[{"role": "user", "content": "OK"}],
                         )
@@ -180,7 +185,9 @@ for site_key, (site_label, category) in _SITE_LABELS.items():
         icon = "⬜"
     with st.expander(f"{icon} {site_label} — {category}"):
         if cred and cred.get("has_env_override"):
-            st.success(f"Configuré via `.env` — email : `{cred['email']}`")
+            _em = cred["email"]
+            _em_masked = _em[:3] + "…" + _em[_em.find("@"):] if "@" in _em and len(_em) > 6 else "***"
+            st.success(f"Configuré via `.env` — email : `{_em_masked}`")
             st.info("Pour modifier, éditez le fichier `.env` et relancez l'application.")
         else:
             col1, col2 = st.columns(2)
@@ -257,13 +264,18 @@ for site_key, (site_label, category) in _SITE_LABELS.items():
                                 })
                                 try:
                                     proc = subprocess.run(
-                                        [_sys.executable, worker, payload],
-                                        capture_output=True, text=True, timeout=60,
+                                        [_sys.executable, worker],
+                                        input=payload,
+                                        capture_output=True, text=True, timeout=15,
                                     )
                                     if proc.returncode != 0 and not proc.stdout.strip():
-                                        st.error(f"❌ Erreur du worker Playwright :\n{proc.stderr[:500]}")
+                                        st.error("❌ Erreur du worker Playwright — vérifiez les logs.")
                                     else:
-                                        diag = json.loads(proc.stdout)
+                                        try:
+                                            diag = json.loads(proc.stdout)
+                                        except Exception:
+                                            st.error("❌ Réponse inattendue du worker — vérifiez les logs.")
+                                            raise
                                         if diag.get("ok"):
                                             st.success(f"✅ Connexion réussie — redirigé vers `{diag.get('url_finale', '—')}`")
                                             _src_name = _SITE_TO_SOURCE_NAME.get(site_key)
@@ -291,7 +303,7 @@ for site_key, (site_label, category) in _SITE_LABELS.items():
                                         else:
                                             st.error("❌ Connexion échouée — vérifiez vos identifiants.")
                                 except subprocess.TimeoutExpired:
-                                    st.error("❌ Timeout — la page de connexion n'a pas répondu en 60 secondes.")
+                                    st.error("❌ Timeout — la page de connexion n'a pas répondu en 15 secondes.")
 
 # ── Section sources automatiques (HTTP ping) ──────────────────────────────────
 st.markdown("---")
@@ -373,14 +385,24 @@ else:
     st.warning("Clé de chiffrement absente — elle sera générée automatiquement au 1er enregistrement d'identifiant.")
 
 if st.button("🔄 Régénérer la clé de chiffrement"):
+    st.session_state["_regen_key_confirm"] = True
+
+if st.session_state.get("_regen_key_confirm"):
     st.warning("⚠️ Attention : régénérer la clé rendra illisibles tous les mots de passe stockés en base. Vous devrez les ressaisir.")
-    if st.checkbox("Je comprends, procéder quand même"):
-        from cryptography.fernet import Fernet
-        from dotenv import set_key
-        _new_fernet_key = Fernet.generate_key().decode()
-        set_key(".env", "CREDENTIAL_KEY", _new_fernet_key)
-        os.environ["CREDENTIAL_KEY"] = _new_fernet_key
-        st.success("Nouvelle clé générée et sauvegardée dans `.env`. Relancez l'application.")
+    _col_ok, _col_cancel = st.columns(2)
+    with _col_ok:
+        if st.button("✅ Confirmer la régénération", type="primary", key="regen_key_confirm_btn"):
+            from cryptography.fernet import Fernet
+            from dotenv import set_key
+            _new_fernet_key = Fernet.generate_key().decode()
+            set_key(".env", "CREDENTIAL_KEY", _new_fernet_key)
+            os.environ["CREDENTIAL_KEY"] = _new_fernet_key
+            st.session_state.pop("_regen_key_confirm", None)
+            st.success("Nouvelle clé générée et sauvegardée dans `.env`. Relancez l'application.")
+    with _col_cancel:
+        if st.button("❌ Annuler", key="regen_key_cancel_btn"):
+            st.session_state.pop("_regen_key_confirm", None)
+            st.rerun()
 
 # ── Blacklist ─────────────────────────────────────────────────────────────────
 st.markdown("---")
@@ -466,15 +488,18 @@ if not _all_runs:
     st.info("Aucune collecte enregistrée. Lancez une collecte depuis la page principale.")
 else:
     import pandas as _pd_hist
-    from datetime import datetime as _dt_hist
+    from datetime import datetime as _dt_hist, timezone as _tz_hist
     _rows_hist = []
     for r in _all_runs:
-        _ago = _dt_hist.utcnow() - r.started_at.replace(tzinfo=None)
+        if not r.started_at:
+            continue
+        _ago = _dt_hist.now(_tz_hist.utc).replace(tzinfo=None) - r.started_at.replace(tzinfo=None)
         _d = _ago.days
         _h = int(_ago.total_seconds() // 3600)
+        _m = int(_ago.total_seconds() // 60)
         _rows_hist.append({
             "Source": r.source_name,
-            "Il y a": f"{_d}j" if _d >= 1 else f"{_h}h",
+            "Il y a": f"{_d}j" if _d >= 1 else (f"{_h}h" if _h >= 1 else f"{_m}min"),
             "Nouveaux": r.nb_new,
             "Statut": "✅" if r.status == "ok" else ("⚠️" if r.status == "error" else "🔄"),
             "Erreur": r.error or "",

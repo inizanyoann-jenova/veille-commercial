@@ -44,11 +44,11 @@ def test_local_analyze_gardiennage_low_score():
 
 
 def test_analyze_tender_returns_combined_score(monkeypatch):
-    """Vérifie que analyze_tender combine scores quand Gemini répond."""
+    """Vérifie que analyze_tender combine scores quand Claude répond."""
     from llm_analyzer import _local_analyze
     import llm_analyzer
 
-    fake_gemini = {
+    fake_claude = {
         "score_pertinence": 80,
         "tag_pertinence": "Très pertinent",
         "type_marche": "Maintenance",
@@ -57,12 +57,46 @@ def test_analyze_tender_returns_combined_score(monkeypatch):
         "marques_concurrentes_citees": [],
         "risques_penalites": None,
         "justification_score": "Marché SSI direct.",
-        "_source": "gemini",
+        "_source": "claude",
     }
-    monkeypatch.setattr(llm_analyzer, "_gemini_analyze", lambda text: fake_gemini)
+    monkeypatch.setattr(llm_analyzer, "_claude_analyze", lambda text: fake_claude)
 
     result = llm_analyzer.analyze_tender("Maintenance SSI La Réunion 974")
     local = _local_analyze("Maintenance SSI La Réunion 974")
     expected_score = round(80 * 0.70 + local["score_pertinence"] * 0.30)
     assert result["score_pertinence"] == expected_score
-    assert result["_source"] == "gemini"
+    assert result["_source"] == "claude"
+
+
+def test_local_analyze_empty_string():
+    from llm_analyzer import _local_analyze
+    result = _local_analyze("")
+    assert "score_pertinence" in result
+    assert result["score_pertinence"] == 0
+
+
+def test_authentication_error_does_not_log_key(monkeypatch, caplog):
+    """AuthenticationError must not expose the API key in logs."""
+    import llm_analyzer
+    import anthropic
+    import logging
+
+    fake_key = "sk-ant-api03-FAKE_SECRET_KEY_1234567890"
+
+    def _raise_auth(*args, **kwargs):
+        raise anthropic.AuthenticationError(
+            message="401 Invalid API key",
+            response=None,
+            body={"error": {"type": "authentication_error"}},
+        )
+
+    monkeypatch.setattr(llm_analyzer, "_anthropic_client", None)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", fake_key)
+    monkeypatch.setattr(anthropic.Anthropic, "messages", property(lambda self: type("M", (), {"create": _raise_auth})()))
+
+    with caplog.at_level(logging.WARNING, logger="llm_analyzer"):
+        result = llm_analyzer._claude_analyze("test")
+
+    assert result is None
+    for record in caplog.records:
+        assert fake_key not in record.getMessage()

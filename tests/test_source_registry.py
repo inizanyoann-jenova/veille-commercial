@@ -132,3 +132,20 @@ def test_validate_source(db):
 def test_validate_source_unknown_id_noop(db):
     from source_registry import validate_source
     validate_source(db, 99999)  # ne doit pas lever d'exception
+
+
+def test_invalidate_source(db):
+    from source_registry import init_sources, list_sources, validate_source, invalidate_source
+    init_sources(db)
+    source = list_sources(db)[0]
+    validate_source(db, source.id)
+    db.refresh(source)
+    assert source.is_validated is True
+    invalidate_source(db, source.id)
+    db.refresh(source)
+    assert source.is_validated is False
+
+
+def test_invalidate_source_unknown_id_noop(db):
+    from source_registry import invalidate_source
+    invalidate_source(db, 99999)  # ne doit pas lever d'exception
