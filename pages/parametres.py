@@ -46,7 +46,9 @@ for _cat in ["Public", "Privé", "International"]:
                 _toggle_enabled(_db_tog, _s.id)
             finally:
                 _db_tog.close()
-            st.rerun()
+            _action = "activée" if _new_enabled else "désactivée"
+            st.toast(f"Source '{_s.name}' {_action} ✓")
+            st.rerun()  # obligatoire — _s est stale après toggle
 
 st.markdown("---")
 
