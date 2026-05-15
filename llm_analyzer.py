@@ -3,7 +3,6 @@ import logging
 import os
 import re
 import time
-from functools import lru_cache
 
 from dotenv import load_dotenv
 
@@ -67,7 +66,7 @@ _KW_PENALITES = [
 
 # SSI — toute la chaîne technique : centrales, détecteurs, déclencheurs, SMSI, etc.
 _KW_SSI = [
-    r"\bssi\b", r"\bcmsi\b", r"\bsmsi\b", r"\bsdi\b", r"\bdai\b",
+    r"\bssi\b", r"\bsmsi\b", r"\bsdi\b", r"\bdai\b",
     "détection incendie", "detection incendie",
     "alarme incendie", "désenfumage", "desenfumage",
     "évacuation incendie", "evacuation incendie",
@@ -85,7 +84,7 @@ _KW_SSI = [
     r"\bsprinkler\b", "extinction automatique", "nf s 61",
     r"\bcategorie a\b", r"\bcategorie b\b", r"\bcategorie c\b",
     "catégorie a", "catégorie b", "catégorie c",
-    r"\btype 1\b", r"\btype 2\b", r"\btype 3\b", r"\btype 4\b",  # types d'alarme
+    # types d'alarme — retirés car trop génériques
     "commission de sécurité incendie",
 ]
 
@@ -101,7 +100,7 @@ _KW_CMSI = [
     "amenée d'air", "amenee d'air", "balayage d'air",
     "commande de désenfumage", "commande de desenfumage",
     "volet coupe-feu", "volet coupe feu", "clapet coupe-feu",
-    "porte coupe-feu", "porte coupe feu", r"\bcf\b",
+    "porte coupe-feu", "porte coupe feu",
     "compartimentage", "compartimentage au feu",
 ]
 
@@ -130,7 +129,7 @@ _KW_COURANTS_FAIBLES = [
     "gestion technique du bâtiment", "gestion technique du batiment",
     "supervision bâtiment", "supervision batiment",
     "câblage courants faibles", "cablage courants faibles",
-    r"\bgta\b",  # gestion technique aéroport/avancée
+    "gestion technique aéroport", "gestion technique avancée",  # remplace \bgta\b trop ambigu
     "télégestion", "telegestion",
 ]
 
@@ -147,9 +146,8 @@ _KW_QHSE = [
 # ERP — bâtiments qui imposent légalement le SSI (Code de la construction)
 _KW_ERP = [
     r"\berp\b", "établissement recevant du public", "etablissement recevant du public",
-    r"\bchu\b", "centre hospitalier", r"\behpad\b", "maison de retraite",
+    r"\bchu\b", r"\bchrs\b", r"\bchru\b", "centre hospitalier", r"\behpad\b", "maison de retraite",
     "hôpital", "hopital", "clinique", "polyclinique",
-    r"\bchu\b", r"\bchrs\b", r"\bchru\b",
     "école", "ecole", "collège", "college", "lycée", "lycee",
     "université", "universite", "campus universitaire",
     "mairie", "hôtel de ville", "hotel de ville",
@@ -246,8 +244,26 @@ def _score_to_tag(score: int) -> str:
 # Analyse locale (règles métier — sans API, toujours disponible)
 # ---------------------------------------------------------------------------
 
-@lru_cache(maxsize=128)
+_local_cache: dict[str, tuple[dict, float]] = {}
+_LOCAL_CACHE_TTL = 3600  # 1 heure
+
+
 def _local_analyze(text: str) -> dict:
+    text_key = text[:200]
+    now = time.time()
+    if text_key in _local_cache:
+        result, ts = _local_cache[text_key]
+        if now - ts < _LOCAL_CACHE_TTL:
+            return result.copy()
+    result = _local_analyze_impl(text[:6000])
+    _local_cache[text_key] = (result, now)
+    if len(_local_cache) > 512:
+        oldest = min(_local_cache, key=lambda k: _local_cache[k][1])
+        del _local_cache[oldest]
+    return result.copy()
+
+
+def _local_analyze_impl(text: str) -> dict:
     t = f" {text.lower()} "
 
     # --- Type de marché ---
@@ -295,8 +311,8 @@ def _local_analyze(text: str) -> dict:
     if nb_ssi >= 3:        score += 55
     elif nb_ssi == 2:      score += 50
     elif nb_ssi == 1:      score += 40
-    if nb_cmsi >= 2:       score += 20   # peut s'additionner au SSI
-    elif nb_cmsi == 1:     score += 12
+    if nb_cmsi >= 2:       score += 30   # CMSI signal primaire (si SSI absent)
+    elif nb_cmsi == 1:     score += 20   # CMSI signal primaire (si SSI absent)
     if nb_vid >= 2:        score += 35
     elif nb_vid == 1:      score += 28
     if nb_cf >= 1:         score += 20
@@ -502,22 +518,7 @@ BARÈME DE SCORING :
 5-24   : hors périmètre DEF OI ou signaux exclusion dominants\
 """
 
-_client = None
 _anthropic_client = None
-
-
-def _get_client():
-    global _client
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        return None
-    if _client is None:
-        try:
-            from google import genai
-            _client = genai.Client(api_key=api_key)
-        except Exception:
-            return None
-    return _client
 
 
 def _get_anthropic_client():
@@ -534,42 +535,6 @@ def _get_anthropic_client():
     return _anthropic_client
 
 
-def _gemini_analyze(text: str) -> dict | None:
-    """Tente une analyse via Gemini.
-
-    Retourne None si la clé API est absente ou en cas d'erreur inattendue.
-    Lève _LLMQuotaError si le quota API est atteint (429 / RESOURCE_EXHAUSTED).
-    """
-    client = _get_client()
-    if client is None:
-        return None
-    try:
-        from google.genai import types
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=f"Analyse ce marché :\n\n{text[:8000]}",
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                temperature=0.1,
-                response_mime_type="application/json",
-            ),
-        )
-        result = json.loads(response.text)
-        result["_source"] = "gemini"
-        return result
-    except Exception as exc:
-        msg = str(exc)
-        if any(code in msg for code in ("429", "RESOURCE_EXHAUSTED", "quota")):
-            # Tenter d'extraire le délai de retry suggéré par l'API
-            m = re.search(r'"retryDelay"\s*:\s*"(\d+)s"', msg) or re.search(r'retry.*?(\d+)\s*s', msg, re.IGNORECASE)
-            retry_after = int(m.group(1)) if m else None
-            raise _LLMQuotaError(retry_after=retry_after)
-        if any(code in msg for code in ("401", "403", "API_KEY")):
-            _log.warning("Clé API Gemini invalide ou absente : %s", msg[:120])
-            return None
-        _log.warning("Gemini analyse échouée (erreur inattendue) : %s", msg[:200])
-        return None
-
 
 def _claude_analyze(text: str) -> dict | None:
     """Tente une analyse via l'API Claude (Anthropic).
@@ -584,8 +549,8 @@ def _claude_analyze(text: str) -> dict | None:
         import anthropic
         response = client.messages.create(
             model="claude-opus-4-7",
-            max_tokens=2048,
-            thinking={"type": "adaptive"},
+            max_tokens=4096,
+            thinking={"type": "enabled", "budget_tokens": 1024},
             system=[
                 {
                     "type": "text",
@@ -596,12 +561,24 @@ def _claude_analyze(text: str) -> dict | None:
             messages=[
                 {
                     "role": "user",
-                    "content": f"Analyse ce marché :\n\n{text[:8000]}",
+                    "content": (
+                        "Analyse ce marché :\n\n"
+                        "<MARCHE_CONTENT>\n"
+                        f"{text[:8000]}\n"
+                        "</MARCHE_CONTENT>"
+                    ),
                 }
             ],
         )
-        raw = next(block.text for block in response.content if block.type == "text")
-        result = json.loads(raw)
+        raw = next((block.text for block in response.content if block.type == "text"), None)
+        if raw is None:
+            _log.warning("Claude : aucun bloc texte dans la réponse")
+            return None
+        try:
+            result = json.loads(raw)
+        except json.JSONDecodeError:
+            _log.warning("Claude : réponse non-JSON — fallback analyse locale")
+            return None
         result["_source"] = "claude"
         return result
     except anthropic.RateLimitError as exc:
@@ -611,8 +588,9 @@ def _claude_analyze(text: str) -> dict | None:
         except Exception:
             pass
         raise _LLMQuotaError(retry_after=retry_after)
-    except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as exc:
-        _log.warning("Clé API Claude invalide ou absente : %s", str(exc)[:120])
+    except (anthropic.AuthenticationError, anthropic.PermissionDeniedError):
+        # Ne pas logger str(exc) — peut contenir des fragments de la clé API
+        _log.warning("Clé API Claude invalide ou permissions insuffisantes (AuthenticationError)")
         return None
     except Exception as exc:
         _log.warning("Claude analyse échouée (erreur inattendue) : %s", str(exc)[:200])
@@ -643,15 +621,25 @@ def fetch_dce_content(url: str) -> str | None:
         import html as _html
         import requests as _req
 
-        resp = _req.get(
+        _MAX_DCE_BYTES = 2_000_000  # 2 MB max avant lecture
+        with _req.get(
             url,
             timeout=8,
             headers={"User-Agent": "Mozilla/5.0 (compatible; DEF-OI-Veille/1.0)"},
             allow_redirects=True,
-        )
-        if resp.status_code != 200:
-            return None
-        raw = resp.text
+            stream=True,
+        ) as resp:
+            if resp.status_code != 200:
+                return None
+            ct = resp.headers.get("content-type", "")
+            if not any(t in ct for t in ("text/html", "text/plain", "application/xhtml")):
+                _log.debug("fetch_dce_content: Content-Type non HTML (%s) — skipped", ct[:60])
+                return None
+            content_length = int(resp.headers.get("content-length", 0) or 0)
+            if content_length > _MAX_DCE_BYTES:
+                _log.debug("fetch_dce_content: Content-Length trop grand (%d bytes) — skipped", content_length)
+                return None
+            raw = resp.text
         # Supprimer scripts et styles
         raw = re.sub(
             r"<(script|style)[^>]*>.*?</\1>", " ", raw,
@@ -690,7 +678,7 @@ def auto_analyze_pending(db) -> int:
 def auto_analyze_claude(
     db,
     max_per_run: int = 10,
-    delay: float = 0.5,  # 0.5 s entre requêtes — Claude Enterprise a des limites très élevées
+    delay: float = 1.0,  # 1s entre requêtes — respecte les limites de l'API
     progress_cb=None,
 ) -> tuple[int, int]:
     """Analyse en masse via Claude (Anthropic) avec débit contrôlé.
@@ -707,7 +695,7 @@ def auto_analyze_claude(
     pending = (
         db.query(Tender)
         .filter(
-            Tender.is_blacklisted != True,
+            Tender.is_blacklisted == False,
             _text(
                 "llm_analysis IS NULL OR llm_analysis = 'null' "
                 "OR json_extract(llm_analysis, '$._source') = 'local'"
