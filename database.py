@@ -1,73 +1,69 @@
+import logging as _logging
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
 from models import Base, Credential  # noqa: Credential enregistre la table credentials
 
+_log = _logging.getLogger(__name__)
+
 DATABASE_URL = "sqlite:///def_oi_veille.db"
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False, "timeout": 30},
+    pool_pre_ping=True,
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
+# Whitelist de migrations autorisées — (table, col_name, col_def)
+_MIGRATIONS: list[tuple[str, str, str]] = [
+    ("tenders", "secteur",               "VARCHAR"),
+    ("tenders", "type_opportunite",      "VARCHAR DEFAULT 'Marché Public'"),
+    ("tenders", "amount",                "INTEGER"),
+    ("tenders", "is_blacklisted",        "BOOLEAN DEFAULT 0"),
+    ("tenders", "is_saved",              "BOOLEAN DEFAULT 0"),
+    ("tenders", "notes",                 "TEXT"),
+    ("tenders", "tags",                  "JSON DEFAULT '[]'"),
+    ("sources", "is_validated",          "BOOLEAN DEFAULT 0"),
+    ("sources", "ping_failures_count",   "INTEGER DEFAULT 0"),
+    ("sources", "last_ping_at",          "DATETIME DEFAULT NULL"),
+]
+
+_VALID_TABLES = {"tenders", "sources"}
+_VALID_COLS   = {col for _, col, _ in _MIGRATIONS}
+
+
+def _run_migrations(engine) -> None:
+    """Exécute les migrations de colonnes avec validation stricte des noms."""
+    with engine.connect() as conn:
+        for table, col_name, col_def in _MIGRATIONS:
+            assert table in _VALID_TABLES,  f"Table inconnue : {table}"
+            assert col_name in _VALID_COLS, f"Colonne inconnue : {col_name}"
+            try:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}"))
+                conn.commit()
+            except OperationalError as e:
+                err = str(e).lower()
+                if "already exists" not in err and "duplicate column" not in err:
+                    raise
+
+
 def init_db():
-    # Import lazy pour éviter la dépendance circulaire au niveau module
-    from source_registry import Source, init_sources  # noqa: enregistre Source avec Base
-    from models import ScraperRun, DuplicateCandidate  # noqa: registers both with Base
+    from source_registry import Source, init_sources  # noqa
+    from models import ScraperRun, DuplicateCandidate  # noqa
 
     Base.metadata.create_all(bind=engine)
+    _run_migrations(engine)
 
-    # Migrations de colonnes existantes (conservées)
-    with engine.connect() as conn:
-        for col_name, col_def in [
-            ("secteur", "VARCHAR"),
-            ("type_opportunite", "VARCHAR DEFAULT 'Marché Public'"),
-            ("amount", "INTEGER"),
-            ("is_blacklisted", "BOOLEAN DEFAULT 0"),
-            ("is_saved", "BOOLEAN DEFAULT 0"),
-            ("notes", "TEXT"),
-        ]:
-            try:
-                conn.execute(text(f"ALTER TABLE tenders ADD COLUMN {col_name} {col_def}"))
-                conn.commit()
-            except OperationalError as e:
-                if "already exists" not in str(e) and "duplicate column" not in str(e):
-                    raise
-
-    # Migration table sources
-    with engine.connect() as conn:
-        try:
-            conn.execute(text("ALTER TABLE sources ADD COLUMN is_validated BOOLEAN DEFAULT 0"))
-            conn.commit()
-        except OperationalError as e:
-            if "already exists" not in str(e) and "duplicate column" not in str(e):
-                raise
-
-    # Migration colonnes Source : ping
-    with engine.connect() as conn:
-        for col_name, col_def in [
-            ("ping_failures_count", "INTEGER DEFAULT 0"),
-            ("last_ping_at", "DATETIME DEFAULT NULL"),
-        ]:
-            try:
-                conn.execute(text(f"ALTER TABLE sources ADD COLUMN {col_name} {col_def}"))
-                conn.commit()
-            except OperationalError as e:
-                if "already exists" not in str(e) and "duplicate column" not in str(e):
-                    raise
-
-    # Migration colonne Tender : tags
-    with engine.connect() as conn:
-        try:
-            conn.execute(text("ALTER TABLE tenders ADD COLUMN tags JSON DEFAULT '[]'"))
-            conn.commit()
-        except OperationalError as e:
-            if "already exists" not in str(e) and "duplicate column" not in str(e):
-                raise
-
-    # Seeding des sources par défaut si la table est vide
     db = SessionLocal()
     try:
         init_sources(db)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
@@ -87,7 +83,7 @@ from sqlalchemy import and_ as _and, or_ as _or
 
 def start_scraper_run(db, source_name: str) -> int:
     from models import ScraperRun
-    run = ScraperRun(source_name=source_name, started_at=_dt.now(_tz.utc), status="running")
+    run = ScraperRun(source_name=source_name, started_at=_dt.now(_tz.utc).replace(tzinfo=None), status="running")
     db.add(run)
     db.commit()
     db.refresh(run)
@@ -98,14 +94,21 @@ def finish_scraper_run(db, run_id: int, nb_found: int, nb_new: int, error: str |
     from models import ScraperRun
     run = db.query(ScraperRun).filter(ScraperRun.id == run_id).first()
     if not run:
+        _log.warning("finish_scraper_run: ScraperRun id=%s introuvable", run_id)
         return
-    run.finished_at = _dt.now(_tz.utc)
+    run.finished_at = _dt.now(_tz.utc).replace(tzinfo=None)
     run.nb_found = nb_found
     run.nb_new = nb_new
     run.error = error
     run.status = "error" if error else "ok"
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
+
+_DEDUP_MAX_TENDERS = 2000  # au-delà, O(N²) devient trop lent
 
 def detect_duplicates(db) -> int:
     """Détecte les paires de marchés avec titre similaire (>=0.80) et deadline à ±3j.
@@ -113,8 +116,15 @@ def detect_duplicates(db) -> int:
     from models import Tender, DuplicateCandidate
     from datetime import datetime as _ddt, UTC as _UTC
 
-    tenders = db.query(Tender).filter(Tender.is_blacklisted != True).all()
+    tenders = db.query(Tender).filter(Tender.is_blacklisted == False).all()
+    if len(tenders) > _DEDUP_MAX_TENDERS:
+        tenders = sorted(tenders, key=lambda t: (t.publication_date.replace(tzinfo=None) if t.publication_date else _ddt.min), reverse=True)[:_DEDUP_MAX_TENDERS]
     new_pairs = 0
+
+    existing_raw = db.query(DuplicateCandidate.tender_id_a, DuplicateCandidate.tender_id_b).all()
+    existing_pairs: set[tuple] = {
+        (min(a, b), max(a, b)) for a, b in existing_raw
+    }
 
     for i, a in enumerate(tenders):
         for b in tenders[i + 1:]:
@@ -126,23 +136,21 @@ def detect_duplicates(db) -> int:
             if ratio < 0.80:
                 continue
             if a.deadline and b.deadline:
-                if abs((a.deadline - b.deadline).days) > 3:
+                dl_a = a.deadline.replace(tzinfo=None)
+                dl_b = b.deadline.replace(tzinfo=None)
+                if abs((dl_a - dl_b).days) > 3:
                     continue
             elif a.deadline or b.deadline:
                 continue
-            existing = db.query(DuplicateCandidate).filter(
-                _or(
-                    _and(DuplicateCandidate.tender_id_a == a.id, DuplicateCandidate.tender_id_b == b.id),
-                    _and(DuplicateCandidate.tender_id_a == b.id, DuplicateCandidate.tender_id_b == a.id),
-                )
-            ).first()
-            if not existing:
+            pair_key = (min(a.id, b.id), max(a.id, b.id))
+            if pair_key not in existing_pairs:
                 db.add(DuplicateCandidate(
                     tender_id_a=a.id,
                     tender_id_b=b.id,
                     similarity_score=round(ratio, 3),
                     detected_at=_ddt.now(_UTC),
                 ))
+                existing_pairs.add(pair_key)
                 new_pairs += 1
 
     db.commit()
@@ -151,15 +159,15 @@ def detect_duplicates(db) -> int:
 
 def load_urgences(db, score_go: int = 65, days_ahead: int = 30) -> list[dict]:
     from models import Tender
-    from datetime import datetime as _ddt, timedelta as _td
+    from datetime import datetime as _ddt, timedelta as _td, timezone as _tz
 
-    today = _ddt.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = _ddt.now(_tz.utc).replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
     cutoff = today + _td(days=days_ahead)
     rows = (
         db.query(Tender)
         .filter(
             Tender.relevance_score >= score_go,
-            Tender.is_blacklisted != True,
+            Tender.is_blacklisted == False,
             Tender.deadline != None,
             Tender.deadline >= today,
             Tender.deadline <= cutoff,
@@ -173,7 +181,7 @@ def load_urgences(db, score_go: int = 65, days_ahead: int = 30) -> list[dict]:
             "id": t.id,
             "title": t.title,
             "score": t.relevance_score,
-            "jours": (t.deadline - today).days,
+            "jours": (t.deadline.replace(tzinfo=None) - today).days,
         }
         for t in rows
     ]
@@ -183,7 +191,7 @@ def load_pipeline_data(db, score_go: int = 65) -> dict:
     from models import Tender
     from datetime import datetime as _ddt
 
-    tenders = db.query(Tender).filter(Tender.is_blacklisted != True).all()
+    tenders = db.query(Tender).filter(Tender.is_blacklisted == False).all()
     go, soumis, resultats = [], [], []
     for t in tenders:
         if t.status in ("Gagné", "Perdu"):
@@ -193,7 +201,9 @@ def load_pipeline_data(db, score_go: int = 65) -> dict:
         elif t.relevance_score >= score_go:
             go.append(t)
 
-    go.sort(key=lambda t: t.deadline or _ddt.max)
-    soumis.sort(key=lambda t: t.deadline or _ddt.max)
-    resultats.sort(key=lambda t: t.publication_date or _ddt.min, reverse=True)
+    def _dl(t): return (t.deadline.replace(tzinfo=None) if t.deadline else _ddt.max)
+    def _pub(t): return (t.publication_date.replace(tzinfo=None) if t.publication_date else _ddt.min)
+    go.sort(key=_dl)
+    soumis.sort(key=_dl)
+    resultats.sort(key=_pub, reverse=True)
     return {"go": go, "soumis": soumis, "resultats": resultats}
