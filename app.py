@@ -1603,6 +1603,14 @@ search_query = st.text_input(
     key="search_query_main",
 )
 
+# ── Filtre post-collecte par source ──────────────────────────────────────────
+_collection_src_ids = st.session_state.get("collection_source_ids", {})
+_excluded_new_ids: set = set()
+if _collection_src_ids:
+    for _src, _ids in _collection_src_ids.items():
+        if not st.session_state.get(f"src_filter_{_src}", True):
+            _excluded_new_ids.update(_ids)
+
 # ── Tableau Marchés Publics ───────────────────────────────────────────────────
 
 rows_pub = load_tenders(selected_status, maintenance_only, date_from, strict_date, secteur="Public", only_recent=only_recent)
@@ -1636,6 +1644,8 @@ if selected_decisions:
 if selected_tags:
     rows_pub = [r for r in rows_pub if any(tg in (r["_tags"] or []) for tg in selected_tags)]
 rows_pub = _sort_rows(rows_pub, sort_by)
+if _excluded_new_ids:
+    rows_pub = [r for r in rows_pub if r["ID"] not in _excluded_new_ids]
 
 _render_editor_section(
     rows=rows_pub,
@@ -1673,6 +1683,8 @@ if selected_decisions:
 if selected_tags:
     rows_priv = [r for r in rows_priv if any(tg in (r["_tags"] or []) for tg in selected_tags)]
 rows_priv = _sort_rows(rows_priv, sort_by)
+if _excluded_new_ids:
+    rows_priv = [r for r in rows_priv if r["ID"] not in _excluded_new_ids]
 
 _render_editor_section(
     rows=rows_priv,
