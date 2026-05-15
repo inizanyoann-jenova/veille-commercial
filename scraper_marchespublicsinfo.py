@@ -1,12 +1,15 @@
 import hashlib
 import logging
+
 from playwright.sync_api import sync_playwright
+
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from filters import is_relevant_def
 from models import Tender
 from playwright_base import extract_cards, paginate
+from scraper_utils import parse_date, load_existing_ids, insert_if_new
 
-log = logging.getLogger(__name__)
+_log = logging.getLogger(__name__)
 
 _URL = "https://www.marches-publics.info/index.php?page=entreprise.EntrepriseAdvancedSearch&searchAnnouncement[query]=SSI+incendie+CMSI+videosurveillance&searchAnnouncement[dptList][]=974&searchAnnouncement[dptList][]=976"
 _CARD = "tr.annonce, .annonce-row, li.annonce, .search-result-item"
@@ -19,73 +22,62 @@ _FIELDS = {
 _NEXT = "a.next, a[title='Page suivante'], .pagination-next a"
 
 
-def _parse_date(value):
-    if not value:
-        return None
-    from datetime import datetime
-    value = " ".join(str(value).split())
-    for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(value[:10], fmt[:10])
-        except ValueError:
-            continue
-    return None
-
-
 def fetch_marchespublicsinfo_tenders() -> int:
     init_db()
-    db = SessionLocal()
+    db       = SessionLocal()
     inserted = 0
-    seen_ids: set[str] = set()
-    _run_id = start_scraper_run(db, "Marchés Public Info")
+    _run_id  = start_scraper_run(db, "Marchés Public Info")
     try:
+        existing_ids = load_existing_ids(db)
+
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=True)
             try:
                 page = browser.new_page()
                 try:
-                    page.goto(_URL, timeout=15000)
-                    page.wait_for_load_state("networkidle", timeout=15000)
-                except Exception as exc:
-                    log.warning("Marchés Public Info inaccessible : %s", exc)
-                    finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
-                    return 0
-                page_count = 0
-                while page_count < 5:
-                    for card in extract_cards(page, _CARD, _FIELDS):
-                        title = card.get("title", "").strip()
-                        desc = card.get("description", "").strip()
-                        if not is_relevant_def(f"{title} {desc}"):
-                            continue
-                        url = card.get("url", "") or _URL
-                        if url and not url.startswith("http"):
-                            url = f"https://www.marches-publics.info{url}"
-                        tid = f"MARCHESPUBLICSINFO-{hashlib.md5(f'{title}{url}'.encode()).hexdigest()}"
-                        if tid in seen_ids:
-                            continue
-                        seen_ids.add(tid)
-                        if db.query(Tender).filter(Tender.id == tid).first():
-                            continue
-                        db.add(Tender(
-                            id=tid, title=title, description=desc, source=url,
-                            publication_date=_parse_date(card.get("date")),
-                            deadline=None, status="À qualifier",
-                            relevance_score=0, is_maintenance=False,
-                            llm_analysis=None, secteur="Public",
-                            type_opportunite="Marché Public",
-                        ))
-                        inserted += 1
-                    if not paginate(page, _NEXT):
-                        break
-                    page_count += 1
-                page.close()
+                    try:
+                        page.goto(_URL, timeout=30000)
+                        page.wait_for_load_state("networkidle", timeout=30000)
+                    except Exception as exc:
+                        _log.warning("Marchés Public Info inaccessible : %s", type(exc).__name__)
+                        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
+                        return 0
+                    page_count = 0
+                    while page_count < 5:
+                        for card in extract_cards(page, _CARD, _FIELDS):
+                            title = card.get("title", "").strip()
+                            desc  = card.get("description", "").strip()
+                            if not is_relevant_def(f"{title} {desc}"):
+                                continue
+                            url = card.get("url", "") or _URL
+                            if url and not url.startswith("http"):
+                                url = f"https://www.marches-publics.info{url}"
+                            tid = f"MARCHESPUBLICSINFO-{hashlib.md5(f'{title}{url}'.encode()).hexdigest()}"
+                            t = Tender(
+                                id=tid, title=title, description=desc, source=url,
+                                publication_date=parse_date(card.get("date")),
+                                deadline=None, status="À qualifier",
+                                relevance_score=0, is_maintenance=False,
+                                llm_analysis=None, secteur="Public",
+                                type_opportunite="Marché Public",
+                            )
+                            if insert_if_new(db, t, existing_ids):
+                                inserted += 1
+                        if not paginate(page, _NEXT):
+                            break
+                        page_count += 1
+                finally:
+                    page.close()
             finally:
                 browser.close()
+
         if inserted:
             db.commit()
         finish_scraper_run(db, _run_id, nb_found=inserted, nb_new=inserted)
-    except Exception as _e:
-        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(_e))
+        _log.info("Marchés Public Info : %d inséré(s)", inserted)
+    except Exception as exc:
+        _log.exception("Marchés Public Info : erreur collecte")
+        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
         raise
     finally:
         db.close()
@@ -93,4 +85,5 @@ def fetch_marchespublicsinfo_tenders() -> int:
 
 
 if __name__ == "__main__":
-    print(f"Marchés Public Info : {fetch_marchespublicsinfo_tenders()} AO insérés")
+    logging.basicConfig(level=logging.INFO)
+    _log.info("Marchés Public Info : %d AO insérés", fetch_marchespublicsinfo_tenders())
