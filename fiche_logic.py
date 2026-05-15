@@ -12,6 +12,16 @@ def _compute_fiche_data(
     a: dict,
 ) -> dict:
     """Logique métier de la fiche marché — aucun appel Streamlit."""
+    # Validation défensive des paramètres
+    score = int(score) if score is not None else 0
+    score = max(0, min(100, score))
+    domaine    = str(domaine or "")
+    territoire = str(territoire or "")
+    title      = str(title or "")
+    a          = a if isinstance(a, dict) else {}
+    if jours_restants is not None:
+        jours_restants = int(jours_restants)
+
     if "🔥 SSI" in domaine:          sm = 45
     elif "💨 CMSI" in domaine:       sm = 40
     elif "📷 Vidéo" in domaine:      sm = 40
@@ -25,10 +35,19 @@ def _compute_fiche_data(
     else:                                                         sg = 0
 
     title_l = title.lower()
-    sk = 15 if any(kw in title_l for kw in [
+    _KW_TITRE = [
         "ssi", "cmsi", "détection", "alarme incendie", "désenfumage",
         "vidéosurveillance", "cctv", "courants faibles",
-    ]) else 0
+    ]
+    _hits_titre = sum(1 for kw in _KW_TITRE if kw in title_l)
+    if _hits_titre >= 3:
+        sk = 15
+    elif _hits_titre == 2:
+        sk = 10
+    elif _hits_titre == 1:
+        sk = 6
+    else:
+        sk = 0
     smaint = 10 if is_maintenance else 0
 
     if score >= SCORE_GO:
