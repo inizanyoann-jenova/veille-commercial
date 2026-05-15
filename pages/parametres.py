@@ -449,3 +449,99 @@ else:
             "Erreur": st.column_config.TextColumn(width="large"),
         },
     )
+
+# ── Détection de doublons ─────────────────────────────────────────────────────
+
+st.header("🔍 Doublons détectés")
+st.caption("Marchés collectés depuis plusieurs sources avec un titre similaire (≥ 80 %) et la même deadline (±3 jours).")
+
+from database import detect_duplicates as _detect_dups, SessionLocal as _SL_dd
+from models import Tender as _Tender_dd, DuplicateCandidate as _DC
+from sqlalchemy import or_ as _or_dd, and_ as _and_dd
+
+
+def _get_unresolved_pairs():
+    _db = _SL_dd()
+    try:
+        pairs = _db.query(_DC).filter(_DC.resolved == False).all()
+        result = []
+        for p in pairs:
+            a = _db.query(_Tender_dd).filter(_Tender_dd.id == p.tender_id_a).first()
+            b = _db.query(_Tender_dd).filter(_Tender_dd.id == p.tender_id_b).first()
+            if a and b:
+                result.append((p, a, b))
+        return result
+    finally:
+        _db.close()
+
+
+def _merge_pair(keep_id: str, archive_id: str, pair_id: int):
+    _db = _SL_dd()
+    try:
+        archive = _db.query(_Tender_dd).filter(_Tender_dd.id == archive_id).first()
+        if archive:
+            archive.is_blacklisted = True
+        pair = _db.query(_DC).filter(_DC.id == pair_id).first()
+        if pair:
+            pair.resolved = True
+        _db.commit()
+    finally:
+        _db.close()
+    st.rerun()
+
+
+def _ignore_pair(pair_id: int):
+    _db = _SL_dd()
+    try:
+        pair = _db.query(_DC).filter(_DC.id == pair_id).first()
+        if pair:
+            pair.resolved = True
+        _db.commit()
+    finally:
+        _db.close()
+    st.rerun()
+
+
+if st.button("🔍 Détecter les doublons", key="run_detect_duplicates"):
+    with st.spinner("Analyse en cours…"):
+        _db2 = _SL_dd()
+        try:
+            nb = _detect_dups(_db2)
+        finally:
+            _db2.close()
+    if nb:
+        st.success(f"{nb} nouvelle(s) paire(s) détectée(s).")
+    else:
+        st.info("Aucun nouveau doublon détecté.")
+
+_pairs = _get_unresolved_pairs()
+
+if not _pairs:
+    st.caption("Aucun doublon à traiter.")
+else:
+    st.markdown(f"**{len(_pairs)} paire(s) à examiner**")
+    for _pair, _a, _b in _pairs:
+        with st.expander(f"Paire #{_pair.id} — similarité {_pair.similarity_score:.0%}", expanded=True):
+            _recommended = _a if _a.relevance_score >= _b.relevance_score else _b
+            _other = _b if _recommended.id == _a.id else _a
+
+            _ca, _cb = st.columns(2)
+            for _col, _tender, _label in [
+                (_ca, _recommended, "✅ Recommandé à conserver"),
+                (_cb, _other, ""),
+            ]:
+                with _col:
+                    if _label:
+                        st.success(_label)
+                    st.markdown(f"**{_tender.title}**")
+                    st.caption(f"Source : {_tender.source} · Score : {_tender.relevance_score}")
+                    if _tender.deadline:
+                        st.caption(f"Deadline : {_tender.deadline.strftime('%d/%m/%Y')}")
+
+            _c1, _c2, _c3 = st.columns(3)
+            if _c1.button(f"Garder {_a.source[:12]} — archiver {_b.source[:12]}", key=f"keep_a_{_pair.id}"):
+                _merge_pair(keep_id=_a.id, archive_id=_b.id, pair_id=_pair.id)
+            if _c2.button(f"Garder {_b.source[:12]} — archiver {_a.source[:12]}", key=f"keep_b_{_pair.id}"):
+                _merge_pair(keep_id=_b.id, archive_id=_a.id, pair_id=_pair.id)
+            if _c3.button("Ignorer", key=f"ignore_{_pair.id}"):
+                _ignore_pair(_pair.id)
