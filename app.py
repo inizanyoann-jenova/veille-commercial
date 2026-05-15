@@ -1,7 +1,8 @@
 from datetime import datetime, timedelta, date as _date
-import hashlib as _hl
 import html as _html
+import logging
 import re
+import uuid as _uuid
 from collections import Counter, defaultdict
 
 import pandas as pd
@@ -29,6 +30,8 @@ from source_registry import list_sources, add_source, remove_source, toggle_enab
 from models import Tender
 
 from fiche_logic import SCORE_GO, SCORE_ETUDE, _compute_fiche_data
+
+_log = logging.getLogger(__name__)
 
 TENDER_TAGS = [
     "Partenaire requis",
@@ -132,16 +135,18 @@ init_db()
 
 # ── Scheduler ré-validation hebdomadaire ──────────────────────────────────────
 
-if "scheduler_started" not in st.session_state:
-    from source_registry import _run_weekly_ping as _rwp, Source as _SrcSched
-    from datetime import datetime as _dts
+@st.cache_resource
+def _start_background_services():
+    """Démarre le scheduler et le catchup une seule fois par processus (pas par session)."""
+    from source_registry import _run_weekly_ping as _rwp
+    from datetime import datetime as _dts, timezone as _tz_bg
 
     def _maybe_run_catchup():
         from database import SessionLocal as _SL_c
         from source_registry import Source as _SrcC, _ping_source as _ps
         _db_c = _SL_c()
         try:
-            _now_c = _dts.utcnow()
+            _now_c = _dts.now(_tz_bg.utc).replace(tzinfo=None)
             stale = _db_c.query(_SrcC).filter(_SrcC.is_validated == True).all()
             for s in stale:
                 if s.last_ping_at is None or (_now_c - s.last_ping_at.replace(tzinfo=None)).days >= 8:
@@ -155,7 +160,9 @@ if "scheduler_started" not in st.session_state:
     _scheduler = _BgScheduler()
     _scheduler.add_job(_rwp, "interval", weeks=1, id="weekly_ping")
     _scheduler.start()
-    st.session_state["scheduler_started"] = True
+    return _scheduler
+
+_start_background_services()
 
 st.markdown("""
 <style>
@@ -435,7 +442,7 @@ if "auto_analyzed" not in st.session_state:
 st.session_state.setdefault("new_tender_ids", set())
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=300)
 def load_tenders(
     status_filter: str,
     maintenance_only: bool,
@@ -446,7 +453,7 @@ def load_tenders(
 ) -> list[dict]:
     db = new_db()
     try:
-        q = db.query(Tender).filter(Tender.is_blacklisted != True)
+        q = db.query(Tender).filter(Tender.is_blacklisted == False)
 
         if secteur == "Public":
             q = q.filter(or_(Tender.secteur == "Public", Tender.secteur == None))
@@ -499,8 +506,9 @@ def load_tenders(
                     "⭐": bool(t.is_saved),
                     "Secteur": t.secteur or "Public",
                     "_deadline_dt": t.deadline,
+                    "_pub_dt": t.publication_date,
                     "_desc": (t.description or "").lower(),
-                    "_tags": t.tags or [],
+                    "_tags": t.tags if isinstance(t.tags, list) else [],
                 }
             )
         return rows
@@ -531,13 +539,13 @@ def toggle_saved(tender_id: str, value: bool) -> None:
         db.close()
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=300)
 def load_saved_tenders() -> list[dict]:
     db = new_db()
     try:
         tenders = (
             db.query(Tender)
-            .filter(Tender.is_saved == True, Tender.is_blacklisted != True)
+            .filter(Tender.is_saved == True, Tender.is_blacklisted == False)
             .order_by(Tender.publication_date.desc())
             .all()
         )
@@ -572,7 +580,7 @@ def load_chart_data() -> list[dict]:
             Tender.title,
             Tender.description,
             Tender.secteur,
-        ).filter(Tender.is_blacklisted != True).all()
+        ).filter(Tender.is_blacklisted == False).all()
         return [
             {
                 "pub": r.publication_date,
@@ -586,7 +594,7 @@ def load_chart_data() -> list[dict]:
         db.close()
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=300)
 def load_pipeline() -> dict[str, list[dict]]:
     """Retourne les marchés publics groupés par statut pour la vue pipeline."""
     db = new_db()
@@ -594,7 +602,7 @@ def load_pipeline() -> dict[str, list[dict]]:
         tenders = (
             db.query(Tender)
             .filter(
-                Tender.is_blacklisted != True,
+                Tender.is_blacklisted == False,
                 or_(Tender.secteur == "Public", Tender.secteur == None),
             )
             .all()
@@ -661,31 +669,44 @@ def run_analysis(tender_id: str) -> None:
         t = db.query(Tender).filter(Tender.id == tender_id).first()
         if not t:
             return
-        result = analyze_tender(
-            f"{t.title or ''} {t.description or ''}",
-            source_url=t.source if t.source and t.source.startswith("http") else None,
-        )
-        t.llm_analysis = result
-        t.relevance_score = result.get("score_pertinence", 0)
-        t.is_maintenance = result.get("type_marche", "").lower() == "maintenance"
-        db.commit()
+        try:
+            result = analyze_tender(
+                f"{t.title or ''} {t.description or ''}",
+                source_url=t.source if t.source and t.source.startswith("http") else None,
+            )
+        except Exception as exc:
+            _log.warning("Analyse LLM échouée pour %s : %s", tender_id, type(exc).__name__)
+            return
+        if result:
+            t.llm_analysis     = result
+            t.relevance_score  = result.get("score_pertinence", 0)
+            t.is_maintenance   = result.get("type_marche", "").lower() == "maintenance"
+            db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
+
+
+def _naive_dt(dt):
+    """Normalise un datetime en naïf (supprime tzinfo si présent)."""
+    return dt.replace(tzinfo=None) if dt and dt.tzinfo is not None else dt
 
 
 def _sort_rows(rows: list[dict], sort_by: str) -> list[dict]:
     if sort_by == "Score ↓":
         return sorted(rows, key=lambda r: -(r.get("Score") or 0))
     elif sort_by == "Publication ↓":
-        return sorted(rows, key=lambda r: r.get("_deadline_dt") or datetime.min, reverse=True)
+        return sorted(rows, key=lambda r: _naive_dt(r.get("_pub_dt")) or datetime.min, reverse=True)
     else:  # Date limite ↑ (défaut)
         return sorted(rows, key=lambda r: (
             r.get("_deadline_dt") is None,
-            r.get("_deadline_dt") or datetime.max,
+            _naive_dt(r.get("_deadline_dt")) or datetime.max,
         ))
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=300)
 def load_kpis_public() -> dict:
     db = new_db()
     try:
@@ -701,7 +722,7 @@ def load_kpis_public() -> dict:
         db.close()
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=300)
 def load_kpis_ca() -> dict:
     db = new_db()
     try:
@@ -721,7 +742,7 @@ def load_kpis_ca() -> dict:
         db.close()
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=300)
 def load_kpis_priv() -> dict:
     db = new_db()
     try:
@@ -770,15 +791,26 @@ def _collect_all_enabled_sources() -> None:
             finally:
                 _db_pre.close()
             try:
-                import sys as _sys
-                if source.scraper_module in _sys.modules:
-                    mod = importlib.reload(_sys.modules[source.scraper_module])
-                else:
-                    mod = importlib.import_module(source.scraper_module)
+                mod = importlib.import_module(source.scraper_module)
                 func = getattr(mod, source.scraper_func)
                 func()
             except Exception as exc:
                 errors.append(f"{source.name} : {exc}")
+                try:
+                    from models import ScraperRun as _SR_cleanup
+                    from database import finish_scraper_run as _fsr
+                    _db_cleanup = new_db()
+                    try:
+                        _orphan = _db_cleanup.query(_SR_cleanup).filter(
+                            _SR_cleanup.source_name == source.name,
+                            _SR_cleanup.status == "running",
+                        ).order_by(_SR_cleanup.id.desc()).first()
+                        if _orphan:
+                            _fsr(_db_cleanup, _orphan.id, nb_found=0, nb_new=0, error=str(exc))
+                    finally:
+                        _db_cleanup.close()
+                except Exception:
+                    pass
             _db_post = new_db()
             try:
                 ids_after_src = {row.id for row in _db_post.query(Tender.id).all()}
@@ -851,7 +883,7 @@ def _render_new_tenders_section() -> None:
     try:
         new_tenders = (
             db.query(Tender)
-            .filter(Tender.id.in_(new_ids), Tender.is_blacklisted != True)
+            .filter(Tender.id.in_(new_ids), Tender.is_blacklisted == False)
             .all()
         )
     finally:
@@ -935,12 +967,12 @@ with st.sidebar:
     st.markdown("## 🔥 DEF Océan Indien")
     st.markdown("**Veille Marchés Publics**")
     st.markdown("---")
-    search_query = ""  # défini dans la page principale
 
     _now = datetime.now()
     _cy = _now.year
+    _today = _now.replace(hour=0, minute=0, second=0, microsecond=0)
     periode_labels = {
-        "30 derniers jours": (_now - timedelta(days=30), True),
+        "30 derniers jours": (_today - timedelta(days=30), True),
         f"Cette année ({_cy})": (datetime(_cy, 1, 1), False),
         f"2 ans": (datetime(_cy - 1, 1, 1), False),
         f"3 ans": (datetime(_cy - 2, 1, 1), False),
@@ -1136,7 +1168,7 @@ with st.expander("📈 Tendances & Statistiques", expanded=False):
             _cutoff = datetime.now() - timedelta(weeks=30)
             _week_counts: dict[str, int] = defaultdict(int)
             for r in _chart_rows:
-                if r["pub"] and r["pub"] >= _cutoff:
+                if r["pub"] and _naive_dt(r["pub"]) >= _cutoff:
                     _wk = r["pub"].strftime("%G-W%V")
                     _week_counts[_wk] += 1
             _weeks = sorted(_week_counts.keys())
@@ -1385,13 +1417,14 @@ def _render_fiche(tender_id: str, key_suffix: str) -> None:
             _selected_tags = st.multiselect(
                 "Étiquettes",
                 options=TENDER_TAGS,
-                default=[tg for tg in (t.tags or []) if tg in TENDER_TAGS],
+                default=[tg for tg in (t.tags if isinstance(t.tags, list) else []) if tg in TENDER_TAGS],
                 key=f"tags_ms_{key_suffix}_{tender_id}",
             )
             if st.button("💾 Sauvegarder les tags", key=f"save_tags_{key_suffix}_{tender_id}"):
                 save_tags(tender_id, _selected_tags)
                 st.cache_data.clear()
                 st.success("Tags sauvegardés.")
+                st.rerun()
     finally:
         db_det.close()
 
@@ -1417,9 +1450,15 @@ def _render_editor_section(
     df = pd.DataFrame(rows)
 
     # ── Export CSV ────────────────────────────────────────────────────────────
-    _export_cols = [c for c in df.columns if not c.startswith("_") and c not in ("ID", "Secteur")]
+    _MAX_EXPORT_ROWS = 10_000
+    if len(df) > _MAX_EXPORT_ROWS:
+        st.warning(f"⚠️ Export limité aux {_MAX_EXPORT_ROWS} premières lignes (sur {len(df)} résultats). Affinez vos filtres pour exporter tout.")
+        df_export = df.head(_MAX_EXPORT_ROWS)
+    else:
+        df_export = df
+    _export_cols = [c for c in df_export.columns if not c.startswith("_") and c not in ("ID", "Secteur")]
     _csv_buf = _io.StringIO()
-    df[_export_cols].to_csv(_csv_buf, index=False)
+    df_export[_export_cols].to_csv(_csv_buf, index=False)
     st.download_button(
         "📥 Exporter vue filtrée (CSV)",
         data=_csv_buf.getvalue().encode("utf-8-sig"),
@@ -1431,7 +1470,7 @@ def _render_editor_section(
     # ── Tableau principal (clic pour sélectionner) ────────────────────────────
     st.caption("👆 Cliquez sur une ligne pour la sélectionner et afficher son analyse ci-dessous")
     view_event = st.dataframe(
-        df.drop(columns=["ID", "Secteur", "_deadline_dt"], errors="ignore"),
+        df.drop(columns=["ID", "Secteur", "_deadline_dt", "_pub_dt", "_desc", "_tags"], errors="ignore"),
         column_config={
             "Go/No-Go": st.column_config.TextColumn("Décision", width="small"),
             "Titre": st.column_config.TextColumn("Titre du Marché", width="large"),
@@ -1454,10 +1493,14 @@ def _render_editor_section(
         key=f"{editor_key}_view",
     )
 
+    _df_prev_row_key = f"_df_prev_row_{editor_key}"
     if view_event.selection.rows:
         selected_row_idx = view_event.selection.rows[0]
         if selected_row_idx < len(df):
-            st.session_state[_sel_id_key] = df.iloc[selected_row_idx]["ID"]
+            new_id = df.iloc[selected_row_idx]["ID"]
+            if new_id != st.session_state.get(_sel_id_key):
+                st.session_state[_df_prev_row_key] = selected_row_idx
+                st.session_state[_sel_id_key] = new_id
 
     # ── Édition rapide (statut, montant, étoile, suppression) ─────────────────
     with st.expander("✏️ Modifier statut / montant / étoile / supprimer"):
@@ -1510,26 +1553,30 @@ def _render_editor_section(
                 st.rerun()
 
         editor_state = st.session_state.get(editor_key, {})
+        _needs_rerun = False
         for row_idx, changes in editor_state.get("edited_rows", {}).items():
             if "Statut" in changes:
                 save_status(df_edit.iloc[row_idx]["ID"], changes["Statut"])
-                st.cache_data.clear()
-                st.rerun()
+                _needs_rerun = True
             if "Montant (€)" in changes:
                 save_amount(df_edit.iloc[row_idx]["ID"], changes["Montant (€)"])
-                st.cache_data.clear()
-                st.rerun()
+                _needs_rerun = True
             if "⭐" in changes:
                 toggle_saved(df_edit.iloc[row_idx]["ID"], changes["⭐"])
-                st.cache_data.clear()
-                st.rerun()
+                _needs_rerun = True
+        if _needs_rerun:
+            st.cache_data.clear()
+            st.rerun()
 
     # ── Analyse de la ligne sélectionnée ──────────────────────────────────────
     st.markdown("---")
     st.markdown(_section_html(fiche_title, "Analyse détaillée de l'élément sélectionné"), unsafe_allow_html=True)
 
     _sel_id = st.session_state.get(_sel_id_key)
+    _prev_row = st.session_state.get(_df_prev_row_key)
     if _sel_id:
+        if _prev_row is None:
+            st.caption("📌 Affichage depuis le pipeline — cliquez sur une ligne du tableau pour changer la sélection.")
         _render_fiche(_sel_id, editor_key)
     else:
         st.info("👆 Cliquez sur une ligne du tableau pour afficher son analyse.")
@@ -1603,7 +1650,6 @@ if search_query:
     _sq = search_query.lower()
     rows_pub = [r for r in rows_pub if (
         _sq in r["Titre"].lower()
-        or _sq in r["Source"].lower()
         or _sq in r["Territoire"].lower()
         or _sq in r["Domaine"].lower()
         or _sq in r["_desc"]
@@ -1614,7 +1660,7 @@ def _is_urgent(r: dict) -> bool:
         return False
     try:
         d = dl.date() if hasattr(dl, "date") else dl
-        return (d - datetime.now().date()).days <= 14
+        return (d - _date.today()).days <= 14
     except Exception:
         return False
 
@@ -1649,7 +1695,6 @@ if search_query:
     _sq = search_query.lower()
     rows_priv = [r for r in rows_priv if (
         _sq in r["Titre"].lower()
-        or _sq in r["Source"].lower()
         or _sq in r["Territoire"].lower()
         or _sq in r["Domaine"].lower()
         or _sq in r["_desc"]
@@ -1703,6 +1748,7 @@ for _pipe_col, _pipe_status in zip(_pipe_cols, ["À qualifier", "En cours", "Sou
             _short = _it["title"][:55]
             if st.button(_short, key=f"pipe_{_pipe_status}_{_it['id']}", use_container_width=True):
                 st.session_state["_sel_id_pub_editor"] = _it["id"]
+                st.session_state.pop("_df_prev_row_pub_editor", None)
         if len(_items) > 3:
             st.caption(f"+ {len(_items) - 3} autres")
 
@@ -1734,10 +1780,19 @@ with st.expander("➕ Ajouter une opportunité manuellement (AWS, achatpublic.co
         submitted = st.form_submit_button("Enregistrer l'opportunité", use_container_width=True, type="primary")
 
         if submitted:
+            _url_raw = m_url.strip()
+            _url_invalid = _url_raw and not _url_raw.startswith(("http://", "https://"))
+            _deadline_past = m_deadline is not None and m_deadline < _date.today()
             if not m_title.strip():
                 st.error("Le titre est obligatoire.")
+            elif _url_invalid:
+                st.error("L'URL doit commencer par http:// ou https://")
+            elif _deadline_past:
+                st.warning("⚠️ La date limite est dans le passé — l'opportunité sera enregistrée en archive.")
+            if not m_title.strip() or _url_invalid:
+                pass
             else:
-                tid = "MANUAL-" + _hl.md5(f"{m_title}{m_url}{m_deadline}".encode()).hexdigest()[:10]
+                tid = "MANUAL-" + _uuid.uuid4().hex[:16]
                 db_m = new_db()
                 try:
                     if db_m.query(Tender).filter(Tender.id == tid).first():
