@@ -1005,7 +1005,6 @@ with st.sidebar:
         for _src_name, _nb_new in sorted(_col_results.items()):
             st.checkbox(
                 f"{_src_name} ({_nb_new})",
-                value=st.session_state.get(f"src_filter_{_src_name}", True),
                 key=f"src_filter_{_src_name}",
             )
 
