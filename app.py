@@ -769,14 +769,13 @@ def load_last_scraper_runs() -> dict[str, dict]:
 
 # ── sidebar ───────────────────────────────────────────────────────────────────
 
-def _collect_selected_sources(selected_source_ids: list[int]) -> None:
-    """Lance les scrapers des sources sélectionnées et affiche les résultats."""
+def _collect_all_enabled_sources() -> None:
+    """Lance les scrapers de toutes les sources activées/validées. Stocke les résultats par source dans session_state."""
     import importlib
 
-    # Snapshot des IDs existants avant collecte
     _db_snap = new_db()
     try:
-        ids_before = {row.id for row in _db_snap.query(Tender.id).all()}
+        ids_before_all = {row.id for row in _db_snap.query(Tender.id).all()}
     finally:
         _db_snap.close()
 
@@ -786,14 +785,21 @@ def _collect_selected_sources(selected_source_ids: list[int]) -> None:
     finally:
         db_s.close()
 
-    total = 0
+    per_source_new: dict[str, int] = {}
+    per_source_ids: dict[str, set] = {}
     errors = []
+
     with st.spinner("Collecte en cours…"):
         for source in sources:
-            if source.id not in selected_source_ids:
-                continue
             if source.is_manual or not source.scraper_module:
                 continue
+            if not source.enabled or not source.is_validated:
+                continue
+            _db_pre = new_db()
+            try:
+                ids_before_src = {row.id for row in _db_pre.query(Tender.id).all()}
+            finally:
+                _db_pre.close()
             try:
                 import sys as _sys
                 if source.scraper_module in _sys.modules:
@@ -801,27 +807,43 @@ def _collect_selected_sources(selected_source_ids: list[int]) -> None:
                 else:
                     mod = importlib.import_module(source.scraper_module)
                 func = getattr(mod, source.scraper_func)
-                count = func()
-                total += count
+                func()
             except Exception as exc:
                 errors.append(f"{source.name} : {exc}")
+            _db_post = new_db()
+            try:
+                ids_after_src = {row.id for row in _db_post.query(Tender.id).all()}
+            finally:
+                _db_post.close()
+            new_ids = ids_after_src - ids_before_src
+            if new_ids:
+                per_source_ids[source.name] = new_ids
+                per_source_new[source.name] = len(new_ids)
 
     _run_auto_analysis()
     st.cache_data.clear()
 
-    # Calcul des nouveaux IDs apparus pendant cette collecte
     _db_snap2 = new_db()
     try:
-        ids_after = {row.id for row in _db_snap2.query(Tender.id).all()}
+        ids_after_all = {row.id for row in _db_snap2.query(Tender.id).all()}
     finally:
         _db_snap2.close()
-    st.session_state["new_tender_ids"] = ids_after - ids_before
 
-    if total and st.session_state.get("new_tender_ids"):
+    all_new_ids = ids_after_all - ids_before_all
+    st.session_state["new_tender_ids"] = all_new_ids
+    st.session_state["collection_results"] = per_source_new
+    st.session_state["collection_source_ids"] = per_source_ids
+
+    # Initialise le filtre : toutes les sources avec résultats sont cochées par défaut
+    for src in per_source_new:
+        st.session_state.setdefault(f"src_filter_{src}", True)
+
+    total = sum(per_source_new.values())
+    if total and all_new_ids:
         _db_res = new_db()
         try:
             _new_tenders = _db_res.query(Tender).filter(
-                Tender.id.in_(st.session_state["new_tender_ids"])
+                Tender.id.in_(all_new_ids)
             ).all()
 
             def _sc(t) -> int:
@@ -842,7 +864,7 @@ def _collect_selected_sources(selected_source_ids: list[int]) -> None:
     elif total:
         st.success(f"✅ {total} nouveau(x) marché(s) importé(s) — analyse automatique effectuée.")
     elif not errors:
-        st.info("Aucune nouvelle offre trouvée pour les sources sélectionnées.")
+        st.info("Aucune nouvelle offre trouvée.")
     for err in errors:
         st.warning(err)
 
