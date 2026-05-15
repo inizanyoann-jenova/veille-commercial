@@ -81,6 +81,8 @@ def get_db():
 
 
 from datetime import datetime as _dt, timezone as _tz
+from difflib import SequenceMatcher as _SM
+from sqlalchemy import and_ as _and, or_ as _or
 
 
 def start_scraper_run(db, source_name: str) -> int:
@@ -103,3 +105,45 @@ def finish_scraper_run(db, run_id: int, nb_found: int, nb_new: int, error: str |
     run.error = error
     run.status = "error" if error else "ok"
     db.commit()
+
+
+def detect_duplicates(db) -> int:
+    """Détecte les paires de marchés avec titre similaire (>=0.80) et deadline à ±3j.
+    Retourne le nombre de nouvelles paires insérées."""
+    from models import Tender, DuplicateCandidate
+    from datetime import datetime as _ddt, UTC as _UTC
+
+    tenders = db.query(Tender).filter(Tender.is_blacklisted != True).all()
+    new_pairs = 0
+
+    for i, a in enumerate(tenders):
+        for b in tenders[i + 1:]:
+            if a.source == b.source:
+                continue
+            if not a.title or not b.title:
+                continue
+            ratio = _SM(None, a.title.lower(), b.title.lower()).ratio()
+            if ratio < 0.80:
+                continue
+            if a.deadline and b.deadline:
+                if abs((a.deadline - b.deadline).days) > 3:
+                    continue
+            elif a.deadline or b.deadline:
+                continue
+            existing = db.query(DuplicateCandidate).filter(
+                _or(
+                    _and(DuplicateCandidate.tender_id_a == a.id, DuplicateCandidate.tender_id_b == b.id),
+                    _and(DuplicateCandidate.tender_id_a == b.id, DuplicateCandidate.tender_id_b == a.id),
+                )
+            ).first()
+            if not existing:
+                db.add(DuplicateCandidate(
+                    tender_id_a=a.id,
+                    tender_id_b=b.id,
+                    similarity_score=round(ratio, 3),
+                    detected_at=_ddt.now(_UTC),
+                ))
+                new_pairs += 1
+
+    db.commit()
+    return new_pairs
