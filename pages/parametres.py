@@ -487,6 +487,7 @@ def _merge_pair(keep_id: str, archive_id: str, pair_id: int):
         _db.commit()
     finally:
         _db.close()
+    st.cache_data.clear()
     st.rerun()
 
 
@@ -499,6 +500,7 @@ def _ignore_pair(pair_id: int):
         _db.commit()
     finally:
         _db.close()
+    st.cache_data.clear()
     st.rerun()
 
 

@@ -44,7 +44,8 @@ def _set_status(tender_id: str, new_status: str):
 def _card(t: Tender):
     import html as _html
     badge, bg = _jours_badge(t.deadline)
-    title_short = _html.escape(t.title[:60]) + ("…" if len(t.title) > 60 else "")
+    _title = t.title or ""
+    title_short = _html.escape(_title[:60]) + ("…" if len(_title) > 60 else "")
     st.markdown(
         f'<div style="background:{bg};border:1px solid #e5e7eb;border-radius:8px;'
         f'padding:10px;margin-bottom:6px;font-size:0.82rem">'
