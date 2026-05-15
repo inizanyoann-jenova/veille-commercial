@@ -3,12 +3,52 @@ import streamlit as st
 from dotenv import load_dotenv
 from credential_manager import CredentialManager
 from database import init_db
+from database import SessionLocal as _SL_src
+from source_registry import Source as _SrcModel, toggle_enabled as _toggle_enabled
 
 load_dotenv()
 init_db()
 
 st.set_page_config(page_title="Paramètres — DEF OI", page_icon="⚙️", layout="wide")
 st.title("⚙️ Paramètres")
+
+# ── Section sources à collecter ───────────────────────────────────────────────
+st.header("⚡ Sources à collecter")
+st.caption("Activez ou désactivez les sources prises en compte lors du lancement de la collecte.")
+
+_db_src_p = _SL_src()
+try:
+    _all_sources_p = _db_src_p.query(_SrcModel).order_by(_SrcModel.display_order).all()
+finally:
+    _db_src_p.close()
+
+_CAT_ICONS = {"Public": "📋 Public", "Privé": "🏗️ Privé", "International": "🌍 International"}
+for _cat in ["Public", "Privé", "International"]:
+    _cat_src = [s for s in _all_sources_p if s.category == _cat]
+    if not _cat_src:
+        continue
+    st.subheader(_CAT_ICONS[_cat])
+    for _s in _cat_src:
+        _col_toggle, _col_label = st.columns([1, 9])
+        with _col_toggle:
+            _new_enabled = st.toggle(
+                "Activée",
+                value=bool(_s.enabled),
+                key=f"src_enabled_{_s.id}",
+                label_visibility="collapsed",
+            )
+        with _col_label:
+            _status_icon = "✅" if _s.is_validated else ("📋" if _s.is_manual else "⚠️")
+            st.markdown(f"{_status_icon} **{_s.name}**")
+        if _new_enabled != bool(_s.enabled):
+            _db_tog = _SL_src()
+            try:
+                _toggle_enabled(_db_tog, _s.id)
+            finally:
+                _db_tog.close()
+            st.rerun()
+
+st.markdown("---")
 
 # ── Section clé API Claude ────────────────────────────────────────────────────
 st.header("🤖 Intelligence Artificielle — Clé API Claude")
