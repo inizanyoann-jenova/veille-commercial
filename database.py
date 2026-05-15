@@ -177,3 +177,23 @@ def load_urgences(db, score_go: int = 65, days_ahead: int = 30) -> list[dict]:
         }
         for t in rows
     ]
+
+
+def load_pipeline_data(db, score_go: int = 65) -> dict:
+    from models import Tender
+    from datetime import datetime as _ddt
+
+    tenders = db.query(Tender).filter(Tender.is_blacklisted != True).all()
+    go, soumis, resultats = [], [], []
+    for t in tenders:
+        if t.status in ("Gagné", "Perdu"):
+            resultats.append(t)
+        elif t.status == "Soumis":
+            soumis.append(t)
+        elif t.relevance_score >= score_go:
+            go.append(t)
+
+    go.sort(key=lambda t: t.deadline or _ddt.max)
+    soumis.sort(key=lambda t: t.deadline or _ddt.max)
+    resultats.sort(key=lambda t: t.publication_date or _ddt.min, reverse=True)
+    return {"go": go, "soumis": soumis, "resultats": resultats}
