@@ -803,9 +803,11 @@ def _collect_all_enabled_sources() -> None:
     st.session_state["collection_results"] = per_source_new
     st.session_state["collection_source_ids"] = per_source_ids
 
-    # Initialise le filtre : toutes les sources avec résultats sont cochées par défaut
+    # Réinitialise les filtres source (supprime l'état d'une collecte précédente)
+    for k in [k for k in st.session_state if k.startswith("src_filter_")]:
+        del st.session_state[k]
     for src in per_source_new:
-        st.session_state.setdefault(f"src_filter_{src}", True)
+        st.session_state[f"src_filter_{src}"] = True
 
     total = sum(per_source_new.values())
     if total and all_new_ids:
@@ -1610,6 +1612,8 @@ if _collection_src_ids:
     for _src, _ids in _collection_src_ids.items():
         if not st.session_state.get(f"src_filter_{_src}", True):
             _excluded_new_ids.update(_ids)
+if _excluded_new_ids:
+    st.caption(f"🔍 {len(_excluded_new_ids)} offre(s) masquée(s) par le filtre source (sidebar)")
 
 # ── Tableau Marchés Publics ───────────────────────────────────────────────────
 
