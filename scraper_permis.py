@@ -4,12 +4,14 @@ Récupère les permis déposés sur les départements 974 (La Réunion) et 976 (
 Filtre sur les types de bâtiments nécessitant du SSI : ERP, habitations collectives, industrie.
 """
 import hashlib
+import logging
 from datetime import datetime, timedelta
-
-import requests
 
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from models import Tender
+from scraper_utils import parse_date, retry_get, load_existing_ids, insert_if_new
+
+_log = logging.getLogger(__name__)
 
 SITADEL_API = (
     "https://data.statistiques.developpement-durable.gouv.fr"
@@ -34,18 +36,6 @@ def _type_batiment_ok(record: dict) -> bool:
     return any(t in text for t in TYPES_CIBLES) or text.strip() == ""
 
 
-def _parse_date(value) -> datetime | None:
-    if not value:
-        return None
-    s = str(value)
-    for fmt, trunc in [("%Y-%m-%dT%H:%M:%S", 19), ("%Y-%m-%d", 10), ("%d/%m/%Y", 10)]:
-        try:
-            return datetime.strptime(s[:trunc], fmt)
-        except ValueError:
-            continue
-    return None
-
-
 def fetch_permis_construire(years_back: int = 1) -> int:
     init_db()
     db = SessionLocal()
@@ -54,6 +44,8 @@ def fetch_permis_construire(years_back: int = 1) -> int:
     _run_id = start_scraper_run(db, "Permis de construire")
 
     try:
+        existing_ids = load_existing_ids(db)
+
         for dept in ["974", "976"]:
             offset = 0
             limit = 100
@@ -70,15 +62,10 @@ def fetch_permis_construire(years_back: int = 1) -> int:
                 }
 
                 try:
-                    r = requests.get(SITADEL_API, params=params, timeout=30)
-                    r.raise_for_status()
-                except requests.HTTPError as exc:
-                    # 404 = dataset unavailable; treat as empty result set
-                    if exc.response is not None and exc.response.status_code in (404, 410):
-                        break
-                    raise RuntimeError(f"Sit@del2 API ({dept}) : {exc}") from exc
-                except requests.RequestException as exc:
-                    raise RuntimeError(f"Sit@del2 API ({dept}) : {exc}") from exc
+                    r = retry_get(SITADEL_API, params=params, rate_delay=1.0)
+                except Exception as exc:
+                    _log.warning("Sit@del2 API (%s) inaccessible : %s", dept, type(exc).__name__)
+                    break
 
                 records = r.json().get("results", [])
                 if not records:
@@ -104,9 +91,6 @@ def fetch_permis_construire(years_back: int = 1) -> int:
                     )
                     tender_id = f"PC-{dept}-{raw_id}"
 
-                    if db.query(Tender).filter(Tender.id == tender_id).first():
-                        continue
-
                     title = f"[PC] {nature}{surface_txt} — {commune} ({dept})"
                     description = (
                         f"Permis de construire — Département {dept} — {commune}\n"
@@ -114,7 +98,7 @@ def fetch_permis_construire(years_back: int = 1) -> int:
                         f"Adresse : {rec.get('adresse') or rec.get('lib_adresse') or 'Non renseignée'}"
                     )
 
-                    db.add(Tender(
+                    t = Tender(
                         id=tender_id,
                         title=title,
                         description=description,
@@ -122,7 +106,7 @@ def fetch_permis_construire(years_back: int = 1) -> int:
                             rec.get("url") or
                             f"https://data.statistiques.developpement-durable.gouv.fr/explore/dataset/sitadel/table/?q={raw_id}"
                         ),
-                        publication_date=_parse_date(rec.get("date_depot_doc") or rec.get("dat_depdoc")),
+                        publication_date=parse_date(rec.get("date_depot_doc") or rec.get("dat_depdoc")),
                         deadline=None,
                         status="À qualifier",
                         relevance_score=0,
@@ -130,17 +114,21 @@ def fetch_permis_construire(years_back: int = 1) -> int:
                         llm_analysis=None,
                         secteur="Privé",
                         type_opportunite="Permis Construire",
-                    ))
-                    inserted += 1
+                    )
+                    if insert_if_new(db, t, existing_ids):
+                        inserted += 1
 
-                db.commit()
                 if len(records) < limit:
                     break
                 offset += limit
 
+        if inserted:
+            db.commit()
         finish_scraper_run(db, _run_id, nb_found=inserted, nb_new=inserted)
-    except Exception as _e:
-        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(_e))
+        _log.info("Permis construire : %d inséré(s)", inserted)
+    except Exception as exc:
+        _log.exception("Permis construire : erreur collecte")
+        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
         raise
     finally:
         db.close()
@@ -149,6 +137,6 @@ def fetch_permis_construire(years_back: int = 1) -> int:
 
 
 if __name__ == "__main__":
-    print("Collecte Permis de Construire (974 & 976)…")
+    logging.basicConfig(level=logging.INFO)
     count = fetch_permis_construire()
-    print(f"Terminé — {count} permis inséré(s).")
+    _log.info("Permis construire terminé — %d inséré(s)", count)

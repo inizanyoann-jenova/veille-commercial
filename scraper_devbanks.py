@@ -1,9 +1,9 @@
 """
 Scraper Banques de Développement Régionales — Océan Indien.
 Sources : BAD (Afrique), BEI (Europe), COI (Océan Indien), JICA (Japon), KfW (Allemagne).
-Complément aux scrapers AFD et Banque Mondiale déjà existants.
 """
 import hashlib
+import logging
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 
@@ -12,6 +12,9 @@ import feedparser
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from filters import INCLUSION_KEYWORDS
 from models import Tender
+from scraper_utils import load_existing_ids, insert_if_new
+
+_log = logging.getLogger(__name__)
 
 FLUX_DEVBANKS = [
     ("Zone IO", "BAD - Actualités",   "https://www.afdb.org/en/rss/news-and-events.xml"),
@@ -74,10 +77,17 @@ def fetch_devbanks() -> int:
     _run_id = start_scraper_run(db, "Banques Dev. (BAD/BEI/COI)")
 
     try:
+        existing_ids = load_existing_ids(db)
+
         for territoire, nom, url in FLUX_DEVBANKS:
             try:
                 feed = feedparser.parse(url)
-            except Exception:
+            except Exception as exc:
+                _log.warning("Feed RSS '%s' inaccessible : %s", nom, type(exc).__name__)
+                continue
+
+            if not feed.entries:
+                _log.debug("Feed '%s' : aucune entrée", nom)
                 continue
 
             for entry in feed.entries:
@@ -90,10 +100,7 @@ def fetch_devbanks() -> int:
                 link = entry.get("link") or url
                 tender_id = _dedup_id(link)
 
-                if db.query(Tender).filter(Tender.id == tender_id).first():
-                    continue
-
-                db.add(Tender(
+                t = Tender(
                     id=tender_id,
                     title=f"[{nom}] {title[:200]}",
                     description=f"{territoire} — {nom}\n{summary[:500]}",
@@ -106,14 +113,17 @@ def fetch_devbanks() -> int:
                     llm_analysis=None,
                     secteur="Privé",
                     type_opportunite="Banque Dev.",
-                ))
-                total += 1
+                )
+                if insert_if_new(db, t, existing_ids):
+                    total += 1
 
+        if total:
             db.commit()
-
         finish_scraper_run(db, _run_id, nb_found=total, nb_new=total)
-    except Exception as _e:
-        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(_e))
+        _log.info("Banques Dev. : %d inséré(s)", total)
+    except Exception as exc:
+        _log.exception("Banques Dev. : erreur collecte")
+        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
         raise
     finally:
         db.close()
@@ -122,6 +132,6 @@ def fetch_devbanks() -> int:
 
 
 if __name__ == "__main__":
-    print("Collecte Banques de Développement (BAD, BEI, COI, JICA, KfW)…")
+    logging.basicConfig(level=logging.INFO)
     count = fetch_devbanks()
-    print(f"Terminé — {count} projet(s)/article(s) inséré(s).")
+    _log.info("Banques Dev. terminé — %d inséré(s)", count)

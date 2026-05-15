@@ -2,28 +2,27 @@
 Scraper AFD (Agence Française de Développement).
 Projets actifs dans les pays de l'Océan Indien : Madagascar, Maurice,
 Comores, La Réunion, Mayotte.
-L'AFD finance des infrastructures (santé, eau, urbain, énergie…)
-qui nécessitent des systèmes SSI/CCTV/courants faibles.
 """
+import logging
 from datetime import datetime, timedelta
-
-import requests
 
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from models import Tender
+from scraper_utils import parse_date, retry_get, load_existing_ids, insert_if_new
+
+_log = logging.getLogger(__name__)
 
 AFD_API = "https://opendata.afd.fr/api/explore/v2.1/catalog/datasets/les-projets-de-l-afd/records"
 
 PAYS_OI = {
     "Madagascar": "madagascar",
-    "Maurice": "mauritius",     # anglais dans la base AFD
+    "Maurice": "mauritius",
     "Île Maurice": "île maurice",
     "Comores": "comores",
     "La Réunion": "réunion",
     "Mayotte": "mayotte",
 }
 
-# Secteurs pertinents (champ `description` de l'AFD)
 SECTEURS_PERTINENTS = [
     "santé", "sante", "education", "formation",
     "développement urbain", "developpement urbain",
@@ -37,17 +36,6 @@ def _secteur_ok(record: dict) -> bool:
     return any(s in desc for s in SECTEURS_PERTINENTS)
 
 
-def _parse_date(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(str(value)[:19], fmt)
-        except ValueError:
-            continue
-    return None
-
-
 def fetch_afd_projects(years_back: int = 3) -> int:
     init_db()
     db = SessionLocal()
@@ -56,6 +44,8 @@ def fetch_afd_projects(years_back: int = 3) -> int:
     _run_id = start_scraper_run(db, "AFD — Agence Française de Développement")
 
     try:
+        existing_ids = load_existing_ids(db)
+
         for pays_label, pays_kw in PAYS_OI.items():
             offset = 0
             limit = 100
@@ -69,10 +59,10 @@ def fetch_afd_projects(years_back: int = 3) -> int:
                 }
 
                 try:
-                    r = requests.get(AFD_API, params=params, timeout=20)
-                    r.raise_for_status()
-                except requests.RequestException as exc:
-                    raise RuntimeError(f"AFD API : {exc}") from exc
+                    r = retry_get(AFD_API, params=params, rate_delay=1.0)
+                except Exception as exc:
+                    _log.warning("AFD API (%s) inaccessible : %s", pays_label, type(exc).__name__)
+                    break
 
                 data = r.json()
                 records = data.get("results", [])
@@ -86,15 +76,12 @@ def fetch_afd_projects(years_back: int = 3) -> int:
                     raw_id = rec.get("iati_identifier") or rec.get("id_projet") or ""
                     tender_id = f"AFD-{raw_id}"
 
-                    if db.query(Tender).filter(Tender.id == tender_id).first():
-                        continue
-
                     title = rec.get("title_narrative") or f"Projet AFD {raw_id}"
                     secteur = rec.get("description") or "Non précisé"
                     description = f"AFD — Pays : {pays_label} — Secteur : {secteur}"
-                    deadline = _parse_date(rec.get("date_dachevement"))
+                    deadline = parse_date(rec.get("date_dachevement"))
 
-                    db.add(Tender(
+                    t = Tender(
                         id=tender_id,
                         title=title,
                         description=description,
@@ -105,17 +92,21 @@ def fetch_afd_projects(years_back: int = 3) -> int:
                         relevance_score=0,
                         is_maintenance=False,
                         llm_analysis=None,
-                    ))
-                    inserted += 1
+                    )
+                    if insert_if_new(db, t, existing_ids):
+                        inserted += 1
 
-                db.commit()
                 if len(records) < limit:
                     break
                 offset += limit
 
+        if inserted:
+            db.commit()
         finish_scraper_run(db, _run_id, nb_found=inserted, nb_new=inserted)
-    except Exception as _e:
-        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(_e))
+        _log.info("AFD : %d inséré(s)", inserted)
+    except Exception as exc:
+        _log.exception("AFD : erreur collecte")
+        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
         raise
     finally:
         db.close()
@@ -124,6 +115,6 @@ def fetch_afd_projects(years_back: int = 3) -> int:
 
 
 if __name__ == "__main__":
-    print("Collecte AFD (Océan Indien)…")
+    logging.basicConfig(level=logging.INFO)
     count = fetch_afd_projects()
-    print(f"Terminé — {count} projet(s) AFD inséré(s).")
+    _log.info("AFD terminé — %d projet(s)", count)

@@ -1,19 +1,20 @@
 import hashlib
+import logging
 from datetime import datetime, timedelta
-
-import requests
 
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from filters import is_relevant_def
 from models import Tender
+from scraper_utils import parse_date, retry_get, load_existing_ids, insert_if_new
+
+_log = logging.getLogger(__name__)
 
 DECP_API = (
     "https://data.economie.gouv.fr/api/explore/v2.1"
     "/catalog/datasets/decp_augmente/records"
 )
 
-_DEPT_FILTER = 'codedepartementexecution in ("974", "976")'
-
+_DEPT_FILTER    = 'codedepartementexecution in ("974", "976")'
 _KEYWORD_FILTER = (
     'search(objetmarche, "SSI")'
     ' OR search(objetmarche, "CMSI")'
@@ -26,78 +27,49 @@ _KEYWORD_FILTER = (
 )
 
 
-def _parse_date(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    s = str(value)
-    for fmt, length in (("%Y-%m-%dT%H:%M:%S", 19), ("%Y-%m-%d", 10)):
-        try:
-            return datetime.strptime(s[:length], fmt)
-        except ValueError:
-            continue
-    return None
-
-
 def fetch_decp_tenders(years_back: int = 3) -> int:
     date_min = (datetime.now() - timedelta(days=365 * years_back)).strftime("%Y-%m-%d")
-    date_filter = f'datenotification >= "{date_min}"'
-    where = f"({_DEPT_FILTER}) AND ({_KEYWORD_FILTER}) AND ({date_filter})"
+    where    = f"({_DEPT_FILTER}) AND ({_KEYWORD_FILTER}) AND (datenotification >= \"{date_min}\")"
 
     init_db()
-    db = SessionLocal()
+    db       = SessionLocal()
     inserted = 0
-    _run_id = start_scraper_run(db, "DECP / PLACE")
+    _run_id  = start_scraper_run(db, "DECP / PLACE")
 
     try:
+        existing_ids = load_existing_ids(db)
         offset = 0
-        limit = 100
+        limit  = 100
 
         while True:
-            params = {
-                "where": where,
-                "limit": limit,
-                "offset": offset,
-                "order_by": "datenotification DESC",
-            }
-            response = requests.get(DECP_API, params=params, timeout=30)
-            response.raise_for_status()
-            data = response.json()
-
-            records = data.get("results", [])
+            params = {"where": where, "limit": limit, "offset": offset, "order_by": "datenotification DESC"}
+            response = retry_get(DECP_API, params=params, rate_delay=1.0)
+            records  = response.json().get("results", [])
             if not records:
                 break
 
             for record in records:
                 acheteur_nom = record.get("nomacheteur") or ""
-                objet = record.get("objetmarche") or ""
-                full_text = f"{objet} {acheteur_nom}"
+                objet        = record.get("objetmarche") or ""
+                full_text    = f"{objet} {acheteur_nom}"
 
                 if not is_relevant_def(full_text):
                     continue
 
-                uid = record.get("id") or hashlib.md5(full_text.encode()).hexdigest()
+                uid       = record.get("id") or hashlib.md5(full_text.encode()).hexdigest()
                 tender_id = f"DECP-{uid}"
 
-                if db.query(Tender).filter(Tender.id == tender_id).first():
-                    continue
-
-                url = "https://data.economie.gouv.fr"
-
-                db.add(Tender(
-                    id=tender_id,
-                    title=objet,
+                t = Tender(
+                    id=tender_id, title=objet,
                     description=f"Acheteur : {acheteur_nom}",
-                    source=url,
-                    publication_date=_parse_date(record.get("datenotification")),
-                    deadline=None,
-                    status="À qualifier",
-                    relevance_score=0,
-                    is_maintenance=False,
-                    llm_analysis=None,
-                    secteur="Public",
-                    type_opportunite="Marché Public",
-                ))
-                inserted += 1
+                    source="https://data.economie.gouv.fr",
+                    publication_date=parse_date(record.get("datenotification")),
+                    deadline=None, status="À qualifier",
+                    relevance_score=0, is_maintenance=False, llm_analysis=None,
+                    secteur="Public", type_opportunite="Marché Public",
+                )
+                if insert_if_new(db, t, existing_ids):
+                    inserted += 1
 
             if len(records) < limit:
                 break
@@ -105,10 +77,11 @@ def fetch_decp_tenders(years_back: int = 3) -> int:
 
         if inserted:
             db.commit()
-
         finish_scraper_run(db, _run_id, nb_found=inserted, nb_new=inserted)
-    except Exception as _e:
-        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(_e))
+        _log.info("DECP : %d inséré(s)", inserted)
+    except Exception as exc:
+        _log.exception("DECP : erreur collecte")
+        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
         raise
     finally:
         db.close()
@@ -117,6 +90,6 @@ def fetch_decp_tenders(years_back: int = 3) -> int:
 
 
 if __name__ == "__main__":
-    print("Lancement de la collecte DECP pour les départements 974 et 976...")
+    logging.basicConfig(level=logging.INFO)
     count = fetch_decp_tenders()
-    print(f"Collecte terminée — {count} nouveau(x) marché(s) inséré(s).")
+    _log.info("DECP terminé — %d marché(s)", count)
