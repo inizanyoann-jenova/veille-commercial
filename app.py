@@ -1023,63 +1023,19 @@ with st.sidebar:
         placeholder="Tous les tags",
     )
     st.markdown("---")
-    st.markdown("### ⚡ Sources de collecte")
+    st.markdown("### ⚡ Collecte")
 
-    db_src = new_db()
-    try:
-        all_sources = list_sources(db_src)
-    finally:
-        db_src.close()
+    if st.button("⚡ Lancer la collecte", use_container_width=True, type="primary"):
+        _collect_all_enabled_sources()
 
-    CATEGORY_ICONS = {"Public": "📋 Public", "Privé": "🏗️ Privé", "International": "🌍 International"}
-    selected_source_ids: list[int] = []
-
-    for cat in ["Public", "Privé", "International"]:
-        cat_sources = [
-            s for s in all_sources
-            if s.category == cat and s.enabled and (s.is_manual or s.is_validated)
-        ]
-        if not cat_sources:
-            continue
-        st.markdown(f"**{CATEGORY_ICONS[cat]}**")
-        for s in cat_sources:
-            if s.is_manual:
-                col1, col2 = st.columns([5, 1])
-                with col1:
-                    st.checkbox(
-                        s.name,
-                        value=False,
-                        key=f"src_chk_{s.id}",
-                        help="Source manuelle — aucun scraper automatique. Cliquez ↗ pour consulter le site.",
-                    )
-                with col2:
-                    st.link_button("↗", url=s.url, help=f"Ouvrir {s.name}")
-            else:
-                checked = st.checkbox(
-                    s.name,
-                    value=True,
-                    key=f"src_chk_{s.id}",
-                )
-                if checked:
-                    selected_source_ids.append(s.id)
-                _runs = load_last_scraper_runs()
-                _last = _runs.get(s.name)
-                if _last:
-                    _ago = datetime.utcnow() - _last["started_at"].replace(tzinfo=None)
-                    _d = _ago.days
-                    _h = int(_ago.total_seconds() // 3600)
-                    if _last["status"] == "error":
-                        st.caption(f"⚠️ Erreur il y a {'%dj' % _d if _d else '%dh' % _h}")
-                    else:
-                        _label = f"{_d}j" if _d >= 1 else f"{_h}h"
-                        st.caption(f"Collecte il y a {_label} — {_last['nb_new']} nouveaux")
-                if s.ping_failures_count and s.ping_failures_count >= 1 and s.is_validated:
-                    st.caption(f"⚠️ Ping échoué {s.ping_failures_count}x")
-
-    st.markdown("")
-    if st.button("⚡ Collecter la sélection", use_container_width=True, type="primary",
-                 disabled=len(selected_source_ids) == 0):
-        _collect_selected_sources(selected_source_ids)
+    _col_results = st.session_state.get("collection_results", {})
+    if _col_results:
+        st.markdown("**Résultats — filtrer par source :**")
+        for _src_name, _nb_new in sorted(_col_results.items()):
+            st.checkbox(
+                f"{_src_name} ({_nb_new})",
+                key=f"src_filter_{_src_name}",
+            )
 
     if st.button("🤖 Analyser en lot (Claude)", use_container_width=True,
                  help="Analyse les 10 marchés prioritaires non encore traités par Claude"):
