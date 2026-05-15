@@ -1,3 +1,5 @@
+import re as _re
+
 # Mots déclencheurs directs — équipements DEF OI
 INCLUSION_KEYWORDS = [
     "ssi",
@@ -16,7 +18,6 @@ INCLUSION_KEYWORDS = [
 EXCLUSION_KEYWORDS = [
     "gardiennage",
     "agents de sécurité",
-    "télésurveillance",
     "maître-chien",
     "ssiap",
     "sécurité civile",
@@ -67,16 +68,21 @@ KEYWORDS_ERP_CIBLES = [
 
 _WORD_BOUNDARY_KW = {"ssi", "cmsi", "cctv"}
 
+# Pré-compilation pour éviter de recompiler à chaque appel
+_COMPILED_BOUNDARY = {
+    kw: _re.compile(r"\b" + _re.escape(kw) + r"\b")
+    for kw in _WORD_BOUNDARY_KW
+}
+
 
 def is_relevant_def(text: str) -> bool:
-    import re
     text_lower = text.lower()
     for keyword in EXCLUSION_KEYWORDS:
         if keyword in text_lower:
             return False
     for keyword in INCLUSION_KEYWORDS:
         if keyword in _WORD_BOUNDARY_KW:
-            if re.search(r"\b" + re.escape(keyword) + r"\b", text_lower):
+            if _COMPILED_BOUNDARY[keyword].search(text_lower):
                 return True
         elif keyword in text_lower:
             return True

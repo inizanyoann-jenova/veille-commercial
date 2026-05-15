@@ -15,7 +15,6 @@ def login(page: Page, url: str, email: str, password: str, selectors: dict) -> b
         initial_url = page.url
         page.fill(selectors["email"], email)
         page.fill(selectors["password"], password)
-        # Essayer JS click d'abord (contourne les overlays), fallback sur Entrée
         submit_sel = selectors.get("submit", "")
         clicked = False
         if submit_sel:
@@ -28,10 +27,8 @@ def login(page: Page, url: str, email: str, password: str, selectors: dict) -> b
         if not clicked:
             page.press(selectors["password"], "Enter")
         page.wait_for_load_state("networkidle", timeout=15000)
-        # Redirect after submit = successful login
         if page.url != initial_url:
             return True
-        # Still on login page — check for visible error messages
         _error_sel = (
             ".error, .alert-danger, .alert-error, .login-error, "
             ".message-erreur, .erreur, [class*='error-msg'], "
@@ -51,22 +48,29 @@ def extract_cards(page: Page, card_selector: str, field_map: dict) -> list[dict]
     for card in cards:
         item = {}
         for field, selector in field_map.items():
-            if "@" in selector:
-                sel, attr = selector.rsplit("@", 1)
-                el = card.query_selector(sel) if sel else card
-                item[field] = el.get_attribute(attr).strip() if el else ""
-            else:
-                el = card.query_selector(selector)
-                item[field] = el.inner_text().strip() if el else ""
+            try:
+                if "@" in selector:
+                    sel, attr = selector.rsplit("@", 1)
+                    el = card.query_selector(sel) if sel else card
+                    val = el.get_attribute(attr) if el else None
+                    item[field] = (val or "").strip()
+                else:
+                    el = card.query_selector(selector)
+                    item[field] = el.inner_text().strip() if el else ""
+            except Exception:
+                item[field] = ""
         results.append(item)
     return results
 
 
 def paginate(page: Page, next_selector: str) -> bool:
-    """Click the next-page link once. Returns True if found and clicked, False if no more pages."""
-    btn = page.query_selector(next_selector)
-    if not btn or not btn.is_enabled():
+    """Click the next-page link. Returns True si trouvé et cliqué, False sinon."""
+    try:
+        btn = page.query_selector(next_selector)
+        if not btn or not btn.is_enabled():
+            return False
+        btn.click()
+        page.wait_for_load_state("networkidle", timeout=15000)
+        return True
+    except Exception:
         return False
-    btn.click()
-    page.wait_for_load_state("networkidle", timeout=15000)
-    return True
