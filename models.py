@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Integer, Boolean, JSON, Float
+from sqlalchemy import Column, String, DateTime, Integer, Boolean, JSON, Float, Index
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
@@ -7,23 +7,32 @@ Base = declarative_base()
 class Tender(Base):
     __tablename__ = "tenders"
 
-    id = Column(String, primary_key=True)
-    title = Column(String)
-    description = Column(String)
-    source = Column(String)
+    id               = Column(String, primary_key=True)
+    title            = Column(String)
+    description      = Column(String)
+    source           = Column(String)
     publication_date = Column(DateTime)
-    deadline = Column(DateTime)
-    status = Column(String, default="À qualifier")
-    relevance_score = Column(Integer, default=0)
-    is_maintenance = Column(Boolean, default=False)
-    llm_analysis = Column(JSON)
-    secteur = Column(String, default=None)
+    deadline         = Column(DateTime)
+    status           = Column(String, default="À qualifier")
+    relevance_score  = Column(Integer, default=0)
+    is_maintenance   = Column(Boolean, default=False)
+    llm_analysis     = Column(JSON)
+    secteur          = Column(String, default=None)
     type_opportunite = Column(String, default="Marché Public")
-    amount = Column(Integer, default=None)
-    is_blacklisted = Column(Boolean, default=False)
-    is_saved = Column(Boolean, default=False)
-    notes = Column(String, default=None)
-    tags  = Column(JSON, default=list)
+    amount           = Column(Integer, default=None)
+    is_blacklisted   = Column(Boolean, default=False)
+    is_saved         = Column(Boolean, default=False)
+    notes            = Column(String, default=None)
+    tags             = Column(JSON, default=list)
+
+    __table_args__ = (
+        Index("idx_tender_blacklisted",     "is_blacklisted"),
+        Index("idx_tender_status",          "status"),
+        Index("idx_tender_score",           "relevance_score"),
+        Index("idx_tender_deadline",        "deadline"),
+        Index("idx_tender_publication",     "publication_date"),
+        Index("idx_tender_score_blacklist", "relevance_score", "is_blacklisted"),
+    )
 
 
 class Credential(Base):
