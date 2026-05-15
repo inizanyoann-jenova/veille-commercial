@@ -1411,6 +1411,8 @@ def _render_editor_section(
         st.info("Aucun résultat. Lancez la collecte depuis le menu latéral ou ajustez les filtres.")
         return
 
+    _sel_id_key = f"_sel_id_{editor_key}"
+
     import io as _io
     df = pd.DataFrame(rows)
 
@@ -1452,7 +1454,6 @@ def _render_editor_section(
         key=f"{editor_key}_view",
     )
 
-    _sel_id_key = f"_sel_id_{editor_key}"
     if view_event.selection.rows:
         selected_row_idx = view_event.selection.rows[0]
         if selected_row_idx < len(df):
@@ -1527,7 +1528,7 @@ def _render_editor_section(
     st.markdown("---")
     st.markdown(_section_html(fiche_title, "Analyse détaillée de l'élément sélectionné"), unsafe_allow_html=True)
 
-    _sel_id = st.session_state.get(f"_sel_id_{editor_key}")
+    _sel_id = st.session_state.get(_sel_id_key)
     if _sel_id:
         _render_fiche(_sel_id, editor_key)
     else:
@@ -1701,7 +1702,7 @@ for _pipe_col, _pipe_status in zip(_pipe_cols, ["À qualifier", "En cours", "Sou
         for _it in _items[:3]:
             _short = _it["title"][:55]
             if st.button(_short, key=f"pipe_{_pipe_status}_{_it['id']}", use_container_width=True):
-                st.session_state["_sel_title_pub"] = _it["title"]
+                st.session_state["_sel_id_pub_editor"] = _it["id"]
         if len(_items) > 3:
             st.caption(f"+ {len(_items) - 3} autres")
 
