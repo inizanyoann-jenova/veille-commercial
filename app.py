@@ -736,37 +736,6 @@ def load_kpis_priv() -> dict:
         db.close()
 
 
-@st.cache_data(ttl=300)
-def load_last_scraper_runs() -> dict[str, dict]:
-    """Retourne le dernier run par source_name."""
-    from models import ScraperRun
-    from sqlalchemy import func as _f
-    db = new_db()
-    try:
-        subq = (
-            db.query(
-                ScraperRun.source_name,
-                _f.max(ScraperRun.started_at).label("last_started"),
-            )
-            .group_by(ScraperRun.source_name)
-            .subquery()
-        )
-        rows = (
-            db.query(ScraperRun)
-            .join(subq, (ScraperRun.source_name == subq.c.source_name) &
-                        (ScraperRun.started_at == subq.c.last_started))
-            .all()
-        )
-        return {r.source_name: {
-            "status": r.status,
-            "started_at": r.started_at,
-            "nb_new": r.nb_new,
-            "error": r.error,
-        } for r in rows}
-    finally:
-        db.close()
-
-
 # ── sidebar ───────────────────────────────────────────────────────────────────
 
 def _collect_all_enabled_sources() -> None:
@@ -1034,6 +1003,7 @@ with st.sidebar:
         for _src_name, _nb_new in sorted(_col_results.items()):
             st.checkbox(
                 f"{_src_name} ({_nb_new})",
+                value=st.session_state.get(f"src_filter_{_src_name}", True),
                 key=f"src_filter_{_src_name}",
             )
 
