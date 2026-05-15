@@ -147,3 +147,33 @@ def detect_duplicates(db) -> int:
 
     db.commit()
     return new_pairs
+
+
+def load_urgences(db, score_go: int = 65, days_ahead: int = 30) -> list[dict]:
+    from models import Tender
+    from datetime import datetime as _ddt, timedelta as _td
+
+    today = _ddt.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    cutoff = today + _td(days=days_ahead)
+    rows = (
+        db.query(Tender)
+        .filter(
+            Tender.relevance_score >= score_go,
+            Tender.is_blacklisted != True,
+            Tender.deadline != None,
+            Tender.deadline >= today,
+            Tender.deadline <= cutoff,
+            ~Tender.status.in_(["Gagné", "Perdu"]),
+        )
+        .order_by(Tender.deadline.asc())
+        .all()
+    )
+    return [
+        {
+            "id": t.id,
+            "title": t.title,
+            "score": t.relevance_score,
+            "jours": (t.deadline - today).days,
+        }
+        for t in rows
+    ]
