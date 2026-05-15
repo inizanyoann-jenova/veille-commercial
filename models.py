@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Integer, Boolean, JSON
+from sqlalchemy import Column, String, DateTime, Integer, Boolean, JSON, Float
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
@@ -46,3 +46,14 @@ class ScraperRun(Base):
     nb_new      = Column(Integer, default=0)
     error       = Column(String, nullable=True)
     status      = Column(String, default="running")
+
+
+class DuplicateCandidate(Base):
+    __tablename__ = "duplicate_candidates"
+
+    id               = Column(Integer, primary_key=True, autoincrement=True)
+    tender_id_a      = Column(String, nullable=False)
+    tender_id_b      = Column(String, nullable=False)
+    similarity_score = Column(Float, nullable=False)
+    detected_at      = Column(DateTime, nullable=False)
+    resolved         = Column(Boolean, default=False)

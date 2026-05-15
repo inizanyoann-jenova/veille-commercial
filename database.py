@@ -12,7 +12,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 def init_db():
     # Import lazy pour éviter la dépendance circulaire au niveau module
     from source_registry import Source, init_sources  # noqa: enregistre Source avec Base
-    from models import ScraperRun  # noqa: registers ScraperRun with Base
+    from models import ScraperRun, DuplicateCandidate  # noqa: registers both with Base
 
     Base.metadata.create_all(bind=engine)
 
