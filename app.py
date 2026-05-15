@@ -1606,6 +1606,47 @@ def _render_editor_section(
     st.markdown("---")
 
 
+# ── Widget Urgences ───────────────────────────────────────────────────────────
+
+@st.cache_data(ttl=300)
+def _load_urgences_cached() -> list[dict]:
+    from database import load_urgences
+    db = SessionLocal()
+    try:
+        return load_urgences(db)
+    finally:
+        db.close()
+
+
+def _render_urgences():
+    urgences = _load_urgences_cached()
+    if not urgences:
+        return
+    st.markdown("#### ⏰ Marchés GO — délais imminents")
+    cols = st.columns(min(len(urgences), 4))
+    for col, u in zip(cols, urgences[:4]):
+        j = u["jours"]
+        if j < 7:
+            bg, border, badge = "#fef2f2", "#fecaca", f"🔴 {j}j restants"
+        elif j < 15:
+            bg, border, badge = "#fffbeb", "#fde68a", f"🟡 {j}j restants"
+        else:
+            bg, border, badge = "#f0fdf4", "#bbf7d0", f"🟢 {j}j restants"
+        title_short = u["title"][:55] + ("…" if len(u["title"]) > 55 else "")
+        col.markdown(
+            f'<div style="background:{bg};border:1px solid {border};border-radius:8px;'
+            f'padding:10px;font-size:0.82rem"><strong>{title_short}</strong><br>'
+            f'{badge} · Score : {u["score"]}</div>',
+            unsafe_allow_html=True,
+        )
+    if len(urgences) > 4:
+        st.caption(f"… et {len(urgences) - 4} autre(s) marché(s) GO avec deadline dans les 30 jours.")
+    st.markdown("---")
+
+
+_render_urgences()
+
+
 # ── Recherche ─────────────────────────────────────────────────────────────────
 
 search_query = st.text_input(
