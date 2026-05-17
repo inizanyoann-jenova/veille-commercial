@@ -1,6 +1,11 @@
 SCORE_GO = 65
 SCORE_ETUDE = 35
 
+_KW_TITRE = [
+    "ssi", "cmsi", "détection", "alarme incendie", "désenfumage",
+    "vidéosurveillance", "cctv", "courants faibles",
+]
+
 
 def _compute_fiche_data(
     score: int,
@@ -35,10 +40,6 @@ def _compute_fiche_data(
     else:                                                         sg = 0
 
     title_l = title.lower()
-    _KW_TITRE = [
-        "ssi", "cmsi", "détection", "alarme incendie", "désenfumage",
-        "vidéosurveillance", "cctv", "courants faibles",
-    ]
     _hits_titre = sum(1 for kw in _KW_TITRE if kw in title_l)
     if _hits_titre >= 3:
         sk = 15
@@ -125,4 +126,54 @@ def _compute_fiche_data(
         "sm": sm, "sg": sg, "sk": sk, "smaint": smaint,
         "label_action": label_action, "steps": steps,
         "atouts": atouts, "risques": risques,
+    }
+
+
+import re as _re
+
+_HISTORY_STOP = {
+    'le', 'la', 'les', 'de', 'du', 'des', 'un', 'une', 'et', 'en', 'au', 'aux',
+    'sur', 'pour', 'par', 'dans', 'avec', 'marche', 'travaux', 'fourniture',
+    'prestation', 'services', 'accord', 'cadre', 'lot', 'mise', 'place',
+}
+
+
+def get_acheteur_history(db, tender) -> dict:
+    from models import Tender as _Tender
+
+    title = (tender.title or '').lower()
+    tokens = [
+        t for t in _re.findall(r'[a-z]{4,}', title)
+        if t not in _HISTORY_STOP
+    ][:3]
+
+    if len(tokens) < 2:
+        return {'nb_total': 0}
+
+    candidates = (
+        db.query(_Tender)
+        .filter(_Tender.id != tender.id, _Tender.is_blacklisted == False)
+        .order_by(_Tender.publication_date.desc())
+        .limit(50)
+        .all()
+    )
+
+    matches = [
+        c for c in candidates
+        if all(tok in (c.title or "").lower() for tok in tokens)
+    ][:10]
+
+    if len(matches) < 2:
+        return {'nb_total': 0}
+
+    nb_go = sum(1 for t in matches if t.relevance_score >= SCORE_GO)
+    nb_gagnes = sum(1 for t in matches if t.status == "Gagné")
+    montant_gagne = sum(t.amount for t in matches if t.status == "Gagné" and t.amount)
+
+    return {
+        'nb_total': len(matches),
+        'nb_go': nb_go,
+        'nb_gagnes': nb_gagnes,
+        'montant_total_gagne': montant_gagne,
+        'derniers': matches[:3],
     }

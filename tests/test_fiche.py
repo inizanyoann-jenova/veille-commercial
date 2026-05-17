@@ -200,3 +200,44 @@ def test_none_domaine_and_territoire():
     assert d["label_action"] == "🔴 Hors périmètre DEF OI"
     assert d["sm"] == 5
     assert d["sg"] == 0
+
+
+def test_get_acheteur_history_returns_empty_when_no_match(db, make_tender):
+    from fiche_logic import get_acheteur_history
+    t = make_tender(title='Installation videosurveillance port')
+    result = get_acheteur_history(db, t)
+    assert result['nb_total'] == 0
+
+
+def test_get_acheteur_history_returns_empty_for_short_title(db, make_tender):
+    from fiche_logic import get_acheteur_history
+    t = make_tender(title='SSI')
+    result = get_acheteur_history(db, t)
+    assert result['nb_total'] == 0
+
+
+def test_get_acheteur_history_finds_similar_tenders(db, make_tender):
+    from fiche_logic import get_acheteur_history
+    target = make_tender(title='Installation detection incendie college')
+    make_tender(title='Installation detection incendie lycee', status='Gagne', amount=80000)
+    make_tender(title='Installation detection incendie mairie', status='Perdu')
+    result = get_acheteur_history(db, target)
+    assert result['nb_total'] >= 2
+
+
+def test_get_acheteur_history_excludes_blacklisted(db, make_tender):
+    from fiche_logic import get_acheteur_history
+    target = make_tender(title='Installation detection incendie college')
+    make_tender(title='Installation detection incendie mairie', is_blacklisted=True)
+    make_tender(title='Installation detection incendie lycee', is_blacklisted=True)
+    result = get_acheteur_history(db, target)
+    assert result['nb_total'] == 0
+
+
+def test_get_acheteur_history_excludes_self(db, make_tender):
+    from fiche_logic import get_acheteur_history
+    t = make_tender(title='Installation detection incendie college')
+    make_tender(title='Installation detection incendie lycee', status='Gagne', amount=50000)
+    result = get_acheteur_history(db, t)
+    for other in result.get('derniers', []):
+        assert other.id != t.id
