@@ -3,7 +3,7 @@ import pandas as pd
 
 st.set_page_config(page_title="Guide — DEF OI", page_icon="📖", layout="wide")
 st.title("📖 Guide utilisateur — DEF Océan Indien")
-st.caption("Version 3.0 — Mise à jour mai 2026")
+st.caption("Version 4.0 — Mise à jour mai 2026")
 
 # ── 0. Procédure nouvel utilisateur ──────────────────────────────────────────
 st.header("🚀 Procédure d'installation — Nouvel utilisateur")
@@ -333,6 +333,18 @@ Dans la colonne **Statut** de chaque ligne, utilisez le menu déroulant pour fai
 ### Ajouter des notes
 Chaque AO dispose d'un champ de notes libre pour y consigner les éléments clés du dossier.
 
+### Tags
+Sur la fiche d'un AO, vous pouvez ajouter un ou plusieurs tags prédéfinis :
+*Partenaire requis · En attente DCE · Budget bloqué · À voir avec DG · Offre déposée · Recours prévu*
+
+Les tags sont filtrables depuis la sidebar et visibles directement sur les cartes.
+
+### Score adaptatif
+En plus du score de pertinence classique, un **score adaptatif** (badge 🧠) est calculé
+à partir de vos décisions passées (GO / Soumis / Gagné / Perdu).
+Plus vous utilisez l'outil, plus ce score devient précis.
+Il est disponible une fois 10 décisions enregistrées.
+
 ### Supprimer un AO
 Cliquez 🗑️ sur une ligne pour supprimer l'AO — il passe en "blacklist" et ne réapparaîtra
 plus après une prochaine collecte.
@@ -375,9 +387,93 @@ TENDERSGO_PASSWORD=votre_mot_de_passe
 Puis **relancez l'application**. Les variables `.env` ont toujours la priorité sur la base.
 """)
 
-# ── 9. FAQ ────────────────────────────────────────────────────────────────────
+# ── 8b. Digest email ─────────────────────────────────────────────────────────
 st.markdown("---")
-st.header("9. FAQ & Résolution de problèmes")
+st.header("9. Digest email quotidien")
+st.markdown("""
+L'application peut envoyer chaque matin un email récapitulatif des nouvelles opportunités
+détectées la veille, sans que vous ayez à ouvrir l'outil.
+
+### Contenu de l'email
+- **✅ GO (score ≥ 65)** — marchés qualifiés prêts à traiter, avec titre, domaine, territoire, score et deadline
+- **🔍 À étudier (score 35–64)** — liste compacte pour décider si ça vaut un clic
+- **⚠️ Urgences** — marchés GO avec deadline dans moins de 7 jours
+
+Si aucun nouveau marché n'est détecté dans les 24h, l'email n'est pas envoyé.
+
+### Configuration (fichier `.env`)
+Ajoutez ces lignes dans votre fichier `.env` :
+```
+DIGEST_SMTP_HOST=smtp.gmail.com
+DIGEST_SMTP_PORT=587
+DIGEST_SMTP_USER=votre.email@gmail.com
+DIGEST_SMTP_PASSWORD=mot_de_passe_app_gmail
+DIGEST_TO=inizan.yoann@gmail.com
+DIGEST_HOUR=7
+```
+> Pour Gmail : créez un **mot de passe d'application** dans votre compte Google
+> (Sécurité → Connexion à Google → Mots de passe des applications).
+> N'utilisez pas votre mot de passe Gmail habituel.
+
+### Deux modes de déclenchement
+**Mode automatique (recommandé)** — Script `send_digest.py` planifié via le Planificateur de tâches Windows :
+- Fonctionne même si Streamlit est fermé
+- Déclencheur : tous les jours à l'heure configurée (`DIGEST_HOUR`)
+
+**Mode manuel** — Bouton **"📧 Envoyer le digest maintenant"** dans **⚙️ Paramètres → Digest email**
+""")
+
+st.info("💡 Pour planifier le script sous Windows : Planificateur de tâches → Créer une tâche → Action : `python C:\\chemin\\vers\\send_digest.py`")
+
+# ── 10. Page Direction ─────────────────────────────────────────────────────────
+st.markdown("---")
+st.header("10. Page Direction — vue exécutive")
+st.markdown("""
+La page **📊 Direction** (menu latéral) est une vue synthétique conçue pour être montrée
+directement à la Direction, sans les détails techniques de l'outil.
+
+### Contenu
+- **4 KPIs clés** : opportunités actives, CA prévisionnel, CA gagné, taux de conversion
+- **Graphique activité 90 jours** : évolution du pipeline par semaine
+- **Tableau pipeline en cours** : marchés GO + Soumis triés par deadline
+
+### Export PDF
+Le bouton **📄 Télécharger le rapport PDF** génère un document `Rapport_Direction_DEF_AAAAMMJJ.pdf`
+avec les KPIs, le graphique et le tableau — prêt à envoyer ou présenter sans aucune manipulation.
+
+> La page Analytics existante reste disponible pour les analyses techniques détaillées.
+""")
+
+# ── 11. Analyse structurée IA ──────────────────────────────────────────────────
+st.markdown("---")
+st.header("11. Analyse structurée IA")
+st.markdown("""
+En plus du résumé narratif Claude, chaque fiche marché peut afficher une **analyse structurée**
+avec des champs exploitables pour décider plus vite :
+
+| Champ | Exemple |
+|---|---|
+| Budget estimé | 150 000 € |
+| Type de travaux | Installation neuve |
+| Lots identifiés | Lot 1 — Détection · Lot 2 — SSI |
+| Mots-clés techniques | ERP type J, SSI catégorie A, NF S 61-931 |
+| Type d'acheteur | Établissement scolaire |
+| Niveau de concurrence | Élevé |
+| Recommandation IA | ✅ GO (confiance 78 %) |
+
+Cette analyse est déclenchée automatiquement sur les marchés avec score ≥ 35 après chaque collecte.
+Vous pouvez aussi cliquer **🔄 Ré-analyser** sur une fiche pour forcer le recalcul.
+
+### Historique acheteur
+Si l'acheteur a déjà publié des marchés similaires dans la base, une section
+**"🏛️ Historique acheteur"** apparaît sur la fiche :
+- Nombre de marchés publiés, nombre de GO, marchés gagnés, CA total gagné
+- Les 3 derniers marchés cliquables pour consultation directe
+""")
+
+# ── 12. FAQ ────────────────────────────────────────────────────────────────────
+st.markdown("---")
+st.header("12. FAQ & Résolution de problèmes")
 
 with st.expander("🤖 L'analyse Claude ne fonctionne pas / le badge affiche 'Analyse locale'"):
     st.markdown("""
@@ -459,4 +555,30 @@ with st.expander("Comment savoir si l'analyse Claude a bien été faite ?"):
 
     Dans la liste principale, la colonne **Source** indique `claude` ou `local`.
     Cliquez **🤖 Réanalyser avec Claude** sur la fiche pour forcer une (re)analyse.
+    """)
+
+with st.expander("Le digest email ne part pas"):
+    st.markdown("""
+    **Vérification 1 — Variables `.env` présentes**
+    Ouvrez le fichier `.env` et confirmez que `DIGEST_SMTP_HOST`, `DIGEST_SMTP_USER`,
+    `DIGEST_SMTP_PASSWORD` et `DIGEST_TO` sont tous renseignés.
+
+    **Vérification 2 — Mot de passe d'application Gmail**
+    N'utilisez pas votre mot de passe Gmail habituel.
+    Créez un mot de passe d'application : compte Google → Sécurité → Mots de passe des applications.
+
+    **Vérification 3 — Aucun nouveau marché**
+    Si aucun GO ni "À étudier" n'est apparu dans les 24 dernières heures, l'email n'est pas envoyé.
+    Utilisez le bouton **"📧 Envoyer maintenant"** dans Paramètres pour tester l'envoi.
+
+    **Vérification 4 — Script non planifié**
+    Si l'app Streamlit est fermée, seul le script `send_digest.py` peut envoyer l'email.
+    Vérifiez que la tâche Windows est bien active (Planificateur de tâches).
+    """)
+
+with st.expander("Le score adaptatif n'apparaît pas"):
+    st.markdown("""
+    Le score adaptatif nécessite **au moins 10 décisions enregistrées** (marchés passés en
+    Soumis, Gagné ou Perdu). Consultez **⚙️ Paramètres → Score adaptatif** pour voir
+    le nombre de décisions disponibles et déclencher un recalcul manuel.
     """)
