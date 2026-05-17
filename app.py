@@ -523,6 +523,7 @@ def load_tenders(
                     "Territoire": territoire,
                     "Domaine": domaine,
                     "Score": score,
+                    "🧠 Adapt.": t.adaptive_score if t.adaptive_score is not None else "—",
                     "Date Limite": t.deadline.strftime("%d/%m/%Y") if t.deadline else "—",
                     "Publication": (
                         t.publication_date.strftime("%d/%m/%Y") if t.publication_date else "—"
@@ -726,6 +727,8 @@ def _naive_dt(dt):
 def _sort_rows(rows: list[dict], sort_by: str) -> list[dict]:
     if sort_by == "Score ↓":
         return sorted(rows, key=lambda r: -(r.get("Score") or 0))
+    elif sort_by == "Score adaptatif ↓":
+        return sorted(rows, key=lambda r: -(r.get("🧠 Adapt.") if isinstance(r.get("🧠 Adapt."), int) else 0))
     elif sort_by == "Publication ↓":
         return sorted(rows, key=lambda r: _naive_dt(r.get("_pub_dt")) or datetime.min, reverse=True)
     else:  # Date limite ↑ (défaut)
@@ -1033,7 +1036,7 @@ with st.sidebar:
     )
     sort_by = st.selectbox(
         "Trier par",
-        ["Date limite ↑", "Score ↓", "Publication ↓"],
+        ["Date limite ↑", "Score ↓", "Score adaptatif ↓", "Publication ↓"],
         index=0,
     )
     selected_tags = st.multiselect(
@@ -1491,6 +1494,7 @@ def _render_editor_section(
             "Territoire": st.column_config.TextColumn("Territoire", width="medium"),
             "Domaine": st.column_config.TextColumn("Domaine", width="medium"),
             "Score": st.column_config.ProgressColumn("Score DEF", min_value=0, max_value=100, format="%d"),
+            "🧠 Adapt.": st.column_config.TextColumn("Score Adapt.", width="small"),
             "Date Limite": st.column_config.TextColumn("Date Limite", width="small"),
             "Publication": st.column_config.TextColumn("Publication", width="small"),
             "Statut": st.column_config.TextColumn("Statut", width="small"),
@@ -1498,7 +1502,7 @@ def _render_editor_section(
             "Montant (€)": st.column_config.NumberColumn("Montant (€)", format="%d €", width="small"),
             "⭐": st.column_config.CheckboxColumn("⭐", width="small"),
         },
-        column_order=["Go/No-Go", "Titre", "Source", "Territoire", "Domaine", "Score", "Montant (€)", "Date Limite", "Publication", "Statut", "Type", "⭐"],
+        column_order=["Go/No-Go", "Titre", "Source", "Territoire", "Domaine", "Score", "🧠 Adapt.", "Montant (€)", "Date Limite", "Publication", "Statut", "Type", "⭐"],
         use_container_width=True,
         hide_index=True,
         on_select="rerun",
@@ -1541,6 +1545,7 @@ def _render_editor_section(
                 "Territoire": st.column_config.TextColumn("Territoire", width="medium", disabled=True),
                 "Domaine": st.column_config.TextColumn("Domaine", width="medium", disabled=True),
                 "Score": st.column_config.NumberColumn("Score DEF", min_value=0, max_value=100, width="small", disabled=True),
+                "🧠 Adapt.": st.column_config.TextColumn("Score Adapt.", width="small", disabled=True),
                 "Date Limite": st.column_config.TextColumn("Date Limite", width="small", disabled=True),
                 "Publication": st.column_config.TextColumn("Publication", width="small", disabled=True),
                 "Statut": st.column_config.SelectboxColumn("Statut", options=status_options, width="medium"),
@@ -1549,7 +1554,7 @@ def _render_editor_section(
                 "Concurrents": st.column_config.TextColumn("Concurrents", width="medium", disabled=True),
                 "Montant (€)": st.column_config.NumberColumn("Montant (€)", min_value=0, step=1000, format="%d €", width="small"),
             },
-            column_order=["🗑️", "⭐", "Go/No-Go", "Titre", "Source", "Territoire", "Domaine", "Score", "Montant (€)", "Date Limite", "Publication", "Statut", "Type", "Maint.", "Concurrents", "ID"],
+            column_order=["🗑️", "⭐", "Go/No-Go", "Titre", "Source", "Territoire", "Domaine", "Score", "🧠 Adapt.", "Montant (€)", "Date Limite", "Publication", "Statut", "Type", "Maint.", "Concurrents", "ID"],
             use_container_width=True,
             hide_index=True,
             num_rows="fixed",
