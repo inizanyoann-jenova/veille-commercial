@@ -450,6 +450,32 @@ def _run_auto_analysis():
         db.close()
 
 
+def _trigger_structured_analysis():
+    """Analyse structurée des marchés sans llm_structured et score >= SCORE_ETUDE."""
+    from llm_analyzer import analyze_tender_structured as _ats
+    _db = new_db()
+    try:
+        targets = (
+            _db.query(Tender)
+            .filter(
+                Tender.llm_structured == None,
+                Tender.relevance_score >= SCORE_ETUDE,
+                Tender.is_blacklisted == False,
+            )
+            .limit(20)
+            .all()
+        )
+        for t in targets:
+            result = _ats(t.title or "", t.description or "", t.amount)
+            if result:
+                t.llm_structured = result
+        _db.commit()
+    except Exception:
+        _db.rollback()
+    finally:
+        _db.close()
+
+
 def _gonogo(score: int) -> str:
     if score >= SCORE_GO:
         return "🟢 GO"
@@ -476,6 +502,8 @@ def _section_html(title: str, subtitle: str | None = None) -> str:
 # Auto-analyse au démarrage (une seule fois par session)
 if "auto_analyzed" not in st.session_state:
     _run_auto_analysis()
+    import threading as _threading
+    _threading.Thread(target=_trigger_structured_analysis, daemon=True).start()
     st.session_state["auto_analyzed"] = True
 st.session_state.setdefault("new_tender_ids", set())
 
@@ -1401,6 +1429,46 @@ def _render_fiche(tender_id: str, key_suffix: str) -> None:
                 if getattr(t, "source", None):
                     st.markdown(f"**Source :** {t.source}")
                 st.info("Consulter directement la plateforme source pour accéder au cahier des charges complet.")
+
+        # ── Analyse structurée IA ────────────────────────────────────────────
+        if t.llm_structured:
+            _s = t.llm_structured
+            with st.expander("🤖 Analyse structurée IA", expanded=True):
+                _c1, _c2 = st.columns(2)
+                with _c1:
+                    st.markdown(f"**Budget estimé** {_s.get('budget_estime') or '—'}")
+                    st.markdown(f"**Type de travaux** {_s.get('type_travaux') or '—'}")
+                    st.markdown(f"**Acheteur** {_s.get('acheteur_type') or '—'}")
+                with _c2:
+                    st.markdown(f"**Concurrence** {_s.get('niveau_concurrence') or '—'}")
+                    _conf = _s.get('score_confiance')
+                    st.markdown(f"**Confiance IA** {_conf} %" if _conf is not None else "**Confiance IA** —")
+                    _reco = _s.get('recommandation', '')
+                    _badge = "✅ GO" if _reco == "GO" else ("🔴 NON" if _reco == "NON" else "—")
+                    st.markdown(f"**Recommandation** {_badge}")
+                _lots = _s.get('lots', [])
+                if _lots:
+                    st.markdown(f"**Lots** {' · '.join(_lots)}")
+                _justif = _s.get('justification', '')
+                if _justif:
+                    st.caption(_justif)
+                if st.button("🔄 Ré-analyser (LLM structuré)", key=f"rellm_{key_suffix}_{tender_id}"):
+                    from llm_analyzer import analyze_tender_structured as _ats
+                    with st.spinner("Analyse en cours…"):
+                        _new = _ats(t.title or "", t.description or "", t.amount)
+                    if _new:
+                        _db_ra = new_db()
+                        try:
+                            _t_ra = _db_ra.query(Tender).filter(Tender.id == tender_id).first()
+                            if _t_ra:
+                                _t_ra.llm_structured = _new
+                                _db_ra.commit()
+                        finally:
+                            _db_ra.close()
+                        st.cache_data.clear()
+                        st.rerun()
+                    else:
+                        st.warning("Analyse impossible (description trop courte ou clé API manquante)")
 
         st.markdown("---")
 
