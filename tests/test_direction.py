@@ -66,3 +66,25 @@ def test_load_pipeline_direction_excludes_gagné_perdu(db, make_tender):
     make_tender(relevance_score=SCORE_GO, status="Perdu")
     rows = _load_pipeline_direction_data(db)
     assert len(rows) == 2
+
+
+def test_generate_direction_pdf_returns_nonempty_bytes():
+    """generate_direction_pdf retourne des bytes non vides (PDF valide)."""
+    from pages.direction import generate_direction_pdf
+    kpis = {"nb_actifs": 3, "ca_previsionnel": 80000, "ca_gagne": 30000, "taux_conversion": 40}
+    pdf_bytes = generate_direction_pdf(kpis, [], [])
+    assert isinstance(pdf_bytes, bytes)
+    assert len(pdf_bytes) > 500  # un PDF même vide fait > 500 octets
+
+
+def test_generate_direction_pdf_with_activity(make_tender, db):
+    """PDF généré avec données d'activité sans erreur."""
+    from pages.direction import generate_direction_pdf, _load_activity_90d_data, _load_pipeline_direction_data
+    from fiche_logic import SCORE_GO
+    make_tender(publication_date=datetime.utcnow() - timedelta(days=2), relevance_score=SCORE_GO, status="Soumis")
+    kpis = {"nb_actifs": 1, "ca_previsionnel": 0, "ca_gagne": 0, "taux_conversion": None}
+    activity = _load_activity_90d_data(db)
+    pipeline = _load_pipeline_direction_data(db)
+    pdf_bytes = generate_direction_pdf(kpis, activity, pipeline)
+    assert isinstance(pdf_bytes, bytes)
+    assert len(pdf_bytes) > 500

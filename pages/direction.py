@@ -76,6 +76,117 @@ def _load_pipeline_direction_data(db) -> list:
     )
 
 
+# ── Génération PDF ────────────────────────────────────────────────────────────
+
+def generate_direction_pdf(kpis: dict, activity_data: list, pipeline: list) -> bytes:
+    """Génère le rapport Direction en PDF. Retourne les bytes du fichier."""
+    from io import BytesIO
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import cm
+    from reportlab.platypus import (
+        SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    )
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4,
+        topMargin=2 * cm, bottomMargin=2 * cm,
+        leftMargin=2 * cm, rightMargin=2 * cm,
+    )
+    styles = getSampleStyleSheet()
+    story = []
+
+    # En-tête
+    story.append(Paragraph("DEF Océan Indien", styles["Title"]))
+    story.append(Paragraph("Rapport Direction — Pipeline Commercial", styles["Heading2"]))
+    story.append(Paragraph(datetime.now().strftime("Généré le %d/%m/%Y"), styles["Normal"]))
+    story.append(Spacer(1, 0.5 * cm))
+
+    # KPIs
+    kpi_table_data = [
+        ["Opportunités actives", "CA prévisionnel", "CA gagné", "Taux conversion"],
+        [
+            str(kpis.get("nb_actifs", "—")),
+            f"{kpis.get('ca_previsionnel', 0):,.0f} €".replace(",", " ") if kpis.get("ca_previsionnel") else "—",
+            f"{kpis.get('ca_gagne', 0):,.0f} €".replace(",", " ") if kpis.get("ca_gagne") else "—",
+            f"{kpis.get('taux_conversion')} %" if kpis.get("taux_conversion") is not None else "—",
+        ],
+    ]
+    kpi_t = Table(kpi_table_data, colWidths=[4.2 * cm] * 4)
+    kpi_t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#cc2222")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("PADDING", (0, 0), (-1, -1), 8),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
+    ]))
+    story.append(kpi_t)
+    story.append(Spacer(1, 0.5 * cm))
+
+    # Graphique activité (si kaleido disponible)
+    if activity_data:
+        try:
+            import plotly.express as px
+            import plotly.io as pio
+            from io import BytesIO as _BytesIO
+            from reportlab.platypus import Image as _RLImage
+            import pandas as pd
+            import threading
+
+            _df = pd.DataFrame(activity_data)
+            _fig = px.bar(_df, x="semaine", y="count", color_discrete_sequence=["#cc2222"])
+            _fig.update_layout(showlegend=False, margin=dict(t=10, b=10, l=0, r=0))
+            # Thread daemon avec timeout pour kaleido (évite les blocages)
+            _result: list = []
+            _err: list = []
+
+            def _render():
+                try:
+                    _result.append(pio.to_image(_fig, format="png", width=700, height=220))
+                except Exception as e:
+                    _err.append(e)
+
+            _t = threading.Thread(target=_render, daemon=True)
+            _t.start()
+            _t.join(timeout=20)
+            if _result:
+                story.append(_RLImage(_BytesIO(_result[0]), width=16 * cm, height=5 * cm))
+                story.append(Spacer(1, 0.3 * cm))
+            # si timeout ou erreur → on saute le graphique silencieusement
+        except Exception:
+            pass  # kaleido absent ou erreur inattendue → on saute le graphique
+
+    # Tableau pipeline
+    if pipeline:
+        story.append(Paragraph("Pipeline en cours", styles["Heading3"]))
+        pipe_data = [["Titre", "Statut", "Deadline", "Montant"]]
+        for t in pipeline[:20]:
+            pipe_data.append([
+                (t.title or "")[:55],
+                t.status,
+                t.deadline.strftime("%d/%m/%Y") if t.deadline else "—",
+                f"{t.amount:,} €".replace(",", " ") if t.amount else "—",
+            ])
+        pipe_t = Table(pipe_data, colWidths=[9 * cm, 2.5 * cm, 2.5 * cm, 2.5 * cm])
+        pipe_t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f3f4f6")),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
+            ("PADDING", (0, 0), (-1, -1), 4),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f9fafb")]),
+        ]))
+        story.append(pipe_t)
+
+    doc.build(story)
+    return buffer.getvalue()
+
+
 # ── Page Streamlit ────────────────────────────────────────────────────────────
 
 st.set_page_config(page_title="Direction — DEF OI", page_icon="📊", layout="wide")
