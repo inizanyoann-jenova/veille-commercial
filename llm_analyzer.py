@@ -1,7 +1,9 @@
+import hashlib
 import json
 import logging
 import os
 import re
+import threading
 import time
 
 from dotenv import load_dotenv
@@ -245,21 +247,33 @@ def _score_to_tag(score: int) -> str:
 # ---------------------------------------------------------------------------
 
 _local_cache: dict[str, tuple[dict, float]] = {}
+_local_cache_lock = threading.Lock()
 _LOCAL_CACHE_TTL = 3600  # 1 heure
+_LOCAL_CACHE_MAX = 512
 
 
 def _local_analyze(text: str) -> dict:
-    text_key = text[:200]
+    # MD5 non-sécuritaire suffit pour une clé de cache (usedforsecurity=False)
+    text_key = hashlib.md5(text.encode(), usedforsecurity=False).hexdigest()
     now = time.time()
-    if text_key in _local_cache:
-        result, ts = _local_cache[text_key]
-        if now - ts < _LOCAL_CACHE_TTL:
-            return result.copy()
+    with _local_cache_lock:
+        entry = _local_cache.get(text_key)
+        if entry is not None:
+            result, ts = entry
+            if now - ts < _LOCAL_CACHE_TTL:
+                return result.copy()
     result = _local_analyze_impl(text[:6000])
-    _local_cache[text_key] = (result, now)
-    if len(_local_cache) > 512:
-        oldest = min(_local_cache, key=lambda k: _local_cache[k][1])
-        del _local_cache[oldest]
+    with _local_cache_lock:
+        _local_cache[text_key] = (result, now)
+        # Éviction O(N) remplacée : on purge toutes les entrées expirées en une passe,
+        # et seulement si on dépasse le seuil après purge, on retire la plus ancienne.
+        if len(_local_cache) > _LOCAL_CACHE_MAX:
+            expired = [k for k, (_, ts) in _local_cache.items() if now - ts >= _LOCAL_CACHE_TTL]
+            for k in expired:
+                del _local_cache[k]
+            if len(_local_cache) > _LOCAL_CACHE_MAX:
+                oldest = min(_local_cache, key=lambda k: _local_cache[k][1])
+                del _local_cache[oldest]
     return result.copy()
 
 
@@ -443,16 +457,16 @@ def _local_analyze_impl(text: str) -> dict:
 # Score combiné
 # ---------------------------------------------------------------------------
 
-def compute_combined_score(gemini_score: int, local_score: int,
-                            gemini_available: bool) -> int:
+def compute_combined_score(llm_score: int, local_score: int,
+                            llm_available: bool) -> int:
     """Pondère : 70 % LLM + 30 % local si LLM disponible, sinon 100 % local."""
-    if gemini_available:
-        return round(gemini_score * 0.70 + local_score * 0.30)
+    if llm_available:
+        return round(llm_score * 0.70 + local_score * 0.30)
     return local_score
 
 
 # ---------------------------------------------------------------------------
-# System Prompt Gemini (réécrit — contexte DEF OI complet + QHSE)
+# System Prompt Claude (contexte DEF OI complet + QHSE)
 # ---------------------------------------------------------------------------
 
 SYSTEM_PROMPT = """\
@@ -549,8 +563,8 @@ def _claude_analyze(text: str) -> dict | None:
         import anthropic
         response = client.messages.create(
             model="claude-opus-4-7",
-            max_tokens=4096,
-            thinking={"type": "enabled", "budget_tokens": 1024},
+            max_tokens=8192,
+            thinking={"type": "enabled", "budget_tokens": 6000},
             system=[
                 {
                     "type": "text",
@@ -574,8 +588,12 @@ def _claude_analyze(text: str) -> dict | None:
         if raw is None:
             _log.warning("Claude : aucun bloc texte dans la réponse")
             return None
+        # Supprimer les éventuels code fences markdown (```json ... ```)
+        raw_clean = raw.strip()
+        raw_clean = re.sub(r"^```(?:json)?\s*", "", raw_clean)
+        raw_clean = re.sub(r"\s*```$", "", raw_clean).strip()
         try:
-            result = json.loads(raw)
+            result = json.loads(raw_clean)
         except json.JSONDecodeError:
             _log.warning("Claude : réponse non-JSON — fallback analyse locale")
             return None
@@ -639,7 +657,17 @@ def fetch_dce_content(url: str) -> str | None:
             if content_length > _MAX_DCE_BYTES:
                 _log.debug("fetch_dce_content: Content-Length trop grand (%d bytes) — skipped", content_length)
                 return None
-            raw = resp.text
+            # Lecture chunk par chunk pour respecter la limite même sans Content-Length
+            chunks: list[bytes] = []
+            size = 0
+            for chunk in resp.iter_content(chunk_size=65536):
+                size += len(chunk)
+                if size > _MAX_DCE_BYTES:
+                    _log.debug("fetch_dce_content: corps > %d bytes — lecture interrompue", _MAX_DCE_BYTES)
+                    return None
+                chunks.append(chunk)
+            encoding = resp.encoding or "utf-8"
+            raw = b"".join(chunks).decode(encoding, errors="replace")
         # Supprimer scripts et styles
         raw = re.sub(
             r"<(script|style)[^>]*>.*?</\1>", " ", raw,
@@ -733,12 +761,15 @@ def auto_analyze_claude(
 
         if llm_result is None:
             # Erreur non-quota (réseau, JSON invalide…) : on saute ce marché
+            # Délai respecté même en cas d'erreur pour éviter les rafales vers l'API
+            if i < len(pending) - 1:
+                time.sleep(delay)
             continue
 
         combined_score = compute_combined_score(
-            gemini_score=llm_result.get("score_pertinence", 0),
+            llm_score=llm_result.get("score_pertinence", 0),
             local_score=local_result.get("score_pertinence", 0),
-            gemini_available=True,
+            llm_available=True,
         )
         llm_result["score_pertinence"] = combined_score
         llm_result.setdefault("tag_pertinence", _score_to_tag(combined_score))
@@ -755,7 +786,11 @@ def auto_analyze_claude(
             time.sleep(delay)
 
     if nb_done > 0:
-        db.commit()
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
 
     if progress_cb:
         progress_cb(len(pending), len(pending), "")
@@ -763,8 +798,7 @@ def auto_analyze_claude(
     return nb_done, -1
 
 
-# Alias pour compatibilité ascendante
-auto_analyze_gemini = auto_analyze_claude
+auto_analyze_gemini = auto_analyze_claude  # alias rétrocompat
 
 
 # ---------------------------------------------------------------------------
@@ -791,9 +825,9 @@ def analyze_tender(text: str, source_url: str | None = None) -> dict:
 
     if llm_result is not None:
         combined_score = compute_combined_score(
-            gemini_score=llm_result.get("score_pertinence", 0),
+            llm_score=llm_result.get("score_pertinence", 0),
             local_score=local_result.get("score_pertinence", 0),
-            gemini_available=True,
+            llm_available=True,
         )
         llm_result["score_pertinence"] = combined_score
         llm_result.setdefault("tag_pertinence", _score_to_tag(combined_score))
@@ -803,3 +837,75 @@ def analyze_tender(text: str, source_url: str | None = None) -> dict:
         return llm_result
 
     return local_result
+
+
+_STRUCTURED_SYSTEM = (
+    "Tu es un expert en marchés publics SSI, CMSI, désenfumage, vidéosurveillance "
+    "et courants faibles pour les DOM (La Réunion 974, Mayotte 976). "
+    "Tu retournes UNIQUEMENT un objet JSON valide, sans texte avant ni après."
+)
+
+_STRUCTURED_USER_TPL = """Analyse ce marché et retourne ce JSON strict :
+
+{{
+  "budget_estime": "<montant en euro ou null>",
+  "type_travaux": "Installation neuve" | "Rénovation" | "Maintenance" | "Étude" | "Mixte" | "Inconnu",
+  "lots": ["Lot 1 — ...", "..."],
+  "keywords_techniques": ["ERP type J", "SSI catégorie A", "..."],
+  "acheteur_type": "Commune" | "Établissement scolaire" | "Hôpital" | "Administration" | "Privé" | "Autre",
+  "niveau_concurrence": "Faible" | "Moyen" | "Élevé",
+  "recommandation": "GO" | "NON",
+  "score_confiance": <entier 0-100>,
+  "justification": "<1-2 phrases>"
+}}
+
+--- MARCHÉ ---
+Titre : {title}
+Description : {description}
+Montant estimé : {amount}
+"""
+
+
+def analyze_tender_structured(
+    title: str,
+    description: str,
+    amount: int | None = None,
+) -> dict | None:
+    """
+    Analyse structurée LLM d'un marché. Retourne un dict JSON ou None si :
+    - description trop courte (< 50 chars)
+    - clé API absente
+    - réponse non-JSON
+    - quota / erreur réseau
+    """
+    if not description or len(description.strip()) < 50:
+        return None
+
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        return None
+
+    amount_str = f"{amount:,} €".replace(",", " ") if amount else "Non renseigné"
+    prompt = _STRUCTURED_USER_TPL.format(
+        title=title or "",
+        description=description[:3000],
+        amount=amount_str,
+    )
+
+    try:
+        import anthropic as _anthropic
+        client = _anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=512,
+            system=_STRUCTURED_SYSTEM,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = msg.content[0].text.strip()
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        if start == -1 or end == 0:
+            return None
+        return json.loads(raw[start:end])
+    except Exception:
+        return None

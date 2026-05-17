@@ -4,13 +4,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 def test_compute_combined_score_with_gemini():
     from llm_analyzer import compute_combined_score
-    result = compute_combined_score(gemini_score=80, local_score=50, gemini_available=True)
+    result = compute_combined_score(llm_score=80, local_score=50, llm_available=True)
     assert result == round(80 * 0.70 + 50 * 0.30)  # 71
 
 
 def test_compute_combined_score_without_gemini():
     from llm_analyzer import compute_combined_score
-    result = compute_combined_score(gemini_score=80, local_score=50, gemini_available=False)
+    result = compute_combined_score(llm_score=80, local_score=50, llm_available=False)
     assert result == 50  # local uniquement
 
 
@@ -100,3 +100,72 @@ def test_authentication_error_does_not_log_key(monkeypatch, caplog):
     assert result is None
     for record in caplog.records:
         assert fake_key not in record.getMessage()
+
+
+from unittest.mock import patch, MagicMock
+
+
+def test_analyze_tender_structured_returns_none_for_short_description():
+    """Description < 50 chars -> None sans appeler l API."""
+    from llm_analyzer import analyze_tender_structured
+    result = analyze_tender_structured('Titre', 'Court')
+    assert result is None
+
+
+def test_analyze_tender_structured_returns_none_without_api_key(monkeypatch):
+    """Pas de cle API -> None."""
+    monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
+    from llm_analyzer import analyze_tender_structured
+    result = analyze_tender_structured(
+        'Installation SSI ERP type J',
+        'Installation d un systeme de securite incendie dans un ERP de type J, categorie 2.',
+    )
+    assert result is None
+
+
+def test_analyze_tender_structured_parses_valid_json(monkeypatch):
+    """Reponse Claude JSON valide -> dict avec les bons champs."""
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'sk-ant-test-key')
+    mock_response_json = '''{        "budget_estime": "150 000 euro",        "type_travaux": "Installation neuve",        "lots": ["Lot 1 - Detection"],        "keywords_techniques": ["SSI categorie A"],        "acheteur_type": "Etablissement scolaire",        "niveau_concurrence": "Eleve",        "recommandation": "GO",        "score_confiance": 82,        "justification": "ERP type J, coeur de metier."    }'''
+
+    mock_msg = MagicMock()
+    mock_msg.content = [MagicMock(text=mock_response_json)]
+
+    from llm_analyzer import analyze_tender_structured
+    with patch('anthropic.Anthropic') as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_client.messages.create.return_value = mock_msg
+
+        result = analyze_tender_structured(
+            'Installation SSI ERP type J',
+            'Installation d un systeme de securite incendie dans un ERP de type J categorie 2, desenfumage CMSI inclus.',
+            amount=150000,
+        )
+
+    assert result is not None
+    assert result['recommandation'] == 'GO'
+    assert result['score_confiance'] == 82
+    assert 'budget_estime' in result
+    assert isinstance(result['lots'], list)
+
+
+def test_analyze_tender_structured_handles_invalid_json(monkeypatch):
+    """Claude retourne du texte invalide -> None sans exception."""
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'sk-ant-test-key')
+
+    mock_msg = MagicMock()
+    mock_msg.content = [MagicMock(text='Desole, je ne peux pas repondre.')]
+
+    from llm_analyzer import analyze_tender_structured
+    with patch('anthropic.Anthropic') as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_client.messages.create.return_value = mock_msg
+
+        result = analyze_tender_structured(
+            'Installation SSI',
+            'Installation d un systeme de securite incendie complet avec CMSI et desenfumage.',
+        )
+
+    assert result is None
