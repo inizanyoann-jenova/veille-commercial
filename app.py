@@ -131,7 +131,11 @@ st.set_page_config(
     layout="wide",
 )
 
-init_db()
+@st.cache_resource
+def _init_db_once():
+    init_db()
+
+_init_db_once()
 
 # ── Scheduler ré-validation hebdomadaire ──────────────────────────────────────
 
@@ -159,6 +163,29 @@ def _start_background_services():
 
     _scheduler = _BgScheduler()
     _scheduler.add_job(_rwp, "interval", weeks=1, id="weekly_ping")
+
+    # Job digest email quotidien (uniquement si SMTP configuré)
+    _digest_hour = int(os.getenv("DIGEST_HOUR", "7"))
+    if os.getenv("DIGEST_SMTP_HOST") and os.getenv("DIGEST_TO"):
+        def _send_daily_digest():
+            from email_digest import send_digest as _sd
+            _cfg = {
+                "host": os.getenv("DIGEST_SMTP_HOST"),
+                "port": int(os.getenv("DIGEST_SMTP_PORT", "587")),
+                "user": os.getenv("DIGEST_SMTP_USER"),
+                "password": os.getenv("DIGEST_SMTP_PASSWORD"),
+                "to": os.getenv("DIGEST_TO"),
+            }
+            _sd(_cfg)
+
+        _scheduler.add_job(
+            _send_daily_digest,
+            "cron",
+            hour=_digest_hour,
+            minute=0,
+            id="daily_digest",
+        )
+
     _scheduler.start()
     return _scheduler
 
@@ -459,6 +486,8 @@ def load_tenders(
             q = q.filter(or_(Tender.secteur == "Public", Tender.secteur == None))
         elif secteur == "Privé":
             q = q.filter(Tender.secteur == "Privé")
+        elif secteur == "International":
+            q = q.filter(Tender.secteur == "International")
 
         if only_recent:
             cutoff = datetime.now() - timedelta(hours=24)
@@ -585,7 +614,7 @@ def load_chart_data() -> list[dict]:
             {
                 "pub": r.publication_date,
                 "title": r.title or "",
-                "desc": r.description or "",
+                "desc": (r.description or "")[:200],
                 "secteur": r.secteur,
             }
             for r in rows
@@ -710,13 +739,13 @@ def _sort_rows(rows: list[dict], sort_by: str) -> list[dict]:
 def load_kpis_public() -> dict:
     db = new_db()
     try:
-        pub = or_(Tender.secteur == "Public", Tender.secteur == None)
+        pub = (Tender.is_blacklisted == False, or_(Tender.secteur == "Public", Tender.secteur == None))
         return {
-            "total": db.query(Tender).filter(pub).count(),
-            "a_qualifier": db.query(Tender).filter(pub, Tender.status == "À qualifier").count(),
-            "en_cours": db.query(Tender).filter(pub, Tender.status == "En cours").count(),
-            "gagnes": db.query(Tender).filter(pub, Tender.status == "Gagné").count(),
-            "soumis": db.query(Tender).filter(pub, Tender.status == "Soumis").count(),
+            "total": db.query(Tender).filter(*pub).count(),
+            "a_qualifier": db.query(Tender).filter(*pub, Tender.status == "À qualifier").count(),
+            "en_cours": db.query(Tender).filter(*pub, Tender.status == "En cours").count(),
+            "gagnes": db.query(Tender).filter(*pub, Tender.status == "Gagné").count(),
+            "soumis": db.query(Tender).filter(*pub, Tender.status == "Soumis").count(),
         }
     finally:
         db.close()
@@ -726,11 +755,11 @@ def load_kpis_public() -> dict:
 def load_kpis_ca() -> dict:
     db = new_db()
     try:
-        pub = or_(Tender.secteur == "Public", Tender.secteur == None)
+        pub = (Tender.is_blacklisted == False, or_(Tender.secteur == "Public", Tender.secteur == None))
 
         def _sum(statuts):
             res = db.query(_func.sum(Tender.amount)).filter(
-                pub, Tender.status.in_(statuts), Tender.amount != None
+                *pub, Tender.status.in_(statuts), Tender.amount != None
             ).scalar()
             return res or 0
 
@@ -747,11 +776,11 @@ def load_kpis_priv() -> dict:
     db = new_db()
     try:
         return {
-            "permis": db.query(Tender).filter(Tender.secteur == "Privé", Tender.type_opportunite == "Permis Construire").count(),
-            "presse": db.query(Tender).filter(Tender.secteur == "Privé", Tender.type_opportunite == "Presse").count(),
-            "instit": db.query(Tender).filter(Tender.secteur == "Privé", Tender.type_opportunite == "Institution").count(),
-            "devbanks": db.query(Tender).filter(Tender.type_opportunite == "Banque Dev.").count(),
-            "qualif_priv": db.query(Tender).filter(Tender.secteur == "Privé", Tender.status == "À qualifier").count(),
+            "permis": db.query(Tender).filter(Tender.is_blacklisted == False, Tender.secteur == "Privé", Tender.type_opportunite == "Permis Construire").count(),
+            "presse": db.query(Tender).filter(Tender.is_blacklisted == False, Tender.secteur == "Privé", Tender.type_opportunite == "Presse").count(),
+            "instit": db.query(Tender).filter(Tender.is_blacklisted == False, Tender.secteur == "Privé", Tender.type_opportunite == "Institution").count(),
+            "devbanks": db.query(Tender).filter(Tender.is_blacklisted == False, Tender.type_opportunite == "Banque Dev.").count(),
+            "qualif_priv": db.query(Tender).filter(Tender.is_blacklisted == False, Tender.secteur == "Privé", Tender.status == "À qualifier").count(),
         }
     finally:
         db.close()
@@ -763,17 +792,13 @@ def _collect_all_enabled_sources() -> None:
     """Lance les scrapers de toutes les sources activées/validées. Stocke les résultats par source dans session_state."""
     import importlib
 
-    _db_snap = new_db()
+    # Single session: snapshot IDs + fetch sources list
+    _db_init = new_db()
     try:
-        ids_before_all = {row.id for row in _db_snap.query(Tender.id).all()}
+        known_ids: set = {row.id for row in _db_init.query(Tender.id).all()}
+        sources = list_sources(_db_init)
     finally:
-        _db_snap.close()
-
-    db_s = new_db()
-    try:
-        sources = list_sources(db_s)
-    finally:
-        db_s.close()
+        _db_init.close()
 
     per_source_new: dict[str, int] = {}
     per_source_ids: dict[str, set] = {}
@@ -785,11 +810,6 @@ def _collect_all_enabled_sources() -> None:
                 continue
             if not source.enabled or not source.is_validated:
                 continue
-            _db_pre = new_db()
-            try:
-                ids_before_src = {row.id for row in _db_pre.query(Tender.id).all()}
-            finally:
-                _db_pre.close()
             try:
                 mod = importlib.import_module(source.scraper_module)
                 func = getattr(mod, source.scraper_func)
@@ -811,12 +831,14 @@ def _collect_all_enabled_sources() -> None:
                         _db_cleanup.close()
                 except Exception:
                     pass
+            # One query after each scraper, diffed against running known set
             _db_post = new_db()
             try:
-                ids_after_src = {row.id for row in _db_post.query(Tender.id).all()}
+                current_ids = {row.id for row in _db_post.query(Tender.id).all()}
             finally:
                 _db_post.close()
-            new_ids = ids_after_src - ids_before_src
+            new_ids = current_ids - known_ids
+            known_ids = current_ids
             if new_ids:
                 per_source_ids[source.name] = new_ids
                 per_source_new[source.name] = len(new_ids)
@@ -824,13 +846,7 @@ def _collect_all_enabled_sources() -> None:
     _run_auto_analysis()
     st.cache_data.clear()
 
-    _db_snap2 = new_db()
-    try:
-        ids_after_all = {row.id for row in _db_snap2.query(Tender.id).all()}
-    finally:
-        _db_snap2.close()
-
-    all_new_ids = ids_after_all - ids_before_all
+    all_new_ids = {tid for ids in per_source_ids.values() for tid in ids}
     st.session_state["new_tender_ids"] = all_new_ids
     st.session_state["collection_results"] = per_source_new
     st.session_state["collection_source_ids"] = per_source_ids
@@ -1079,15 +1095,6 @@ with st.sidebar:
         st.page_link("pages/analytics.py", label="📈 Analytics", use_container_width=True)
 
 
-@st.cache_data(ttl=300)
-def _generate_report_cached() -> bytes:
-    db = new_db()
-    try:
-        return generate_executive_report(db)
-    finally:
-        db.close()
-
-
 # ── header + export ───────────────────────────────────────────────────────────
 
 st.markdown("""
@@ -1100,17 +1107,23 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Large export button
+# Export button — génère le rapport uniquement sur clic (pas au chargement de page)
 _, col_btn, _ = st.columns([1, 2, 1])
 with col_btn:
-    st.download_button(
-        label="📊  Télécharger le Rapport Direction (Excel)",
-        data=_generate_report_cached(),
-        file_name=f"Rapport_Direction_DEF_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-        type="primary",
-    )
+    if st.button("📊  Générer le Rapport Direction (Excel)", use_container_width=True, type="primary"):
+        with st.spinner("Génération du rapport en cours…"):
+            _db_rpt = new_db()
+            try:
+                _report_bytes = generate_executive_report(_db_rpt)
+            finally:
+                _db_rpt.close()
+        st.download_button(
+            label="⬇️  Télécharger le Rapport Direction",
+            data=_report_bytes,
+            file_name=f"Rapport_Direction_DEF_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
 
 st.markdown("---")
 
