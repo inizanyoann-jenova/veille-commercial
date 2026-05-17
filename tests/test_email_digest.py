@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import pytest
+from unittest.mock import patch, MagicMock
 from models import Tender
 from fiche_logic import SCORE_GO, SCORE_ETUDE
 
@@ -87,3 +88,37 @@ def test_build_digest_excludes_blacklisted(db, make_tender):
     )
     result = build_digest(since_hours=24, db=db)
     assert result is None
+
+
+_SMTP_CONFIG = {
+    "host": "smtp.gmail.com",
+    "port": 587,
+    "user": "test@gmail.com",
+    "password": "secret",
+    "to": "dest@gmail.com",
+}
+
+
+def test_send_digest_returns_false_when_nothing_to_send(db):
+    """Aucun marché → send_digest retourne False sans appeler SMTP."""
+    from email_digest import send_digest
+    with patch("smtplib.SMTP") as mock_smtp:
+        result = send_digest(_SMTP_CONFIG, db=db)
+    assert result is False
+    mock_smtp.assert_not_called()
+
+
+def test_send_digest_returns_true_and_calls_smtp(db, make_tender):
+    """Marché GO présent → send_digest retourne True et appelle SMTP."""
+    from email_digest import send_digest
+    make_tender(
+        publication_date=datetime.utcnow() - timedelta(hours=1),
+        relevance_score=SCORE_GO,
+    )
+    mock_server = MagicMock()
+    with patch("smtplib.SMTP") as mock_smtp:
+        mock_smtp.return_value.__enter__ = lambda s: mock_server
+        mock_smtp.return_value.__exit__ = MagicMock(return_value=False)
+        result = send_digest(_SMTP_CONFIG, db=db)
+    assert result is True
+    mock_server.send_message.assert_called_once()
