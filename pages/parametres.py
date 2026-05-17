@@ -388,17 +388,31 @@ if st.button("🔄 Régénérer la clé de chiffrement"):
     st.session_state["_regen_key_confirm"] = True
 
 if st.session_state.get("_regen_key_confirm"):
-    st.warning("⚠️ Attention : régénérer la clé rendra illisibles tous les mots de passe stockés en base. Vous devrez les ressaisir.")
+    st.warning(
+        "⚠️ Attention : régénérer la clé rendra illisibles tous les mots de passe stockés en base. "
+        "Ils seront supprimés automatiquement — vous devrez les ressaisir."
+    )
     _col_ok, _col_cancel = st.columns(2)
     with _col_ok:
         if st.button("✅ Confirmer la régénération", type="primary", key="regen_key_confirm_btn"):
             from cryptography.fernet import Fernet
             from dotenv import set_key
+            from database import SessionLocal as _SL_regen
+            from models import Credential as _Cred_regen
+            _db_regen = _SL_regen()
+            try:
+                _nb_deleted = _db_regen.query(_Cred_regen).delete()
+                _db_regen.commit()
+            finally:
+                _db_regen.close()
             _new_fernet_key = Fernet.generate_key().decode()
             set_key(".env", "CREDENTIAL_KEY", _new_fernet_key)
             os.environ["CREDENTIAL_KEY"] = _new_fernet_key
             st.session_state.pop("_regen_key_confirm", None)
-            st.success("Nouvelle clé générée et sauvegardée dans `.env`. Relancez l'application.")
+            st.success(
+                f"Nouvelle clé générée. {_nb_deleted} identifiant(s) supprimé(s). "
+                "Relancez l'application puis ressaisissez vos identifiants."
+            )
     with _col_cancel:
         if st.button("❌ Annuler", key="regen_key_cancel_btn"):
             st.session_state.pop("_regen_key_confirm", None)
@@ -531,10 +545,17 @@ def _get_unresolved_pairs():
     _db = _SL_dd()
     try:
         pairs = _db.query(_DC).filter(_DC.resolved == False).all()
+        if not pairs:
+            return []
+        all_ids = {p.tender_id_a for p in pairs} | {p.tender_id_b for p in pairs}
+        tenders_map = {
+            t.id: t
+            for t in _db.query(_Tender_dd).filter(_Tender_dd.id.in_(all_ids)).all()
+        }
         result = []
         for p in pairs:
-            a = _db.query(_Tender_dd).filter(_Tender_dd.id == p.tender_id_a).first()
-            b = _db.query(_Tender_dd).filter(_Tender_dd.id == p.tender_id_b).first()
+            a = tenders_map.get(p.tender_id_a)
+            b = tenders_map.get(p.tender_id_b)
             if a and b:
                 result.append((p, a, b))
         return result
@@ -614,3 +635,41 @@ else:
                 _merge_pair(keep_id=_b.id, archive_id=_a.id, pair_id=_pair.id)
             if _c3.button("Ignorer", key=f"ignore_{_pair.id}"):
                 _ignore_pair(_pair.id)
+
+# ── Digest email ──────────────────────────────────────────────────────────────
+
+st.markdown("---")
+st.subheader("📧 Digest email quotidien")
+
+_smtp_host = os.getenv("DIGEST_SMTP_HOST", "")
+_smtp_to = os.getenv("DIGEST_TO", "")
+
+if not _smtp_host or not _smtp_to:
+    st.warning(
+        "Variables DIGEST_SMTP_HOST et DIGEST_TO non configurées dans `.env`. "
+        "Consultez le Guide utilisateur pour la procédure de configuration."
+    )
+else:
+    st.success(f"Configuré → envoi à **{_smtp_to}** via {_smtp_host}")
+    if st.button("📧 Envoyer le digest maintenant"):
+        from email_digest import send_digest as _send
+        _cfg = {
+            "host": os.getenv("DIGEST_SMTP_HOST"),
+            "port": int(os.getenv("DIGEST_SMTP_PORT", "587")),
+            "user": os.getenv("DIGEST_SMTP_USER"),
+            "password": os.getenv("DIGEST_SMTP_PASSWORD"),
+            "to": os.getenv("DIGEST_TO"),
+        }
+        with st.spinner("Envoi en cours…"):
+            sent = _send(_cfg)
+        if sent:
+            st.success("✅ Digest envoyé avec succès")
+        else:
+            st.info("ℹ️ Aucun nouveau marché à envoyer (0 GO + 0 À étudier dans les 24h)")
+
+    st.markdown("""
+    **Heure d'envoi automatique :** `DIGEST_HOUR` dans `.env` (défaut : 7h00)
+
+    **Script autonome :** planifier `python send_digest.py` via le Planificateur de tâches Windows
+    pour recevoir l'email même si l'application est fermée.
+    """)
