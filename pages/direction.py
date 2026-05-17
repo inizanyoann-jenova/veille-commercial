@@ -74,3 +74,133 @@ def _load_pipeline_direction_data(db) -> list:
         .order_by(Tender.deadline.asc().nullslast())
         .all()
     )
+
+
+# ── Page Streamlit ────────────────────────────────────────────────────────────
+
+st.set_page_config(page_title="Direction — DEF OI", page_icon="📊", layout="wide")
+
+@st.cache_resource
+def _ensure_db_init():
+    init_db()
+
+_ensure_db_init()
+
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+html, body, [class*="css"] { font-family: 'Inter', system-ui, sans-serif !important; }
+#MainMenu, footer, header { visibility: hidden; }
+.main .block-container { padding-top: 1.2rem; padding-left: 2.5rem; padding-right: 2.5rem; max-width: 100%; }
+[data-testid="stMetric"] {
+    background: #fff; border: 1px solid #f0f2f5; border-radius: 10px;
+    padding: 12px 16px !important; box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+[data-testid="stMetricLabel"] { color: #9ca3af !important; font-size: 0.69rem !important; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 600 !important; }
+[data-testid="stMetricValue"] { color: #111827 !important; font-size: 1.55rem !important; font-weight: 800 !important; letter-spacing: -0.02em; }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("# 📊 Direction — DEF OI")
+st.caption("Vue exécutive — Pipeline commercial")
+st.markdown("---")
+
+
+@st.cache_data(ttl=120)
+def _load_direction_kpis():
+    db = SessionLocal()
+    try:
+        return _load_direction_kpis_data(db)
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@st.cache_data(ttl=120)
+def _load_activity_90d():
+    db = SessionLocal()
+    try:
+        return _load_activity_90d_data(db)
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@st.cache_data(ttl=120)
+def _load_pipeline_direction():
+    db = SessionLocal()
+    try:
+        return _load_pipeline_direction_data(db)
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+# ── Bloc 1 : KPIs ─────────────────────────────────────────────────────────────
+
+_kpis = _load_direction_kpis()
+
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("Opportunités actives", _kpis["nb_actifs"])
+k2.metric("CA prévisionnel", f"{_kpis['ca_previsionnel']:,.0f} €".replace(",", " ") if _kpis["ca_previsionnel"] else "—")
+k3.metric("CA Gagné 🏆", f"{_kpis['ca_gagne']:,.0f} €".replace(",", " ") if _kpis["ca_gagne"] else "—")
+k4.metric("Taux conversion", f"{_kpis['taux_conversion']} %" if _kpis["taux_conversion"] is not None else "—")
+
+st.markdown("---")
+
+# ── Bloc 2 : Activité 90 jours ────────────────────────────────────────────────
+
+st.markdown("### 📅 Activité — 90 derniers jours")
+_activity = _load_activity_90d()
+if _activity:
+    _df_act = pd.DataFrame(_activity)
+    _fig = px.bar(
+        _df_act, x="semaine", y="count",
+        labels={"semaine": "Semaine", "count": "Marchés collectés"},
+        color_discrete_sequence=["#cc2222"],
+    )
+    _fig.update_layout(showlegend=False, margin=dict(t=10, b=10, l=0, r=0), height=250)
+    st.plotly_chart(_fig, use_container_width=True)
+else:
+    st.caption("Aucune donnée d'activité sur 90 jours.")
+
+st.markdown("---")
+
+# ── Bloc 3 : Tableau pipeline ─────────────────────────────────────────────────
+
+st.markdown("### 📋 Pipeline en cours")
+_pipeline = _load_pipeline_direction()
+if _pipeline:
+    _df_pipe = pd.DataFrame([{
+        "Titre": (t.title or "")[:60],
+        "Statut": t.status,
+        "Deadline": t.deadline.strftime("%d/%m/%Y") if t.deadline else "—",
+        "Montant estimé": f"{t.amount:,} €".replace(",", " ") if t.amount else "—",
+        "Source": t.source or "—",
+    } for t in _pipeline])
+    st.dataframe(_df_pipe, use_container_width=True, hide_index=True)
+else:
+    st.caption("Aucun marché GO ou Soumis en cours.")
+
+st.markdown("---")
+
+# ── Bloc 4 : Export PDF ───────────────────────────────────────────────────────
+
+if st.button("📄 Télécharger le rapport PDF"):
+    with st.spinner("Génération du PDF…"):
+        _pdf = generate_direction_pdf(_kpis, _activity, _pipeline)
+    _date = datetime.now().strftime("%Y%m%d")
+    st.download_button(
+        label="⬇️ Télécharger",
+        data=_pdf,
+        file_name=f"Rapport_Direction_DEF_{_date}.pdf",
+        mime="application/pdf",
+    )
+
+st.page_link("app.py", label="← Retour à la veille marchés")
