@@ -1339,7 +1339,7 @@ def _render_fiche(tender_id: str, key_suffix: str) -> None:
             st.caption(f"💡 {a['justification_score']}")
 
         # ── BLOC 2 : Métriques condensées ────────────────────────────────────
-        m1, m2, m3, m4, m5 = st.columns(5)
+        m1, m2, m3, m4, m5, m6 = st.columns(6)
         if jours_restants is not None:
             m1.metric("Délai (j)", jours_restants)
         else:
@@ -1349,6 +1349,8 @@ def _render_fiche(tender_id: str, key_suffix: str) -> None:
         m4.metric("Concurrents", len(a.get("marques_concurrentes_citees", [])))
         source_a = a.get("_source", "local")
         m5.metric("Analyse", "Claude IA" if source_a in ("claude", "gemini") else "Règles")
+        _adap_val = t.adaptive_score if t.adaptive_score is not None else "—"
+        m6.metric("🧠 Adapt.", _adap_val)
 
         # ── BLOC 3 : Plan d'action ────────────────────────────────────────────
         st.markdown(f"#### {data['label_action']}")
@@ -1469,6 +1471,25 @@ def _render_fiche(tender_id: str, key_suffix: str) -> None:
                         st.rerun()
                     else:
                         st.warning("Analyse impossible (description trop courte ou clé API manquante)")
+
+        # ── Historique marchés similaires ────────────────────────────────────
+        from fiche_logic import get_acheteur_history as _gah
+        _hist = _gah(db_det, t)
+        if _hist.get('nb_total', 0) >= 2:
+            with st.expander(f"📋 Historique marchés similaires ({_hist['nb_total']} trouvés)", expanded=False):
+                _hc1, _hc2, _hc3 = st.columns(3)
+                _hc1.metric("Marchés similaires", _hist['nb_total'])
+                _hc2.metric("Dont GO (≥65)", _hist.get('nb_go', 0))
+                _hc3.metric("Gagnés", _hist.get('nb_gagnes', 0))
+                if _hist.get('montant_total_gagne'):
+                    st.caption(f"CA gagné : {_hist['montant_total_gagne']:,.0f} €")
+                _derniers = _hist.get('derniers', [])
+                if _derniers:
+                    st.markdown("**Derniers marchés similaires :**")
+                    for _d in _derniers:
+                        _d_score = _d.relevance_score or 0
+                        _d_badge = "🟢" if _d_score >= SCORE_GO else ("🟡" if _d_score >= SCORE_ETUDE else "🔴")
+                        st.markdown(f"{_d_badge} {_d.title or '—'} — Score {_d_score}")
 
         st.markdown("---")
 
