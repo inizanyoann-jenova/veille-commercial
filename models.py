@@ -24,6 +24,8 @@ class Tender(Base):
     is_saved         = Column(Boolean, default=False)
     notes            = Column(String, default=None)
     tags             = Column(JSON, default=list)
+    llm_structured   = Column(JSON, default=None)
+    adaptive_score   = Column(Integer, default=None)
 
     __table_args__ = (
         Index("idx_tender_blacklisted",     "is_blacklisted"),
@@ -66,3 +68,12 @@ class DuplicateCandidate(Base):
     similarity_score = Column(Float, nullable=False)
     detected_at      = Column(DateTime, nullable=False)
     resolved         = Column(Boolean, default=False)
+
+
+class ScoreWeight(Base):
+    __tablename__ = "score_weights"
+
+    keyword     = Column(String, primary_key=True)
+    weight_go   = Column(Float, default=0.0)
+    weight_nogo = Column(Float, default=0.0)
+    updated_at  = Column(DateTime)

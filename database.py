@@ -39,8 +39,10 @@ def _run_migrations(engine) -> None:
     """Exécute les migrations de colonnes avec validation stricte des noms."""
     with engine.connect() as conn:
         for table, col_name, col_def in _MIGRATIONS:
-            assert table in _VALID_TABLES,  f"Table inconnue : {table}"
-            assert col_name in _VALID_COLS, f"Colonne inconnue : {col_name}"
+            if table not in _VALID_TABLES:
+                raise ValueError(f"Migration refusée — table inconnue : {table}")
+            if col_name not in _VALID_COLS:
+                raise ValueError(f"Migration refusée — colonne inconnue : {col_name}")
             try:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}"))
                 conn.commit()
@@ -66,6 +68,24 @@ def init_db():
         raise
     finally:
         db.close()
+
+    # Lot 2 — migrations idempotentes
+    with engine.connect() as conn:
+        for sql in [
+            "ALTER TABLE tenders ADD COLUMN llm_structured JSON DEFAULT NULL",
+            "ALTER TABLE tenders ADD COLUMN adaptive_score INTEGER DEFAULT NULL",
+            """CREATE TABLE IF NOT EXISTS score_weights (
+                keyword TEXT PRIMARY KEY,
+                weight_go REAL DEFAULT 0.0,
+                weight_nogo REAL DEFAULT 0.0,
+                updated_at DATETIME
+            )""",
+        ]:
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+            except Exception:
+                conn.rollback()
 
 
 def get_db():
@@ -109,12 +129,16 @@ def finish_scraper_run(db, run_id: int, nb_found: int, nb_new: int, error: str |
 
 
 _DEDUP_MAX_TENDERS = 2000  # au-delà, O(N²) devient trop lent
+_DEDUP_MAX_SECONDS = 30   # timeout pour éviter de bloquer l'UI
+
 
 def detect_duplicates(db) -> int:
     """Détecte les paires de marchés avec titre similaire (>=0.80) et deadline à ±3j.
-    Retourne le nombre de nouvelles paires insérées."""
+    Retourne le nombre de nouvelles paires insérées.
+    S'arrête après _DEDUP_MAX_SECONDS secondes pour ne pas bloquer l'interface."""
+    import time as _time
     from models import Tender, DuplicateCandidate
-    from datetime import datetime as _ddt, UTC as _UTC
+    from datetime import datetime as _ddt
 
     tenders = db.query(Tender).filter(Tender.is_blacklisted == False).all()
     if len(tenders) > _DEDUP_MAX_TENDERS:
@@ -126,7 +150,11 @@ def detect_duplicates(db) -> int:
         (min(a, b), max(a, b)) for a, b in existing_raw
     }
 
+    _deadline = _time.monotonic() + _DEDUP_MAX_SECONDS
     for i, a in enumerate(tenders):
+        if _time.monotonic() > _deadline:
+            _log.warning("detect_duplicates: timeout atteint après %d secondes — %d paires traitées", _DEDUP_MAX_SECONDS, new_pairs)
+            break
         for b in tenders[i + 1:]:
             if a.source == b.source:
                 continue
@@ -148,7 +176,7 @@ def detect_duplicates(db) -> int:
                     tender_id_a=a.id,
                     tender_id_b=b.id,
                     similarity_score=round(ratio, 3),
-                    detected_at=_ddt.now(_UTC),
+                    detected_at=_ddt.now(_tz.utc).replace(tzinfo=None),
                 ))
                 existing_pairs.add(pair_key)
                 new_pairs += 1
@@ -185,6 +213,15 @@ def load_urgences(db, score_go: int = 65, days_ahead: int = 30) -> list[dict]:
         }
         for t in rows
     ]
+
+
+def count_decisions(db) -> int:
+    """Nombre de tenders avec une décision enregistrée (Soumis/Gagné/Perdu)."""
+    from models import Tender
+    return db.query(Tender).filter(
+        Tender.status.in_(["Soumis", "Gagné", "Perdu"]),
+        Tender.is_blacklisted == False,
+    ).count()
 
 
 def load_pipeline_data(db, score_go: int = 65) -> dict:
