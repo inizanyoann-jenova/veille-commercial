@@ -140,10 +140,12 @@ def send_digest(smtp_config: dict, db=None) -> bool:
     msg["To"] = smtp_config["to"]
     msg.attach(MIMEText(data["html"], "html", "utf-8"))
 
-    with smtplib.SMTP(smtp_config["host"], smtp_config["port"]) as server:
-        server.ehlo()
-        server.starttls()
-        server.login(smtp_config["user"], smtp_config["password"])
-        server.send_message(msg)
-
-    return True
+    try:
+        with smtplib.SMTP(smtp_config["host"], smtp_config["port"]) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(smtp_config["user"], smtp_config["password"])
+            server.send_message(msg)
+        return True
+    except Exception:
+        return False

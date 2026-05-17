@@ -74,6 +74,7 @@ def test_build_digest_html_has_urgence_section(db, make_tender):
     result = build_digest(since_hours=24, db=db)
     assert result is not None
     assert "⚠️" in result["html"]
+    assert "Urgence SSI" in result["html"]
 
 
 def test_build_digest_excludes_blacklisted(db, make_tender):
