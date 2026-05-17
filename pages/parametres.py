@@ -673,3 +673,29 @@ else:
     **Script autonome :** planifier `python send_digest.py` via le Planificateur de tâches Windows
     pour recevoir l'email même si l'application est fermée.
     """)
+
+# ── Score adaptatif ───────────────────────────────────────────────────────────
+
+st.markdown("---")
+st.subheader("🧠 Score adaptatif")
+
+from database import count_decisions as _count_dec, SessionLocal as _SL_adp
+
+_db_adp = _SL_adp()
+try:
+    _nb_dec = _count_dec(_db_adp)
+finally:
+    _db_adp.close()
+
+_MIN_DEC = 10
+if _nb_dec < _MIN_DEC:
+    st.info(f"Pas encore assez de données : **{_nb_dec}/{_MIN_DEC}** décisions enregistrées (Soumis/Gagné/Perdu). "
+            f"Le score adaptatif s'activera automatiquement une fois {_MIN_DEC} décisions atteintes.")
+else:
+    st.success(f"{_nb_dec} décisions disponibles — score adaptatif actif")
+    if st.button("🔄 Recalculer le score adaptatif maintenant"):
+        from score_adaptive import recompute_adaptive_scores as _recompute
+        with st.spinner("Recalcul en cours…"):
+            _nb = _recompute()
+        st.success(f"✅ {_nb} marchés mis à jour")
+        st.cache_data.clear()

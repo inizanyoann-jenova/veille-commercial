@@ -186,6 +186,17 @@ def _start_background_services():
             id="daily_digest",
         )
 
+    def _weekly_adaptive_scores():
+        from score_adaptive import recompute_adaptive_scores as _r
+        _r()
+
+    _scheduler.add_job(
+        _weekly_adaptive_scores,
+        "interval",
+        weeks=1,
+        id="weekly_adaptive_scores",
+    )
+
     _scheduler.start()
     return _scheduler
 
