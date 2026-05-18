@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, date as _date
 import html as _html
 import logging
+import os
 import re
 import uuid as _uuid
 from collections import Counter, defaultdict
@@ -34,6 +35,7 @@ from fiche_logic import SCORE_GO, SCORE_ETUDE, _compute_fiche_data
 _log = logging.getLogger(__name__)
 
 TENDER_TAGS = [
+    "Potentiel SSI implicite",
     "Partenaire requis",
     "En attente DCE",
     "Budget bloqué",
@@ -1337,6 +1339,13 @@ def _render_fiche(tender_id: str, key_suffix: str) -> None:
             st.error(header_line)
         if a.get("justification_score"):
             st.caption(f"💡 {a['justification_score']}")
+
+        # ── Bandeau SSI implicite ─────────────────────────────────────────────
+        if "Potentiel SSI implicite" in (t.tags if isinstance(t.tags, list) else []):
+            st.info(
+                "⚠️ **Potentiel SSI implicite** — capturé via type de bâtiment (ERP) "
+                "sans mot-clé SSI direct. Confirmer lors de la qualification."
+            )
 
         # ── BLOC 2 : Métriques condensées ────────────────────────────────────
         m1, m2, m3, m4, m5, m6 = st.columns(6)
