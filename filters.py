@@ -75,18 +75,35 @@ _COMPILED_BOUNDARY = {
 }
 
 
-def is_relevant_def(text: str) -> bool:
+def classify_relevance(text: str) -> tuple[bool, list[str]]:
+    """Retourne (pertinent, tags).
+
+    tags contient ["Potentiel SSI implicite"] quand la capture est via
+    la logique construction+ERP, sans mot-clé DEF OI direct.
+    """
     text_lower = text.lower()
-    for keyword in EXCLUSION_KEYWORDS:
-        if keyword in text_lower:
-            return False
-    for keyword in INCLUSION_KEYWORDS:
-        if keyword in _WORD_BOUNDARY_KW:
-            if _COMPILED_BOUNDARY[keyword].search(text_lower):
-                return True
-        elif keyword in text_lower:
-            return True
-    return False
+
+    for kw in EXCLUSION_KEYWORDS:
+        if kw in text_lower:
+            return False, []
+
+    for kw in INCLUSION_KEYWORDS:
+        if kw in _WORD_BOUNDARY_KW:
+            if _COMPILED_BOUNDARY[kw].search(text_lower):
+                return True, []
+        elif kw in text_lower:
+            return True, []
+
+    has_chantier = any(kw in text_lower for kw in KEYWORDS_CONSTRUCTION)
+    has_erp = any(kw in text_lower for kw in KEYWORDS_ERP_CIBLES)
+    if has_chantier and has_erp:
+        return True, ["Potentiel SSI implicite"]
+
+    return False, []
+
+
+def is_relevant_def(text: str) -> bool:
+    return classify_relevance(text)[0]
 
 
 def is_construction_relevant(text: str) -> bool:
@@ -96,25 +113,4 @@ def is_construction_relevant(text: str) -> bool:
 
 
 def is_prive_relevant(text: str) -> bool:
-    """Filtre marché privé DEF OI.
-
-    Pertinent si :
-    1. Mention directe d'un équipement DEF OI (SSI, CMSI, vidéosurveillance...), OU
-    2. Article sur un projet de construction/réhabilitation d'un ERP ciblé.
-       → Les DEUX conditions (indicateur de chantier + type d'ERP) doivent être réunies.
-       Un article sur les livres scolaires mentionne "école" mais pas "chantier" → rejeté.
-    """
-    text_lower = text.lower()
-
-    for kw in EXCLUSION_KEYWORDS:
-        if kw in text_lower:
-            return False
-
-    # Cas 1 : mention directe d'un équipement DEF OI
-    if any(kw in text_lower for kw in INCLUSION_KEYWORDS):
-        return True
-
-    # Cas 2 : projet de construction d'un ERP (les deux ensemble obligatoire)
-    has_projet = any(kw in text_lower for kw in KEYWORDS_CONSTRUCTION)
-    has_erp = any(kw in text_lower for kw in KEYWORDS_ERP_CIBLES)
-    return has_projet and has_erp
+    return classify_relevance(text)[0]

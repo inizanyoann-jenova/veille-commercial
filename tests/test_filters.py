@@ -155,3 +155,57 @@ def test_urgent_overdue_is_urgent():
 def test_urgent_no_deadline_not_urgent():
     row = {"Titre": "Test", "Source": "", "Date Limite": "—", "Go/No-Go": "🟢 GO"}
     assert _is_urgent(row) is False
+
+
+from filters import classify_relevance
+
+
+# ── classify_relevance ────────────────────────────────────────────────────────
+
+def test_classify_ssi_direct_retourne_true_sans_tag():
+    ok, tags = classify_relevance("Installation SSI — Lycée Paul Vergès")
+    assert ok is True
+    assert tags == []
+
+
+def test_classify_cmsi_direct_retourne_true_sans_tag():
+    ok, tags = classify_relevance("Maintenance CMSI centre commercial Saint-Denis")
+    assert ok is True
+    assert tags == []
+
+
+def test_classify_rehabilitation_ecole_retourne_tag_implicite():
+    ok, tags = classify_relevance("Réhabilitation de l'école primaire Sainte-Marie")
+    assert ok is True
+    assert "Potentiel SSI implicite" in tags
+
+
+def test_classify_construction_hopital_retourne_tag_implicite():
+    ok, tags = classify_relevance("Construction d'un hôpital neuf à Saint-Pierre")
+    assert ok is True
+    assert "Potentiel SSI implicite" in tags
+
+
+def test_classify_erp_sans_chantier_retourne_false():
+    """ERP seul sans mot construction → non pertinent."""
+    ok, tags = classify_relevance("L'école de Saint-Denis accueille de nouveaux élèves")
+    assert ok is False
+    assert tags == []
+
+
+def test_classify_exclusion_gardiennage_retourne_false():
+    ok, tags = classify_relevance("Marché de gardiennage et SSI pour la mairie")
+    assert ok is False
+    assert tags == []
+
+
+def test_classify_hors_sujet_retourne_false():
+    ok, tags = classify_relevance("Achat de fournitures de bureau")
+    assert ok is False
+    assert tags == []
+
+
+def test_classify_renovation_mairie_retourne_tag_implicite():
+    ok, tags = classify_relevance("Rénovation de la mairie de Saint-Leu — Lot général")
+    assert ok is True
+    assert "Potentiel SSI implicite" in tags
