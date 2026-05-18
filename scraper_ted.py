@@ -2,7 +2,7 @@ import hashlib
 import logging
 
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
-from filters import is_relevant_def
+from filters import classify_relevance
 from models import Tender
 from scraper_utils import parse_date, retry_post, load_existing_ids, insert_if_new
 
@@ -54,7 +54,8 @@ def _fetch_query(db, query: str, existing_ids: set) -> int:
             title       = _extract_fr(notice.get("notice-title"))
             description = _extract_fr(notice.get("description-glo"))
 
-            if not is_relevant_def(f"{title} {description}"):
+            relevant, extra_tags = classify_relevance(f"{title} {description}")
+            if not relevant:
                 continue
 
             tender_id = (f"TED-{pub_num}" if pub_num
@@ -75,6 +76,7 @@ def _fetch_query(db, query: str, existing_ids: set) -> int:
                 relevance_score=0,
                 is_maintenance=False,
                 llm_analysis=None,
+                tags=extra_tags,
             )
             if insert_if_new(db, t, existing_ids):
                 inserted += 1

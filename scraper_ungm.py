@@ -2,7 +2,7 @@ import hashlib
 import logging
 
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
-from filters import is_relevant_def
+from filters import classify_relevance
 from models import Tender
 from scraper_utils import parse_date, retry_post, load_existing_ids, insert_if_new
 
@@ -66,7 +66,8 @@ def fetch_ungm_tenders() -> int:
                                or notice.get("GoodsServices") or "")
                 full_text = f"{title} {description}"
 
-                if not full_text.strip() or not is_relevant_def(full_text):
+                relevant, extra_tags = classify_relevance(full_text)
+                if not full_text.strip() or not relevant:
                     continue
 
                 uid = (notice.get("Id") or notice.get("id")
@@ -94,6 +95,7 @@ def fetch_ungm_tenders() -> int:
                     llm_analysis=None,
                     secteur="Public",
                     type_opportunite="Marché International",
+                    tags=extra_tags,
                 )
                 if insert_if_new(db, t, existing_ids):
                     inserted += 1

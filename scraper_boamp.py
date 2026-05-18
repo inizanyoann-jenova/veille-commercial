@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta
 
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
-from filters import is_relevant_def
+from filters import classify_relevance
 from models import Tender
 from scraper_utils import parse_date, retry_get, load_existing_ids, insert_if_new
 
@@ -74,7 +74,8 @@ def fetch_boamp_tenders(departments: list[str] | None = None, years_back: int = 
                     description  = " ".join(descripteurs) if isinstance(descripteurs, list) else str(descripteurs)
                     full_text    = f"{title} {description}"
 
-                    if not is_relevant_def(full_text):
+                    relevant, extra_tags = classify_relevance(full_text)
+                    if not relevant:
                         continue
 
                     raw_id    = (record.get("id_lot") or record.get("idweb")
@@ -97,6 +98,7 @@ def fetch_boamp_tenders(departments: list[str] | None = None, years_back: int = 
                         relevance_score=0,
                         is_maintenance=False,
                         llm_analysis=None,
+                        tags=extra_tags,
                     )
                     if insert_if_new(db, t, existing_ids):
                         inserted += 1

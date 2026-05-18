@@ -4,7 +4,7 @@ import logging
 from playwright.sync_api import sync_playwright
 
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
-from filters import is_relevant_def
+from filters import classify_relevance
 from models import Tender
 from playwright_base import extract_cards, login, paginate
 from credential_manager import CredentialManager
@@ -51,12 +51,23 @@ def fetch_nukema_tenders() -> int:
                     for base_url in _URLS:
                         page.goto(base_url, timeout=30000)
                         page.wait_for_load_state("networkidle", timeout=30000)
+                        # Détection auth cross-subdomain : actu.nukema.com → marches-publics.nukema.com
+                        if any(k in page.url for k in ("connexion", "login", "authentification")):
+                            _log.warning(
+                                "Nukema : session non maintenue après navigation (URL=%s) — "
+                                "cookies cross-subdomain non partagés entre actu. et marches-publics.",
+                                page.url,
+                            )
+                            finish_scraper_run(db, _run_id, nb_found=0, nb_new=0,
+                                               error="Auth cross-subdomain échouée")
+                            return 0
                         page_count = 0
                         while page_count < 5:
                             for card in extract_cards(page, _CARD, _FIELDS):
                                 title = card.get("title", "").strip()
                                 desc  = card.get("description", "").strip()
-                                if not is_relevant_def(f"{title} {desc}"):
+                                relevant, extra_tags = classify_relevance(f"{title} {desc}")
+                                if not relevant:
                                     continue
                                 url = card.get("url", "") or base_url
                                 if url and not url.startswith("http"):
@@ -69,6 +80,7 @@ def fetch_nukema_tenders() -> int:
                                     relevance_score=0, is_maintenance=False,
                                     llm_analysis=None, secteur="Public",
                                     type_opportunite="Marché Public",
+                                    tags=extra_tags,
                                 )
                                 if insert_if_new(db, t, existing_ids):
                                     inserted += 1

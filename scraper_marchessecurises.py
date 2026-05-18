@@ -4,7 +4,7 @@ import logging
 from playwright.sync_api import sync_playwright
 
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
-from filters import is_relevant_def
+from filters import classify_relevance
 from models import Tender
 from playwright_base import extract_cards, login, paginate
 from credential_manager import CredentialManager
@@ -57,7 +57,8 @@ def fetch_marchessecurises_tenders() -> int:
                         for card in extract_cards(page, _CARD, _FIELDS):
                             title = card.get("title", "").strip()
                             desc  = card.get("description", "").strip()
-                            if not is_relevant_def(f"{title} {desc}"):
+                            relevant, extra_tags = classify_relevance(f"{title} {desc}")
+                            if not relevant:
                                 continue
                             url = card.get("url", "") or _SEARCH_URL
                             if url and not url.startswith("http"):
@@ -70,6 +71,7 @@ def fetch_marchessecurises_tenders() -> int:
                                 relevance_score=0, is_maintenance=False,
                                 llm_analysis=None, secteur="Privé",
                                 type_opportunite="Marché Privé",
+                                tags=extra_tags,
                             )
                             if insert_if_new(db, t, existing_ids):
                                 inserted += 1

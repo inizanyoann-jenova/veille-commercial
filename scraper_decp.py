@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta
 
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
-from filters import is_relevant_def
+from filters import classify_relevance
 from models import Tender
 from scraper_utils import parse_date, retry_get, load_existing_ids, insert_if_new
 
@@ -53,7 +53,8 @@ def fetch_decp_tenders(years_back: int = 3) -> int:
                 objet        = record.get("objetmarche") or ""
                 full_text    = f"{objet} {acheteur_nom}"
 
-                if not is_relevant_def(full_text):
+                relevant, extra_tags = classify_relevance(full_text)
+                if not relevant:
                     continue
 
                 uid       = record.get("id") or hashlib.md5(full_text.encode()).hexdigest()
@@ -67,6 +68,7 @@ def fetch_decp_tenders(years_back: int = 3) -> int:
                     deadline=None, status="À qualifier",
                     relevance_score=0, is_maintenance=False, llm_analysis=None,
                     secteur="Public", type_opportunite="Marché Public",
+                    tags=extra_tags,
                 )
                 if insert_if_new(db, t, existing_ids):
                     inserted += 1

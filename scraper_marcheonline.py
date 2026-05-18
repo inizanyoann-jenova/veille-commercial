@@ -5,7 +5,7 @@ import re
 from playwright.sync_api import sync_playwright
 
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
-from filters import is_relevant_def
+from filters import classify_relevance
 from models import Tender
 from playwright_base import login
 from credential_manager import CredentialManager
@@ -99,7 +99,8 @@ def fetch_marcheonline_tenders() -> int:
                             for card in cards:
                                 title = card.get("title", "").strip()
                                 desc  = card.get("description", "").strip()
-                                if not title or not is_relevant_def(f"{title} {desc}"):
+                                relevant, extra_tags = classify_relevance(f"{title} {desc}")
+                                if not title or not relevant:
                                     continue
                                 url = card.get("url", "") or current_url
                                 tid = f"MARCHEONLINE-{hashlib.md5(f'{title}{url}'.encode()).hexdigest()}"
@@ -110,6 +111,7 @@ def fetch_marcheonline_tenders() -> int:
                                     status="À qualifier", relevance_score=0,
                                     is_maintenance=False, llm_analysis=None,
                                     secteur="Public", type_opportunite="Marché Public",
+                                    tags=extra_tags,
                                 )
                                 if insert_if_new(db, t, existing_ids):
                                     inserted += 1
