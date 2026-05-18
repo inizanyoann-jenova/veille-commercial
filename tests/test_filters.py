@@ -1,7 +1,7 @@
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from filters import KEYWORDS_CONSTRUCTION, is_construction_relevant, is_prive_relevant
+from filters import KEYWORDS_CONSTRUCTION, is_construction_relevant, is_prive_relevant, classify_relevance
 
 
 # ── is_construction_relevant ─────────────────────────────────────────────────
@@ -157,9 +157,6 @@ def test_urgent_no_deadline_not_urgent():
     assert _is_urgent(row) is False
 
 
-from filters import classify_relevance
-
-
 # ── classify_relevance ────────────────────────────────────────────────────────
 
 def test_classify_ssi_direct_retourne_true_sans_tag():
@@ -209,3 +206,10 @@ def test_classify_renovation_mairie_retourne_tag_implicite():
     ok, tags = classify_relevance("Rénovation de la mairie de Saint-Leu — Lot général")
     assert ok is True
     assert "Potentiel SSI implicite" in tags
+
+
+def test_classify_ssi_substring_non_pertinent():
+    """'ssi' comme sous-chaîne (ex: 'concession') ne doit pas déclencher de match."""
+    ok, tags = classify_relevance("Concession autoroutière sans lien avec la sécurité incendie")
+    assert ok is False
+    assert tags == []
