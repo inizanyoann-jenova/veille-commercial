@@ -2,7 +2,11 @@ import hashlib
 import logging
 import re
 
-from playwright.sync_api import sync_playwright
+import playwright.sync_api as _playwright_sync
+
+
+def sync_playwright():
+    return _playwright_sync.sync_playwright()
 
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from filters import classify_relevance
@@ -70,6 +74,43 @@ def _get_next_url(html: str, current_url: str) -> str | None:
         return None
     href = m.group(1)
     return f"{_BASE}{href}" if href.startswith("/") else href
+
+
+_DETAIL_PATTERNS = [
+    r'itemprop=["\']description["\'][^>]*>(.*)</(?:p|div|span|article)>',
+    r'class=["\']ao-objet["\'][^>]*>(.*)</(?:p|div|span)>',
+    r'class=["\']objet-marche["\'][^>]*>(.*)</(?:p|div|span)>',
+    r'class=["\']description-lot["\'][^>]*>(.*)</(?:p|div|span)>',
+    r'class=["\']ao-description["\'][^>]*>(.*)</(?:p|div|span)>',
+]
+
+
+def _parse_detail_html(html: str) -> str:
+    """Extrait la description depuis le HTML brut d'une fiche détail."""
+    for pattern in _DETAIL_PATTERNS:
+        m = re.search(pattern, html, re.IGNORECASE | re.DOTALL)
+        if m:
+            text = _strip_tags(m.group(1)).strip()
+            if len(text) > 10:
+                return text
+    return ""
+
+
+def _extract_detail(page, url: str) -> str:
+    """Navigue vers la fiche détail et retourne la description complète.
+
+    Retourne "" en cas d'erreur — ne propage pas l'exception pour ne pas
+    interrompre la collecte.
+    """
+    if not url:
+        return ""
+    try:
+        page.goto(url, timeout=20000)
+        page.wait_for_load_state("domcontentloaded", timeout=20000)
+        return _parse_detail_html(page.content())
+    except Exception as exc:
+        _log.warning("Marché Online : fiche détail inaccessible %s — %s", url, exc)
+        return ""
 
 
 def fetch_marcheonline_tenders() -> int:
