@@ -45,3 +45,13 @@ def test_description_lot_class():
     html = '<div class="description-lot">Vidéosurveillance campus universitaire 974</div>'
     result = _parse_detail_html(html)
     assert "Vidéosurveillance" in result
+
+
+def test_multiple_elements_returns_first_only():
+    html = (
+        '<p itemprop="description">Premier AO installation SSI lycée</p>'
+        '<p itemprop="description">Deuxième AO désenfumage hôpital Mayotte</p>'
+    )
+    result = _parse_detail_html(html)
+    assert "Premier AO" in result
+    assert "Deuxième AO" not in result

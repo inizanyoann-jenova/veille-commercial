@@ -77,11 +77,11 @@ def _get_next_url(html: str, current_url: str) -> str | None:
 
 
 _DETAIL_PATTERNS = [
-    r'itemprop=["\']description["\'][^>]*>(.*)</(?:p|div|span|article)>',
-    r'class=["\']ao-objet["\'][^>]*>(.*)</(?:p|div|span)>',
-    r'class=["\']objet-marche["\'][^>]*>(.*)</(?:p|div|span)>',
-    r'class=["\']description-lot["\'][^>]*>(.*)</(?:p|div|span)>',
-    r'class=["\']ao-description["\'][^>]*>(.*)</(?:p|div|span)>',
+    r'itemprop=["\']description["\'][^>]*>(.*?)</(?:p|div|span|article)>',
+    r'class=["\']ao-objet["\'][^>]*>(.*?)</(?:p|div|span)>',
+    r'class=["\']objet-marche["\'][^>]*>(.*?)</(?:p|div|span)>',
+    r'class=["\']description-lot["\'][^>]*>(.*?)</(?:p|div|span)>',
+    r'class=["\']ao-description["\'][^>]*>(.*?)</(?:p|div|span)>',
 ]
 
 
