@@ -129,38 +129,51 @@ def fetch_marcheonline_tenders() -> int:
                 try:
                     if creds:
                         login(page, _LOGIN_URL, creds[0], creds[1], _LOGIN_SELECTORS)
+
+                    # ── Phase 1 : collecte des liens depuis les pages de liste ──
+                    candidates = []
                     for base_url in _URLS:
                         current_url = base_url
                         page_count  = 0
-                        while page_count < 5:
+                        while page_count < 10:
                             page.goto(current_url, timeout=30000)
                             page.wait_for_load_state("networkidle", timeout=30000)
                             html  = page.content()
-                            cards = _extract_from_comments(html)
-                            for card in cards:
-                                title = card.get("title", "").strip()
-                                desc  = card.get("description", "").strip()
-                                relevant, extra_tags = classify_relevance(f"{title} {desc}")
-                                if not title or not relevant:
-                                    continue
-                                url = card.get("url", "") or current_url
-                                tid = f"MARCHEONLINE-{hashlib.md5(f'{title}{url}'.encode()).hexdigest()}"
-                                t = Tender(
-                                    id=tid, title=title, description=desc, source=url,
-                                    publication_date=parse_date(card.get("date")),
-                                    deadline=parse_date(card.get("deadline")),
-                                    status="À qualifier", relevance_score=0,
-                                    is_maintenance=False, llm_analysis=None,
-                                    secteur="Public", type_opportunite="Marché Public",
-                                    tags=extra_tags,
-                                )
-                                if insert_if_new(db, t, existing_ids):
-                                    inserted += 1
+                            for card in _extract_from_comments(html):
+                                if card.get("title", "").strip():
+                                    candidates.append(card)
                             next_url = _get_next_url(html, current_url)
                             if not next_url or next_url == current_url:
                                 break
                             current_url = next_url
                             page_count += 1
+
+                    # ── Phase 2 : enrichissement détail + filtre pertinence ────
+                    for card in candidates:
+                        title = card.get("title", "").strip()
+                        url   = card.get("url", "")
+                        tid   = f"MARCHEONLINE-{hashlib.md5(f'{title}{url}'.encode()).hexdigest()}"
+                        if tid in existing_ids:
+                            continue
+
+                        detail_desc = _extract_detail(page, url)
+                        desc = detail_desc or card.get("description", "").strip()
+
+                        relevant, extra_tags = classify_relevance(f"{title} {desc}")
+                        if not relevant:
+                            continue
+
+                        t = Tender(
+                            id=tid, title=title, description=desc, source=url,
+                            publication_date=parse_date(card.get("date")),
+                            deadline=parse_date(card.get("deadline")),
+                            status="À qualifier", relevance_score=0,
+                            is_maintenance=False, llm_analysis=None,
+                            secteur="Public", type_opportunite="Marché Public",
+                            tags=extra_tags,
+                        )
+                        if insert_if_new(db, t, existing_ids):
+                            inserted += 1
                 finally:
                     page.close()
             finally:
