@@ -183,3 +183,59 @@ def test_ted_fetch_sends_date_filter():
 
     assert len(captured_payloads) > 0
     assert "PD>=" in captured_payloads[0].get("query", "")
+
+
+# ── Tests DECP CPV + fenêtre temporelle ──────────────────────────────────────
+
+def test_decp_cpv_filter_in_where_clause():
+    """Le where DECP doit inclure les codes CPV SSI."""
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status.return_value = None
+    mock_resp.json.return_value = {"results": [], "total_count": 0}
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from models import Base
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+
+    with patch("requests.get", return_value=mock_resp) as req:
+        with patch("scraper_decp.SessionLocal", Session):
+            with patch("scraper_decp.init_db"):
+                import importlib, scraper_decp
+                importlib.reload(scraper_decp)
+                scraper_decp.fetch_decp_tenders()
+
+    where_clause = req.call_args.kwargs["params"]["where"]
+    assert "45312100" in where_clause
+    assert "50610000" in where_clause
+
+
+def test_decp_window_defaults_to_90_days():
+    """La fenêtre par défaut doit être 90 jours (pas 3 ans)."""
+    import os
+    from datetime import datetime, timedelta
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status.return_value = None
+    mock_resp.json.return_value = {"results": [], "total_count": 0}
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from models import Base
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+
+    os.environ.pop("SCRAPER_WINDOW_DAYS", None)
+
+    with patch("requests.get", return_value=mock_resp) as req:
+        with patch("scraper_decp.SessionLocal", Session):
+            with patch("scraper_decp.init_db"):
+                import importlib, scraper_decp
+                importlib.reload(scraper_decp)
+                scraper_decp.fetch_decp_tenders()
+
+    where_clause = req.call_args.kwargs["params"]["where"]
+    expected_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+    assert expected_date in where_clause
