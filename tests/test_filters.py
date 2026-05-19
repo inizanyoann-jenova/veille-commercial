@@ -213,3 +213,109 @@ def test_classify_ssi_substring_non_pertinent():
     ok, tags = classify_relevance("Concession autoroutière sans lien avec la sécurité incendie")
     assert ok is False
     assert tags == []
+
+
+# ── Nouveaux mots-clés SSI directs ───────────────────────────────────────────
+
+def test_classify_ria_direct():
+    ok, tags = classify_relevance("Installation d'un RIA dans le couloir technique")
+    assert ok is True
+    assert tags == []
+
+
+def test_classify_ria_word_boundary():
+    # "matériaux" contient "ria" comme sous-chaîne (maté-r-i-a-ux) — ne doit PAS matcher
+    ok, _ = classify_relevance("Fourniture de matériaux de construction")
+    assert ok is False
+
+
+def test_classify_baas_direct():
+    ok, tags = classify_relevance("Fourniture et pose de BAAS homologué NF")
+    assert ok is True
+
+
+def test_classify_robinet_incendie_arme():
+    ok, tags = classify_relevance("Remplacement des robinets incendie armés du bâtiment A")
+    assert ok is True
+
+
+def test_classify_bloc_autonome_alarme():
+    ok, tags = classify_relevance("Fourniture de blocs autonomes alarme sonores et lumineux")
+    assert ok is True
+
+
+# ── Déclencheurs travaux SSI ─────────────────────────────────────────────────
+
+def test_classify_dta():
+    ok, tags = classify_relevance("Réalisation DTA avant démarrage des travaux")
+    assert ok is True
+
+
+def test_classify_dossier_technique_amiante():
+    ok, tags = classify_relevance("Dossier technique amiante — bâtiment R+3 Mamoudzou")
+    assert ok is True
+
+
+def test_classify_mise_en_conformite():
+    ok, tags = classify_relevance("Mise en conformité des installations de sécurité ERP")
+    assert ok is True
+
+
+def test_classify_verification_reglementaire():
+    ok, tags = classify_relevance("Vérification réglementaire des équipements de sécurité")
+    assert ok is True
+
+
+def test_classify_verification_periodique():
+    ok, tags = classify_relevance("Contrat de vérification périodique des extincteurs et RIA")
+    assert ok is True
+
+
+# ── Courants faibles / GTB ───────────────────────────────────────────────────
+
+def test_classify_gtb_direct():
+    ok, tags = classify_relevance("Mise en service GTB du nouveau bâtiment administratif")
+    assert ok is True
+
+
+def test_classify_gtb_word_boundary():
+    # "EGTBA" contient "gtb" comme sous-chaîne — ne doit PAS matcher
+    ok, _ = classify_relevance("Résultats sportifs championnat EGTBA")
+    assert ok is False
+
+
+def test_classify_gtc_direct():
+    ok, tags = classify_relevance("Déploiement système GTC hôtel 4 étoiles Réunion")
+    assert ok is True
+
+
+def test_classify_bms_direct():
+    ok, tags = classify_relevance("Installation BMS pour la gestion technique centralisée")
+    assert ok is True
+
+
+def test_classify_gestion_technique_batiment():
+    ok, tags = classify_relevance("Marché de gestion technique bâtiment — lycée Saint-Paul")
+    assert ok is True
+
+
+def test_classify_building_management():
+    ok, tags = classify_relevance("Building management system — hôpital neuf 974")
+    assert ok is True
+
+
+# ── Maintenance SSI ──────────────────────────────────────────────────────────
+
+def test_classify_mco_ssi():
+    ok, tags = classify_relevance("MCO SSI — contrat annuel préventif et curatif")
+    assert ok is True
+
+
+def test_classify_contrat_maintenance_ssi():
+    ok, tags = classify_relevance("Contrat de maintenance SSI EHPAD Saint-Pierre La Réunion")
+    assert ok is True
+
+
+def test_classify_verification_annuelle():
+    ok, tags = classify_relevance("Vérification annuelle des installations de sécurité incendie")
+    assert ok is True

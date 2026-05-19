@@ -12,6 +12,29 @@ INCLUSION_KEYWORDS = [
     "courants faibles",
     "alarme incendie",
     "système incendie",
+    # SSI direct — équipements complémentaires
+    "ria",
+    "robinet incendie arm",
+    "robinets incendie arm",
+    "baas",
+    "bloc autonome alarme",
+    "blocs autonomes alarme",
+    # Déclencheurs travaux SSI (conformité réglementaire)
+    "dta",
+    "dossier technique amiante",
+    "mise en conformité",
+    "vérification réglementaire",
+    "vérification périodique",
+    # Courants faibles / GTB
+    "gtb",
+    "gtc",
+    "bms",
+    "gestion technique bâtiment",
+    "building management",
+    # Maintenance SSI
+    "mco ssi",
+    "contrat de maintenance ssi",
+    "vérification annuelle",
 ]
 
 # Exclusions absolues — hors périmètre DEF OI
@@ -66,7 +89,7 @@ KEYWORDS_ERP_CIBLES = [
 ]
 
 
-_WORD_BOUNDARY_KW = {"ssi", "cmsi", "cctv"}
+_WORD_BOUNDARY_KW = {"ssi", "cmsi", "cctv", "ria", "gtb", "gtc", "bms"}
 
 # Pré-compilation pour éviter de recompiler à chaque appel
 _COMPILED_BOUNDARY = {
