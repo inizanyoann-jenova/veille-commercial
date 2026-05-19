@@ -67,9 +67,9 @@ def _fetch_query(db, query: str, existing_ids: set, date_from: str) -> int:
     page     = 1
     limit    = 100
 
+    # Filtre date glissante — évite de re-scraper l'historique à chaque run
+    full_query = f"({query}) AND PD>={date_from}"
     while True:
-        # Filtre date glissante — évite de re-scraper l'historique à chaque run
-        full_query = f"({query}) AND PD>={date_from}"
         payload    = {"query": full_query, "fields": _FIELDS, "page": page, "limit": limit}
         r          = retry_post(TED_API_URL, json=payload, rate_delay=1.5)
         notices    = r.json().get("notices", [])
