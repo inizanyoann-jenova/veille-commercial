@@ -27,8 +27,9 @@ _KEYWORD_FILTER = (
     ' OR search(objetmarche, "courants faibles")'
 )
 # Codes CPV SSI dans le dataset DECP Augmenté (champ "codecpv")
-# Si l'API retourne un 400, vérifier le nom exact du champ via :
-# GET .../records?limit=1&select=codecpv
+# search() est utilisé car le champ peut contenir un libellé (ex: "45312100 - Alarme incendie") ;
+# si trop de faux positifs, basculer sur une égalité directe : codecpv = "45312100" OR ...
+# Si l'API retourne un 400, vérifier le nom du champ : GET .../records?limit=1&select=codecpv
 _CPV_FILTER = (
     'search(codecpv, "45312100")'
     ' OR search(codecpv, "35111300")'
