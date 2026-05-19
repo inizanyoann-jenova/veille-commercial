@@ -14,7 +14,7 @@ INCLUSION_KEYWORDS = [
     "système incendie",
     # SSI direct — équipements complémentaires
     "ria",
-    "robinet incendie arm",
+    "robinet incendie arm",  # préfixe : couvre armé / armés
     "robinets incendie arm",
     "baas",
     "bloc autonome alarme",
