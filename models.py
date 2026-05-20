@@ -12,7 +12,7 @@ class Tender(Base):
     description      = Column(String)
     source           = Column(String)
     publication_date = Column(DateTime)
-    date_extraction  = Column(DateTime)   # timestamp when our script collected this
+    date_extraction  = Column(DateTime)   # horodatage de collecte par notre script
     deadline         = Column(DateTime)
     status           = Column(String, default="À qualifier")
     relevance_score  = Column(Integer, default=0)

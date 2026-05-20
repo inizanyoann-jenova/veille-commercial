@@ -10,7 +10,7 @@ Fournit :
 """
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone as _tz
 
 import requests
 
@@ -134,9 +134,6 @@ def insert_if_new(db, tender_obj, seen_ids: set[str]) -> bool:
     return True
 
 
-from datetime import timezone as _tz_utc
-
-
 def now_utc() -> datetime:
-    """Returns current UTC datetime without timezone info (SQLite-compatible)."""
-    return datetime.now(_tz_utc.utc).replace(tzinfo=None)
+    """Retourne la date/heure UTC courante sans info de fuseau (compatible SQLite)."""
+    return datetime.now(_tz.utc).replace(tzinfo=None)
