@@ -87,50 +87,51 @@ for _cat in ["Public", "Privé", "International"]:
 
 st.markdown("---")
 
-# ── Section clé API Claude ────────────────────────────────────────────────────
-st.header("🤖 Intelligence Artificielle — Clé API Claude")
-st.caption("Claude analyse les appels d'offres et produit des scores de pertinence enrichis (70 % IA + 30 % règles métier).")
+# ── Section Intelligence Artificielle ────────────────────────────────────────
+st.header("🤖 Intelligence Artificielle")
+st.caption("Choisissez le fournisseur IA et configurez votre clé. Une seule clé suffit.")
+
+_current_provider = os.getenv("LLM_PROVIDER", "anthropic").strip().lower()
+_provider_options = ["Anthropic (Claude)", "Mistral"]
+_provider_index = 1 if _current_provider == "mistral" else 0
+
+_selected_provider = st.radio(
+    "Fournisseur IA actif",
+    _provider_options,
+    index=_provider_index,
+    horizontal=True,
+    help="Le fournisseur sélectionné sera utilisé pour toutes les analyses de marchés.",
+)
+
+_new_provider_value = "mistral" if _selected_provider == "Mistral" else "anthropic"
+if _new_provider_value != _current_provider:
+    from dotenv import set_key as _set_key
+    _set_key(".env", "LLM_PROVIDER", _new_provider_value)
+    os.environ["LLM_PROVIDER"] = _new_provider_value
+    st.success(f"Fournisseur basculé vers **{_selected_provider}** ✓")
+    st.rerun()
+
+st.markdown("---")
+
+# ── Sous-section Anthropic ────────────────────────────────────────────────────
+st.subheader("🔵 Anthropic (Claude)")
+st.caption("Modèle utilisé : claude-opus-4-7. Clé commençant par `sk-ant-`.")
 
 current_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
 _key_ok = bool(current_key and not current_key.startswith("sk-ant-...") and len(current_key) > 20)
 
 if _key_ok:
-    st.success(f"✅ Clé API Claude configurée (`{current_key[:8]}…{'*' * 8}`)")
+    st.success(f"✅ Clé configurée (`{current_key[:8]}…{'*' * 8}`)")
 else:
-    st.warning("⚠️ Clé API Claude non configurée — l'analyse IA tourne en mode local uniquement (règles métier).")
+    st.warning("⚠️ Clé non configurée — saisir ci-dessous pour activer Claude.")
 
-with st.expander(
-    "🔑 Configurer / modifier la clé API Claude",
-    expanded=not _key_ok,
-):
+with st.expander("🔑 Configurer la clé Anthropic", expanded=not _key_ok):
     st.markdown("""
-**Comment obtenir votre clé API ?**
+**Obtenir une clé :** [console.anthropic.com](https://console.anthropic.com) → API Keys → Create Key
 
-> ⚠️ **Cette application utilise exclusivement Claude d'Anthropic.**
-> Les clés OpenAI, Google ou autres ne sont pas compatibles.
-> La clé doit commencer par `sk-ant-api03-…`
-
-**Liens pour acheter des crédits et créer une clé :**
-
-| | |
-|--|--|
-| 🔑 Créer un compte / se connecter | [console.anthropic.com](https://console.anthropic.com) |
-| 💳 Ajouter des crédits (carte bancaire) | [console.anthropic.com/settings/billing](https://console.anthropic.com/settings/billing) |
-| 💰 Tarifs officiels | [anthropic.com/pricing](https://www.anthropic.com/pricing) |
-| 🏢 Offres entreprise | [anthropic.com/api](https://www.anthropic.com/api) |
-
-**Coût estimé :** moins de 1 €/mois pour 50–150 marchés analysés (modèle Haiku utilisé).
+**Coût estimé :** moins de 1 €/mois pour 50–150 marchés analysés.
 Un rechargement de 5 $ couvre généralement plusieurs mois d'utilisation.
-
-**Procédure :**
-1. Connectez-vous sur [console.anthropic.com](https://console.anthropic.com)
-2. Menu **Settings → Billing** → **Add credits** (minimum 5 $)
-3. Menu **API Keys** → **Create Key** → nommez-la (ex : "DEF OI Veille")
-4. Copiez la clé immédiatement — elle n'est **affichée qu'une seule fois**
-
-Collez-la ci-dessous puis cliquez **Enregistrer**.
 """)
-
     new_key = st.text_input(
         "Clé API Anthropic",
         type="password",
@@ -138,7 +139,6 @@ Collez-la ci-dessous puis cliquez **Enregistrer**.
         key="anthropic_api_key_input",
         help="La clé doit commencer par sk-ant-",
     )
-
     col_save, col_test, col_spacer = st.columns([2, 2, 4])
     with col_save:
         if st.button("💾 Enregistrer la clé", key="save_anthropic_key", type="primary"):
@@ -147,7 +147,6 @@ Collez-la ci-dessous puis cliquez **Enregistrer**.
                 from dotenv import set_key as _set_key
                 _set_key(".env", "ANTHROPIC_API_KEY", key_to_save)
                 os.environ["ANTHROPIC_API_KEY"] = key_to_save
-                # Réinitialiser le client pour prendre la nouvelle clé en compte immédiatement
                 try:
                     import llm_analyzer
                     llm_analyzer._anthropic_client = None
@@ -157,7 +156,6 @@ Collez-la ci-dessous puis cliquez **Enregistrer**.
                 st.rerun()
             else:
                 st.error("Format invalide — la clé doit commencer par `sk-ant-`")
-
     with col_test:
         if st.button("🧪 Tester la clé", key="test_anthropic_key"):
             key_to_test = new_key.strip() or current_key
@@ -169,7 +167,7 @@ Collez-la ci-dessous puis cliquez **Enregistrer**.
                         import anthropic as _ant
                         _test_client = _ant.Anthropic(api_key=key_to_test)
                         _test_client.messages.create(
-                            model="claude-opus-4-7",
+                            model="claude-haiku-4-5-20251001",
                             max_tokens=5,
                             messages=[{"role": "user", "content": "OK"}],
                         )
@@ -178,6 +176,71 @@ Collez-la ci-dessous puis cliquez **Enregistrer**.
                         st.error("❌ Clé invalide — vérifiez la valeur copiée depuis console.anthropic.com")
                     except Exception as exc:
                         st.error(f"Erreur inattendue : {exc}")
+
+st.markdown("")
+
+# ── Sous-section Mistral ──────────────────────────────────────────────────────
+st.subheader("🟠 Mistral AI")
+st.caption("Modèle utilisé : mistral-large-latest. Plan gratuit : 1 milliard de tokens/mois.")
+
+current_mistral_key = os.getenv("MISTRAL_API_KEY", "").strip()
+_mistral_key_ok = bool(current_mistral_key and len(current_mistral_key) > 20)
+
+if _mistral_key_ok:
+    st.success(f"✅ Clé configurée (`{current_mistral_key[:8]}…{'*' * 8}`)")
+else:
+    st.warning("⚠️ Clé non configurée — saisir ci-dessous pour activer Mistral.")
+
+with st.expander("🔑 Configurer la clé Mistral", expanded=not _mistral_key_ok):
+    st.markdown("""
+**Obtenir une clé gratuite :** [console.mistral.ai](https://console.mistral.ai) → API Keys → Create new key
+
+**Plan gratuit :** 1 milliard de tokens/mois, accès à tous les modèles, aucune carte bancaire requise.
+""")
+    new_mistral_key = st.text_input(
+        "Clé API Mistral",
+        type="password",
+        placeholder="Coller votre clé Mistral ici…",
+        key="mistral_api_key_input",
+    )
+    col_save_mis, col_test_mis, _ = st.columns([2, 2, 4])
+    with col_save_mis:
+        if st.button("💾 Enregistrer la clé", key="save_mistral_key", type="primary"):
+            key_to_save = new_mistral_key.strip()
+            if len(key_to_save) > 20:
+                from dotenv import set_key as _set_key
+                _set_key(".env", "MISTRAL_API_KEY", key_to_save)
+                os.environ["MISTRAL_API_KEY"] = key_to_save
+                try:
+                    import llm_analyzer
+                    llm_analyzer._mistral_client = None
+                except Exception:
+                    pass
+                st.success("✅ Clé enregistrée — active immédiatement, sans redémarrage.")
+                st.rerun()
+            else:
+                st.error("Clé invalide — vérifiez que vous avez bien copié la clé complète.")
+    with col_test_mis:
+        if st.button("🧪 Tester la clé", key="test_mistral_key"):
+            key_to_test = new_mistral_key.strip() or current_mistral_key
+            if not key_to_test:
+                st.error("Entrez d'abord une clé.")
+            else:
+                with st.spinner("Connexion à Mistral en cours…"):
+                    try:
+                        from mistralai import Mistral as _Mistral
+                        _test_mistral = _Mistral(api_key=key_to_test)
+                        _test_mistral.chat.complete(
+                            model="mistral-small-latest",
+                            messages=[{"role": "user", "content": "OK"}],
+                        )
+                        st.success("✅ Clé valide — connexion à Mistral réussie.")
+                    except Exception as _exc:
+                        _status = getattr(_exc, "status_code", None)
+                        if _status in (401, 403):
+                            st.error("❌ Clé invalide — vérifiez console.mistral.ai")
+                        else:
+                            st.error(f"Erreur inattendue : {_exc}")
 
 # ── Section identifiants ──────────────────────────────────────────────────────
 _SITE_LABELS = {
