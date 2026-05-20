@@ -122,7 +122,7 @@ def fetch_ted_tenders(zones: list[str] | None = None) -> int:
     _run_id = start_scraper_run(db, "TED Europe")
 
     window_days = int(os.getenv("SCRAPER_WINDOW_DAYS", "90"))
-    date_from   = (datetime.now() - timedelta(days=window_days)).strftime("%Y%m%d")
+    date_from   = (datetime.now() - timedelta(days=window_days)).strftime("%Y%m%d")  # TED PD>= exige YYYYMMDD sans tirets
 
     selected = {k: v for k, v in QUERIES.items() if zones is None or k in zones}
 
