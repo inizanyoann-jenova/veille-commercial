@@ -239,3 +239,34 @@ def test_decp_window_defaults_to_90_days():
     where_clause = req.call_args.kwargs["params"]["where"]
     expected_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
     assert expected_date in where_clause
+
+
+# ── Tests BOAMP fenêtre temporelle ───────────────────────────────────────────
+
+def test_boamp_window_defaults_to_90_days():
+    """La fenêtre par défaut doit être 90 jours (pas 2 ans)."""
+    import os
+    from datetime import datetime, timedelta
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status.return_value = None
+    mock_resp.json.return_value = {"results": [], "total_count": 0}
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from models import Base
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+
+    os.environ.pop("SCRAPER_WINDOW_DAYS", None)
+
+    with patch("requests.get", return_value=mock_resp) as req:
+        with patch("scraper_boamp.SessionLocal", Session):
+            with patch("scraper_boamp.init_db"):
+                import importlib, scraper_boamp
+                importlib.reload(scraper_boamp)
+                scraper_boamp.fetch_boamp_tenders()
+
+    where_clause = req.call_args.kwargs["params"]["where"]
+    expected_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+    assert expected_date in where_clause
