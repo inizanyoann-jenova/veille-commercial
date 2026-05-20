@@ -1052,7 +1052,7 @@ def _render_collection_status_sidebar() -> None:
     c1, c2, c3 = st.columns(3)
     c1.metric("✅ OK", ok_count)
     c2.metric("❌ Err", len(errored))
-    c3.metric("📋", total_new, help="Marchés collectés")
+    c3.metric("📋 Collectés", total_new)
 
     if errored:
         st.markdown(
@@ -1067,7 +1067,7 @@ def _render_collection_status_sidebar() -> None:
                 f"border-radius:6px;padding:6px 8px;margin-bottom:4px;'>"
                 f"<span style='color:#f87171;font-weight:600;font-size:0.8rem;'>✗ {s['name']}</span>"
                 f"<br><span style='color:#64748b;font-size:0.72rem;font-style:italic;'>"
-                f"{s['error'][:120]}</span></div>",
+                f"{_html.escape(s['error'])[:120]}</span></div>",
                 unsafe_allow_html=True,
             )
 
