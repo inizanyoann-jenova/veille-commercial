@@ -1065,9 +1065,9 @@ def _render_collection_status_sidebar() -> None:
             st.markdown(
                 f"<div style='background:#1a0a0a;border:1px solid rgba(248,113,113,.3);"
                 f"border-radius:6px;padding:6px 8px;margin-bottom:4px;'>"
-                f"<span style='color:#f87171;font-weight:600;font-size:0.8rem;'>✗ {s['name']}</span>"
+                f"<span style='color:#f87171;font-weight:600;font-size:0.8rem;'>✗ {_html.escape(s['name'])}</span>"
                 f"<br><span style='color:#64748b;font-size:0.72rem;font-style:italic;'>"
-                f"{_html.escape(s['error'])[:120]}</span></div>",
+                f"{_html.escape(s['error'][:120])}</span></div>",
                 unsafe_allow_html=True,
             )
 
@@ -1083,7 +1083,7 @@ def _render_collection_status_sidebar() -> None:
             st.markdown(
                 f"<div style='display:flex;justify-content:space-between;align-items:center;"
                 f"padding:2px 0;font-size:0.78rem;'>"
-                f"<span style='color:{color};'>{icon} {s['name']}</span>"
+                f"<span style='color:{color};'>{icon} {_html.escape(s['name'])}</span>"
                 f"<span style='color:#64748b;font-size:0.7rem;'>{detail}</span>"
                 f"</div>",
                 unsafe_allow_html=True,
