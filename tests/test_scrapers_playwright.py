@@ -173,3 +173,59 @@ def test_fetch_tendersgo_skips_without_creds():
                 from scraper_tendersgo import fetch_tendersgo_tenders
                 result = fetch_tendersgo_tenders()
     assert result == 0
+
+
+# ── IsDB ──────────────────────────────────────────────────────────────────────
+
+def test_fetch_isdb_empty_page():
+    Session = _db_session()
+    mock_pw, _ = _mock_pw_context()
+    with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
+        with patch("scraper_isdb.extract_cards", return_value=[]):
+            with patch("scraper_isdb.paginate", return_value=False):
+                with patch("scraper_isdb.SessionLocal", Session):
+                    with patch("scraper_isdb.init_db"):
+                        from scraper_isdb import fetch_isdb_tenders
+                        result = fetch_isdb_tenders()
+    assert result == 0
+
+
+def test_fetch_isdb_inserts_relevant():
+    Session = _db_session()
+    mock_pw, _ = _mock_pw_context()
+    with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
+        with patch("scraper_isdb.extract_cards", return_value=[{
+            "title": "Construction hôpital SSI alarme incendie Comores",
+            "description": "Projet infrastructure sanitaire Comores",
+            "url": "https://www.isdb.org/project-procurement/12345",
+            "date": "15/05/2026",
+        }]):
+            with patch("scraper_isdb.paginate", return_value=False):
+                with patch("scraper_isdb.SessionLocal", Session):
+                    with patch("scraper_isdb.init_db"):
+                        from scraper_isdb import fetch_isdb_tenders
+                        result = fetch_isdb_tenders()
+    db = Session()
+    tenders = db.query(Tender).all()
+    db.close()
+    assert result == 1
+    assert len(tenders) == 1
+    assert "SSI" in tenders[0].title or "incendie" in tenders[0].title.lower()
+
+
+def test_fetch_isdb_skips_irrelevant():
+    Session = _db_session()
+    mock_pw, _ = _mock_pw_context()
+    with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
+        with patch("scraper_isdb.extract_cards", return_value=[{
+            "title": "Fournitures de bureau papeterie",
+            "description": "Achat fournitures",
+            "url": "https://www.isdb.org/project-procurement/99999",
+            "date": "",
+        }]):
+            with patch("scraper_isdb.paginate", return_value=False):
+                with patch("scraper_isdb.SessionLocal", Session):
+                    with patch("scraper_isdb.init_db"):
+                        from scraper_isdb import fetch_isdb_tenders
+                        result = fetch_isdb_tenders()
+    assert result == 0

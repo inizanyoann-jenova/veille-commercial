@@ -140,6 +140,10 @@ _DEFAULT_SOURCES = [
      "url": "https://procurement.govmu.org",
      "category": "International", "is_manual": True, "display_order": 27},
     # ── Banques de développement — OI ────────────────────────────────────────
+    {"name": "IsDB — Banque Islamique de Développement",
+     "url": "https://www.isdb.org/project-procurement",
+     "category": "International", "scraper_module": "scraper_isdb",
+     "scraper_func": "fetch_isdb_tenders", "is_manual": False, "display_order": 55},
     {"name": "IFC — Projets Afrique / OI",
      "url": "https://projects.ifc.org",
      "category": "International", "is_manual": True, "display_order": 52},
