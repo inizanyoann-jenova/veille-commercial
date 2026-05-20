@@ -284,3 +284,58 @@ def test_fetch_semader_skips_irrelevant():
                         from scraper_semader import fetch_semader_tenders
                         result = fetch_semader_tenders()
     assert result == 0
+
+
+# ── Centre Hospitalier Mayotte ────────────────────────────────────────────────
+
+def test_fetch_chm_empty_page():
+    Session = _db_session()
+    mock_pw, _ = _mock_pw_context()
+    with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
+        with patch("scraper_chm.extract_cards", return_value=[]):
+            with patch("scraper_chm.paginate", return_value=False):
+                with patch("scraper_chm.SessionLocal", Session):
+                    with patch("scraper_chm.init_db"):
+                        from scraper_chm import fetch_chm_tenders
+                        result = fetch_chm_tenders()
+    assert result == 0
+
+
+def test_fetch_chm_inserts_relevant():
+    Session = _db_session()
+    mock_pw, _ = _mock_pw_context()
+    with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
+        with patch("scraper_chm.extract_cards", return_value=[{
+            "title": "Maintenance SSI détection incendie CHM Mayotte",
+            "description": "Entretien système sécurité incendie bâtiments hospitaliers",
+            "url": "https://www.chm-mayotte.fr/appels-d-offres/77",
+            "date": "18/05/2026",
+        }]):
+            with patch("scraper_chm.paginate", return_value=False):
+                with patch("scraper_chm.SessionLocal", Session):
+                    with patch("scraper_chm.init_db"):
+                        from scraper_chm import fetch_chm_tenders
+                        result = fetch_chm_tenders()
+    db = Session()
+    tenders = db.query(Tender).all()
+    db.close()
+    assert result == 1
+    assert "SSI" in tenders[0].title or "incendie" in tenders[0].title.lower()
+
+
+def test_fetch_chm_skips_irrelevant():
+    Session = _db_session()
+    mock_pw, _ = _mock_pw_context()
+    with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
+        with patch("scraper_chm.extract_cards", return_value=[{
+            "title": "Achat médicaments pharmacie",
+            "description": "Fourniture produits pharmaceutiques",
+            "url": "https://www.chm-mayotte.fr/appels-d-offres/55",
+            "date": "",
+        }]):
+            with patch("scraper_chm.paginate", return_value=False):
+                with patch("scraper_chm.SessionLocal", Session):
+                    with patch("scraper_chm.init_db"):
+                        from scraper_chm import fetch_chm_tenders
+                        result = fetch_chm_tenders()
+    assert result == 0
