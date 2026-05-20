@@ -853,7 +853,7 @@ def _collect_all_enabled_sources() -> None:
         for source in sources:
             if source.is_manual or not source.scraper_module:
                 continue
-            if not source.enabled:
+            if not source.enabled or not source.is_validated:
                 continue
             _src_error: str | None = None          # <-- nouveau
             try:
