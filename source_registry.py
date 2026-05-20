@@ -106,6 +106,41 @@ _DEFAULT_SOURCES = [
      "category": "International", "is_manual": True, "display_order": 50},
     {"name": "DG Market", "url": "https://www.dgmarket.com",
      "category": "International", "is_manual": True, "display_order": 51},
+    # ── Marchés publics locaux OI ─────────────────────────────────────────────
+    {"name": "Région Réunion — Marchés publics",
+     "url": "https://regionreunion.com/region/marches-publics",
+     "category": "Public", "is_manual": True, "display_order": 31},
+    {"name": "CINOR — Marchés publics",
+     "url": "https://www.cinor.re/marches-publics",
+     "category": "Public", "is_manual": True, "display_order": 32},
+    {"name": "TCO — Marchés publics",
+     "url": "https://www.tco.re/commande-publique",
+     "category": "Public", "is_manual": True, "display_order": 33},
+    {"name": "CHU Réunion — Marchés publics",
+     "url": "https://www.chu-reunion.fr/appels-offres",
+     "category": "Public", "is_manual": True, "display_order": 34},
+    {"name": "Département de Mayotte — Marchés",
+     "url": "https://www.departement976.fr/appels-d-offres",
+     "category": "Public", "is_manual": True, "display_order": 35},
+    {"name": "CADEMA — Marchés publics",
+     "url": "https://www.cadema.yt/appels-d-offres",
+     "category": "Public", "is_manual": True, "display_order": 36},
+    {"name": "ARMP Madagascar",
+     "url": "https://www.armp.mg/appels-offres",
+     "category": "International", "is_manual": True, "display_order": 26},
+    {"name": "CPB Mauritius — Procurement",
+     "url": "https://procurement.govmu.org",
+     "category": "International", "is_manual": True, "display_order": 27},
+    # ── Banques de développement — OI ────────────────────────────────────────
+    {"name": "IFC — Projets Afrique / OI",
+     "url": "https://projects.ifc.org",
+     "category": "International", "is_manual": True, "display_order": 52},
+    {"name": "AIIB — Projets approuvés",
+     "url": "https://www.aiib.org/en/projects/approved/index.html",
+     "category": "International", "is_manual": True, "display_order": 53},
+    {"name": "COI — Commission Océan Indien",
+     "url": "https://www.commissionoceanindien.org/appels-doffres/",
+     "category": "International", "is_manual": True, "display_order": 54},
 ]
 
 # URLs défuntes à supprimer des bases existantes (domaines DNS morts ou non vérifiés)
@@ -131,7 +166,10 @@ def init_sources(db) -> None:
     existing_names = {s.name for s in db.query(Source.name).all()}
     for data in _DEFAULT_SOURCES:
         if data["name"] not in existing_names:
-            db.add(Source(**data))
+            src = Source(**data)
+            if not src.is_manual:
+                src.is_validated = True
+            db.add(src)
     db.commit()
 
 

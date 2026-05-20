@@ -116,13 +116,16 @@ def test_sources_default_not_validated(db):
     from source_registry import init_sources, list_sources
     init_sources(db)
     sources = list_sources(db)
-    assert all(s.is_validated is False for s in sources)
+    # Les sources manuelles démarrent non-validées ; les automatiques démarrent validées
+    assert all(s.is_validated is False for s in sources if s.is_manual)
+    assert all(s.is_validated is True for s in sources if not s.is_manual)
 
 
 def test_validate_source(db):
     from source_registry import init_sources, list_sources, validate_source
     init_sources(db)
-    source = list_sources(db)[0]
+    # Utilise une source manuelle (démarre non-validée)
+    source = next(s for s in list_sources(db) if s.is_manual)
     assert source.is_validated is False
     validate_source(db, source.id)
     db.refresh(source)
@@ -149,3 +152,32 @@ def test_invalidate_source(db):
 def test_invalidate_source_unknown_id_noop(db):
     from source_registry import invalidate_source
     invalidate_source(db, 99999)  # ne doit pas lever d'exception
+
+
+def test_nouvelles_sources_oi_presentes():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from models import Base
+    from source_registry import init_sources, list_sources
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    db = Session()
+    init_sources(db)
+    names = {s.name for s in list_sources(db)}
+    expected = [
+        "Région Réunion — Marchés publics",
+        "CINOR — Marchés publics",
+        "TCO — Marchés publics",
+        "CHU Réunion — Marchés publics",
+        "Département de Mayotte — Marchés",
+        "CADEMA — Marchés publics",
+        "ARMP Madagascar",
+        "CPB Mauritius — Procurement",
+        "IFC — Projets Afrique / OI",
+        "AIIB — Projets approuvés",
+        "COI — Commission Océan Indien",
+    ]
+    for name in expected:
+        assert name in names, f"Source manquante : {name}"
+    db.close()
