@@ -1031,6 +1031,65 @@ def _render_new_tenders_section() -> None:
     st.markdown("---")
 
 
+@st.fragment
+def _render_collection_status_sidebar() -> None:
+    status: list[dict] | None = st.session_state.get("collection_status")
+    if not status:
+        return
+
+    errored = [s for s in status if s["error"]]
+    ok_count = len(status) - len(errored)
+    total_new = sum(s["nb_new"] for s in status)
+
+    header_color = "#f87171" if errored else "#22c55e"
+    st.markdown(
+        f"<div style='font-size:0.72rem;font-weight:700;color:{header_color};"
+        f"text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;'>"
+        f"Dernière collecte — {ok_count}/{len(status)} OK</div>",
+        unsafe_allow_html=True,
+    )
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("✅ OK", ok_count)
+    c2.metric("❌ Err", len(errored))
+    c3.metric("📋", total_new, help="Marchés collectés")
+
+    if errored:
+        st.markdown(
+            "<div style='font-size:0.72rem;font-weight:700;color:#f87171;"
+            "text-transform:uppercase;letter-spacing:.07em;margin:8px 0 4px;'>"
+            "⚠ Sources en erreur</div>",
+            unsafe_allow_html=True,
+        )
+        for s in errored:
+            st.markdown(
+                f"<div style='background:#1a0a0a;border:1px solid rgba(248,113,113,.3);"
+                f"border-radius:6px;padding:6px 8px;margin-bottom:4px;'>"
+                f"<span style='color:#f87171;font-weight:600;font-size:0.8rem;'>✗ {s['name']}</span>"
+                f"<br><span style='color:#64748b;font-size:0.72rem;font-style:italic;'>"
+                f"{s['error'][:120]}</span></div>",
+                unsafe_allow_html=True,
+            )
+
+    with st.expander("▾ Toutes les sources"):
+        for s in status:
+            if s["error"]:
+                icon, color, detail = "✗", "#f87171", "erreur"
+            elif s["nb_new"] > 0:
+                icon, color = "✓", "#22c55e"
+                detail = f"{s['nb_new']} résultat{'s' if s['nb_new'] > 1 else ''}"
+            else:
+                icon, color, detail = "·", "#fbbf24", "0 résultat"
+            st.markdown(
+                f"<div style='display:flex;justify-content:space-between;align-items:center;"
+                f"padding:2px 0;font-size:0.78rem;'>"
+                f"<span style='color:{color};'>{icon} {s['name']}</span>"
+                f"<span style='color:#64748b;font-size:0.7rem;'>{detail}</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+
 with st.sidebar:
     st.markdown("## 🔥 DEF Océan Indien")
     st.markdown("**Veille Marchés Publics**")
