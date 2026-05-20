@@ -31,6 +31,7 @@ from source_registry import list_sources, add_source, remove_source, toggle_enab
 from models import Tender
 
 from fiche_logic import SCORE_GO, SCORE_ETUDE, _compute_fiche_data
+import health_check as _hc
 
 _log = logging.getLogger(__name__)
 
@@ -499,6 +500,34 @@ def _kpi_row(items: list[tuple], colors: list[str] | None = None) -> str:
 def _section_html(title: str, subtitle: str | None = None) -> str:
     sub = f'<p class="section-subtitle">{subtitle}</p>' if subtitle else ""
     return f'<div class="section-header"><div class="section-title"><span class="section-dot"></span>{title}</div>{sub}</div>'
+
+
+@st.cache_data(ttl=3600)
+def _get_health_status() -> dict:
+    """Retourne le résultat du health check mis en cache 1h."""
+    results = _hc.run_all_health_checks()
+    _db = SessionLocal()
+    try:
+        _hc.persist_health_results(_db, results)
+    finally:
+        _db.close()
+    return {name: {"ok": r.ok, "error": r.error} for name, r in results.items()}
+
+
+def _show_health_alerts():
+    """Affiche une bannière si des sources sont dégradées."""
+    try:
+        statuses = _get_health_status()
+    except Exception:
+        return  # ne pas bloquer l'UI si le health check échoue
+    degraded = [(name, info["error"]) for name, info in statuses.items() if not info["ok"]]
+    if not degraded:
+        return
+    st.warning(
+        f"⚠️ **{len(degraded)} source(s) dégradée(s)** — les données peuvent être incomplètes :\n"
+        + "\n".join(f"- **{name}** : {err}" for name, err in degraded),
+        icon="🔴",
+    )
 
 
 # Auto-analyse au démarrage (une seule fois par session)
@@ -1219,6 +1248,8 @@ st.markdown("""
   <div class="page-header-badge">Marchés Publics &amp; Privés</div>
 </div>
 """, unsafe_allow_html=True)
+
+_show_health_alerts()
 
 # Export button — génère le rapport uniquement sur clic (pas au chargement de page)
 _, col_btn, _ = st.columns([1, 2, 1])
