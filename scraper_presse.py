@@ -38,6 +38,7 @@ FLUX_PRESSE = [
     ("Comores",    "Alwatwan",            "https://alwatwan.net/feed/"),
     ("Comores",    "HZK-Presse",          "https://www.hzk-presse.com/feed/"),
     ("Comores",    "La Gazette Comores",  "https://www.lagazettedescomores.com/feed/"),
+    ("OI",         "L'Éco Austral",        "https://www.ecoaustral.com/feed/"),
 ]
 
 FLUX_INSTITUTIONS = [
