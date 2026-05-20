@@ -8,7 +8,7 @@ from filters import classify_relevance
 from models import Tender
 from playwright_base import extract_cards, login, paginate
 from credential_manager import CredentialManager
-from scraper_utils import parse_date, load_existing_ids, insert_if_new
+from scraper_utils import parse_date, load_existing_ids, insert_if_new, now_utc
 
 _log = logging.getLogger(__name__)
 
@@ -33,6 +33,13 @@ def fetch_marchessecurises_tenders() -> int:
     creds = CredentialManager.get("marches_securises")
     if not creds:
         _log.warning("Marchés Sécurisés : aucun identifiant configuré — scraper ignoré")
+        init_db()
+        db = SessionLocal()
+        try:
+            _run_id = start_scraper_run(db, "Marchés Sécurisés")
+            finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error="Pas d'identifiants configurés")
+        finally:
+            db.close()
         return 0
     init_db()
     db       = SessionLocal()
@@ -67,6 +74,7 @@ def fetch_marchessecurises_tenders() -> int:
                             t = Tender(
                                 id=tid, title=title, description=desc, source=url,
                                 publication_date=parse_date(card.get("date")),
+                                date_extraction=now_utc(),
                                 deadline=None, status="À qualifier",
                                 relevance_score=0, is_maintenance=False,
                                 llm_analysis=None, secteur="Privé",

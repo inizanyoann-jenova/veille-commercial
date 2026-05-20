@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from filters import classify_relevance
 from models import Tender
-from scraper_utils import parse_date, retry_get, load_existing_ids, insert_if_new
+from scraper_utils import parse_date, retry_get, load_existing_ids, insert_if_new, now_utc
 
 _log = logging.getLogger(__name__)
 
@@ -121,6 +121,7 @@ def fetch_decp_tenders(days_back: int | None = None) -> int:
                     description=f"Acheteur : {acheteur_nom}",
                     source="https://data.economie.gouv.fr",
                     publication_date=parse_date(record.get("datenotification")),
+                    date_extraction=now_utc(),
                     deadline=None, status="À qualifier",
                     relevance_score=0, is_maintenance=False, llm_analysis=None,
                     secteur="Public", type_opportunite="Marché Public",

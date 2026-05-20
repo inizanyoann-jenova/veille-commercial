@@ -6,11 +6,11 @@ from datetime import datetime, timedelta
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from filters import classify_relevance
 from models import Tender
-from scraper_utils import parse_date, retry_post, load_existing_ids, insert_if_new
+from scraper_utils import parse_date, retry_post, load_existing_ids, insert_if_new, now_utc
 
 _log = logging.getLogger(__name__)
 
-TED_API_URL = "https://ted.europa.eu/api/v3.0/notices/search"
+TED_API_URL = "https://api.ted.europa.eu/v3/notices/search"
 
 _METIERS = (
     "FT~SSI OR FT~CMSI OR FT~incendie OR FT~desenfumage"
@@ -28,8 +28,8 @@ _ERP = (
 # Codes CPV SSI : alarme incendie, matériel incendie, maintenance sécu,
 # anti-intrusion, contrôle d'accès, prévention incendie
 _CPV = (
-    "PC~45312100 OR PC~35111300 OR PC~50610000"
-    " OR PC~45312200 OR PC~42961000 OR PC~35111000"
+    "PC=45312100 OR PC=35111300 OR PC=50610000"
+    " OR PC=45312200 OR PC=42961000 OR PC=35111000"
 )
 _IMPLICITE_ERP = f"(({_CONSTRUCTION}) AND ({_ERP}))"
 _PUBLIC_SEARCH = f"({_METIERS}) OR ({_IMPLICITE_ERP}) OR ({_CPV})"
@@ -98,6 +98,7 @@ def _fetch_query(db, query: str, existing_ids: set, date_from: str) -> int:
                 description=description,
                 source=url_fr,
                 publication_date=None,
+                date_extraction=now_utc(),
                 deadline=parse_date(notice.get("deadline-receipt-tender-date-lot")),
                 status="À qualifier",
                 relevance_score=0,

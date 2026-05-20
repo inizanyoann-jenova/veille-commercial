@@ -4,7 +4,7 @@ import logging
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from filters import classify_relevance
 from models import Tender
-from scraper_utils import parse_date, retry_post, load_existing_ids, insert_if_new
+from scraper_utils import parse_date, retry_post, load_existing_ids, insert_if_new, now_utc
 
 _log = logging.getLogger(__name__)
 
@@ -88,6 +88,7 @@ def fetch_ungm_tenders() -> int:
                     description=description,
                     source=url,
                     publication_date=parse_date(pub_raw),
+                    date_extraction=now_utc(),
                     deadline=parse_date(deadline_raw),
                     status="À qualifier",
                     relevance_score=0,

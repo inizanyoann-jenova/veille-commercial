@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from models import Tender
-from scraper_utils import parse_date, retry_get, load_existing_ids, insert_if_new
+from scraper_utils import parse_date, retry_get, load_existing_ids, insert_if_new, now_utc
 
 _log = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ AFD_API = "https://opendata.afd.fr/api/explore/v2.1/catalog/datasets/les-projets
 
 PAYS_OI = {
     "Madagascar": "madagascar",
-    "Maurice": "mauritius",
+    "Maurice": "maurice",
     "Île Maurice": "île maurice",
     "Comores": "comores",
     "La Réunion": "réunion",
@@ -34,6 +34,33 @@ SECTEURS_PERTINENTS = [
 def _secteur_ok(record: dict) -> bool:
     desc = (record.get("description") or "").lower()
     return any(s in desc for s in SECTEURS_PERTINENTS)
+
+
+def _build_tender(rec: dict, pays_label: str) -> Tender:
+    raw_id = rec.get("iati_identifier") or rec.get("id_projet") or ""
+    tender_id = f"AFD-{raw_id}"
+    title = rec.get("title_narrative") or f"Projet AFD {raw_id}"
+    secteur = rec.get("description") or "Non précisé"
+    description = f"AFD — Pays : {pays_label} — Secteur : {secteur}"
+    deadline = parse_date(rec.get("date_dachevement"))
+    pub_date = (
+        parse_date(rec.get("date_octroi"))
+        or parse_date(rec.get("date_debut"))
+        or parse_date(rec.get("date_demarrage"))
+    )
+    return Tender(
+        id=tender_id,
+        title=title,
+        description=description,
+        source=f"https://www.afd.fr/fr/carte-des-projets?query={raw_id}",
+        publication_date=pub_date,
+        date_extraction=now_utc(),
+        deadline=deadline,
+        status="À qualifier",
+        relevance_score=0,
+        is_maintenance=False,
+        llm_analysis=None,
+    )
 
 
 def fetch_afd_projects(years_back: int = 3) -> int:
@@ -73,26 +100,7 @@ def fetch_afd_projects(years_back: int = 3) -> int:
                     if not _secteur_ok(rec):
                         continue
 
-                    raw_id = rec.get("iati_identifier") or rec.get("id_projet") or ""
-                    tender_id = f"AFD-{raw_id}"
-
-                    title = rec.get("title_narrative") or f"Projet AFD {raw_id}"
-                    secteur = rec.get("description") or "Non précisé"
-                    description = f"AFD — Pays : {pays_label} — Secteur : {secteur}"
-                    deadline = parse_date(rec.get("date_dachevement"))
-
-                    t = Tender(
-                        id=tender_id,
-                        title=title,
-                        description=description,
-                        source=f"https://www.afd.fr/fr/carte-des-projets?query={raw_id}",
-                        publication_date=datetime.now(),
-                        deadline=deadline,
-                        status="À qualifier",
-                        relevance_score=0,
-                        is_maintenance=False,
-                        llm_analysis=None,
-                    )
+                    t = _build_tender(rec, pays_label)
                     if insert_if_new(db, t, existing_ids):
                         inserted += 1
 

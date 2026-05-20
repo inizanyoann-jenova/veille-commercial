@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from models import Tender
-from scraper_utils import parse_date, retry_get, load_existing_ids, insert_if_new
+from scraper_utils import parse_date, retry_get, load_existing_ids, insert_if_new, now_utc
 
 _log = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ def fetch_permis_construire(years_back: int = 1) -> int:
                 params = {
                     "where": (
                         f"code_dep='{dept}'"
-                        f" AND date_depot_doc >= '{date_min}'"
+                        f" AND dat_depdoc >= '{date_min}'"
                     ),
                     "limit": limit,
                     "offset": offset,
@@ -107,6 +107,7 @@ def fetch_permis_construire(years_back: int = 1) -> int:
                             f"https://data.statistiques.developpement-durable.gouv.fr/explore/dataset/sitadel/table/?q={raw_id}"
                         ),
                         publication_date=parse_date(rec.get("date_depot_doc") or rec.get("dat_depdoc")),
+                        date_extraction=now_utc(),
                         deadline=None,
                         status="À qualifier",
                         relevance_score=0,

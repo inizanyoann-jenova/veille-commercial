@@ -13,7 +13,7 @@ from filters import classify_relevance
 from models import Tender
 from playwright_base import login
 from credential_manager import CredentialManager
-from scraper_utils import parse_date, load_existing_ids, insert_if_new
+from scraper_utils import parse_date, load_existing_ids, insert_if_new, now_utc
 
 _log = logging.getLogger(__name__)
 
@@ -42,7 +42,8 @@ def _extract_from_comments(html: str) -> list[dict]:
     for block in comments:
         if "blockNotice" not in block:
             continue
-        url_m = re.search(r'<a[^>]+href="(/appels-offres/avis/[^"]+)"[^>]*class="blockContentResults', block)
+        href_m = re.search(r'href="(/appels-offres/avis/[^"]+)"', block)
+        url_m = href_m if href_m and "blockContentResults" in block else None
         title_m = re.search(r'<h2[^>]*itemprop="about"[^>]*>(.*?)</h2>', block, re.DOTALL)
         pub_m = re.search(r'<span[^>]*itemprop="publisher"[^>]*>(.*?)</span>', block, re.DOTALL)
         date_pub_m = re.search(r'itemprop="datePublished" content="([^"]+)"', block)
@@ -166,6 +167,7 @@ def fetch_marcheonline_tenders() -> int:
                         t = Tender(
                             id=tid, title=title, description=desc, source=url,
                             publication_date=parse_date(card.get("date")),
+                            date_extraction=now_utc(),
                             deadline=parse_date(card.get("deadline")),
                             status="À qualifier", relevance_score=0,
                             is_maintenance=False, llm_analysis=None,

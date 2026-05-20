@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from models import Tender
-from scraper_utils import parse_date, retry_get, load_existing_ids, insert_if_new
+from scraper_utils import parse_date, retry_get, load_existing_ids, insert_if_new, now_utc
 
 _log = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ def fetch_worldbank_projects(years_back: int = 3) -> int:
                 "format": "json",
                 "countrycode": code,
                 "rows": 100,
-                "fl": "id,project_name,countryname,status,closingdate,sector1,sector2,sector3",
+                "fl": "id,project_name,countryname,status,closingdate,sector1,sector2,sector3,sector4,sector5",
             }
 
             try:
@@ -75,12 +75,17 @@ def fetch_worldbank_projects(years_back: int = 3) -> int:
                 tender_id = f"WB-{proj_id}"
 
                 sector_label = (proj.get("sector1") or {}).get("Name") or "Infrastructure"
+                pub_date = (
+                    parse_date(proj.get("approvaldate"))
+                    or parse_date(proj.get("boardapprovaldate"))
+                )
                 t = Tender(
                     id=tender_id,
                     title=proj.get("project_name") or f"Projet BM {proj_id}",
                     description=f"Banque Mondiale — Pays : {country_name} — Secteur : {sector_label}",
                     source=f"https://projects.worldbank.org/en/projects-operations/project-detail/{proj_id}",
-                    publication_date=datetime.now(),
+                    publication_date=pub_date,
+                    date_extraction=now_utc(),
                     deadline=closing,
                     status="À qualifier",
                     relevance_score=0,

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from filters import classify_relevance
 from models import Tender
-from scraper_utils import parse_date, retry_get, load_existing_ids, insert_if_new
+from scraper_utils import parse_date, retry_get, load_existing_ids, insert_if_new, now_utc
 
 _log = logging.getLogger(__name__)
 
@@ -96,7 +96,7 @@ def fetch_boamp_tenders(departments: list[str] | None = None, years_back: int | 
             while True:
                 params = {
                     "where": (
-                        f"code_departement_prestation='{dept}'"
+                        f"code_departement='{dept}'"
                         f" AND ({_PUBLIC_SEARCH_FILTER})"
                         f" AND dateparution >= '{date_min}'"
                     ),
@@ -138,6 +138,7 @@ def fetch_boamp_tenders(departments: list[str] | None = None, years_back: int | 
                         description=description,
                         source=record.get("url_avis") or _fallback_url,
                         publication_date=parse_date(record.get("dateparution")),
+                        date_extraction=now_utc(),
                         deadline=parse_date(record.get("datelimitereponse")),
                         status="À qualifier",
                         relevance_score=0,

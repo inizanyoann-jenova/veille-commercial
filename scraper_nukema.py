@@ -8,7 +8,7 @@ from filters import classify_relevance
 from models import Tender
 from playwright_base import extract_cards, login, paginate
 from credential_manager import CredentialManager
-from scraper_utils import parse_date, load_existing_ids, insert_if_new
+from scraper_utils import parse_date, load_existing_ids, insert_if_new, now_utc
 
 _log = logging.getLogger(__name__)
 
@@ -76,6 +76,7 @@ def fetch_nukema_tenders() -> int:
                                 t = Tender(
                                     id=tid, title=title, description=desc, source=url,
                                     publication_date=parse_date(card.get("date")),
+                                    date_extraction=now_utc(),
                                     deadline=None, status="À qualifier",
                                     relevance_score=0, is_maintenance=False,
                                     llm_analysis=None, secteur="Public",

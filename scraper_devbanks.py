@@ -12,7 +12,7 @@ import feedparser
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from filters import INCLUSION_KEYWORDS
 from models import Tender
-from scraper_utils import load_existing_ids, insert_if_new
+from scraper_utils import load_existing_ids, insert_if_new, now_utc
 
 _log = logging.getLogger(__name__)
 
@@ -108,6 +108,7 @@ def fetch_devbanks() -> int:
                     description=f"{territoire} — {nom}\n{summary[:500]}",
                     source=link,
                     publication_date=_parse_date(entry),
+                    date_extraction=now_utc(),
                     deadline=None,
                     status="À qualifier",
                     relevance_score=0,
