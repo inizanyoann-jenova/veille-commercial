@@ -181,3 +181,26 @@ def test_nouvelles_sources_oi_presentes():
     for name in expected:
         assert name in names, f"Source manquante : {name}"
     db.close()
+
+
+def test_sources_batch2_presentes():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from models import Base
+    from source_registry import init_sources, list_sources
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    db = Session()
+    init_sources(db)
+    names = {s.name for s in list_sources(db)}
+    expected = [
+        "UNDP Procurement",
+        "ADB — Banque Asiatique de Développement",
+        "IsDB — Banque Islamique de Développement",
+        "SEMADER — Appels d'offres Réunion",
+        "Centre Hospitalier de Mayotte",
+    ]
+    for name in expected:
+        assert name in names, f"Source manquante : {name}"
+    db.close()
