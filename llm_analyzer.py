@@ -549,6 +549,77 @@ def _get_anthropic_client():
     return _anthropic_client
 
 
+_mistral_client = None
+
+
+def _get_mistral_client():
+    global _mistral_client
+    api_key = os.getenv("MISTRAL_API_KEY", "").strip()
+    if not api_key:
+        return None
+    if _mistral_client is None:
+        try:
+            from mistralai import Mistral
+            _mistral_client = Mistral(api_key=api_key)
+        except Exception:
+            return None
+    return _mistral_client
+
+
+def _mistral_analyze(text: str) -> dict | None:
+    """Analyse via l'API Mistral (mistral-large-latest).
+
+    Retourne None si la clé API est absente ou en cas d'erreur inattendue.
+    Lève _LLMQuotaError si le quota API est atteint (429).
+    """
+    client = _get_mistral_client()
+    if client is None:
+        return None
+    try:
+        response = client.chat.complete(
+            model="mistral-large-latest",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": (
+                        "Analyse ce marché :\n\n"
+                        "<MARCHE_CONTENT>\n"
+                        f"{text[:8000]}\n"
+                        "</MARCHE_CONTENT>"
+                    ),
+                },
+            ],
+        )
+        raw = response.choices[0].message.content
+        if not raw:
+            _log.warning("Mistral : réponse vide")
+            return None
+        raw_clean = raw.strip()
+        raw_clean = re.sub(r"^```(?:json)?\s*", "", raw_clean)
+        raw_clean = re.sub(r"\s*```$", "", raw_clean).strip()
+        try:
+            result = json.loads(raw_clean)
+        except json.JSONDecodeError:
+            _log.warning("Mistral : réponse non-JSON — fallback analyse locale")
+            return None
+        result["_source"] = "mistral"
+        return result
+    except Exception as exc:
+        status = getattr(exc, "status_code", None)
+        if status == 429:
+            retry_after = None
+            try:
+                retry_after = int(getattr(exc, "headers", {}).get("retry-after", 0)) or None
+            except Exception:
+                pass
+            raise _LLMQuotaError(retry_after=retry_after)
+        if status in (401, 403):
+            _log.warning("Clé API Mistral invalide ou permissions insuffisantes")
+            return None
+        _log.warning("Mistral analyse échouée (erreur inattendue) : %s", str(exc)[:200])
+        return None
+
 
 def _claude_analyze(text: str) -> dict | None:
     """Tente une analyse via l'API Claude (Anthropic).

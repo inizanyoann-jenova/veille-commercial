@@ -169,3 +169,104 @@ def test_analyze_tender_structured_handles_invalid_json(monkeypatch):
         )
 
     assert result is None
+
+
+def test_mistral_analyze_returns_none_without_key(monkeypatch):
+    """Pas de MISTRAL_API_KEY -> None sans appel réseau."""
+    monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
+    import llm_analyzer
+    llm_analyzer._mistral_client = None
+    result = llm_analyzer._mistral_analyze("test texte")
+    assert result is None
+
+
+def test_mistral_analyze_returns_dict_on_valid_response(monkeypatch):
+    """Réponse JSON valide -> dict avec _source='mistral'."""
+    monkeypatch.setenv("MISTRAL_API_KEY", "fake-mistral-key-1234567890abcdef")
+    import llm_analyzer
+    from unittest.mock import MagicMock, patch
+
+    fake_json = (
+        '{"score_pertinence": 75, "tag_pertinence": "Très pertinent", '
+        '"type_marche": "Maintenance", "domaines_concernes": ["SSI"], '
+        '"territoire": "La Réunion", "marques_concurrentes_citees": [], '
+        '"risques_penalites": null, "justification_score": "SSI La Réunion."}'
+    )
+    mock_choice = MagicMock()
+    mock_choice.message.content = fake_json
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+
+    with patch("llm_analyzer._get_mistral_client") as mock_get:
+        mock_client = MagicMock()
+        mock_client.chat.complete.return_value = mock_response
+        mock_get.return_value = mock_client
+        llm_analyzer._mistral_client = None
+
+        result = llm_analyzer._mistral_analyze("Maintenance SSI La Réunion 974")
+
+    assert result is not None
+    assert result["_source"] == "mistral"
+    assert result["score_pertinence"] == 75
+
+
+def test_mistral_analyze_raises_quota_error_on_429(monkeypatch):
+    """HTTP 429 -> _LLMQuotaError levée."""
+    monkeypatch.setenv("MISTRAL_API_KEY", "fake-mistral-key-1234567890abcdef")
+    import llm_analyzer
+    from unittest.mock import MagicMock, patch
+    import pytest
+
+    exc_429 = Exception("Rate limit")
+    exc_429.status_code = 429
+
+    with patch("llm_analyzer._get_mistral_client") as mock_get:
+        mock_client = MagicMock()
+        mock_client.chat.complete.side_effect = exc_429
+        mock_get.return_value = mock_client
+        llm_analyzer._mistral_client = None
+
+        with pytest.raises(llm_analyzer._LLMQuotaError):
+            llm_analyzer._mistral_analyze("test")
+
+
+def test_mistral_analyze_returns_none_on_auth_error(monkeypatch):
+    """HTTP 401 -> None (clé invalide), pas d'exception propagée."""
+    monkeypatch.setenv("MISTRAL_API_KEY", "fake-mistral-key-1234567890abcdef")
+    import llm_analyzer
+    from unittest.mock import MagicMock, patch
+
+    exc_401 = Exception("Unauthorized")
+    exc_401.status_code = 401
+
+    with patch("llm_analyzer._get_mistral_client") as mock_get:
+        mock_client = MagicMock()
+        mock_client.chat.complete.side_effect = exc_401
+        mock_get.return_value = mock_client
+        llm_analyzer._mistral_client = None
+
+        result = llm_analyzer._mistral_analyze("test")
+
+    assert result is None
+
+
+def test_mistral_analyze_returns_none_on_invalid_json(monkeypatch):
+    """Réponse non-JSON -> None (pas d'exception propagée)."""
+    monkeypatch.setenv("MISTRAL_API_KEY", "fake-mistral-key-1234567890abcdef")
+    import llm_analyzer
+    from unittest.mock import MagicMock, patch
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = "Désolé je ne peux pas répondre."
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+
+    with patch("llm_analyzer._get_mistral_client") as mock_get:
+        mock_client = MagicMock()
+        mock_client.chat.complete.return_value = mock_response
+        mock_get.return_value = mock_client
+        llm_analyzer._mistral_client = None
+
+        result = llm_analyzer._mistral_analyze("test texte")
+
+    assert result is None
