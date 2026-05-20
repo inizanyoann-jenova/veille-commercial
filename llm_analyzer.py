@@ -819,8 +819,12 @@ def auto_analyze_claude(
         text = f"{t.title or ''} {t.description or ''}"
         local_result = _local_analyze(text)
 
+        provider = os.getenv("LLM_PROVIDER", "anthropic").strip().lower()
         try:
-            llm_result = _claude_analyze(text)
+            if provider == "mistral":
+                llm_result = _mistral_analyze(text)
+            else:
+                llm_result = _claude_analyze(text)
         except _LLMQuotaError as qe:
             # Quota atteint : on sauvegarde ce qui est fait et on arrête immédiatement
             if nb_done > 0:
@@ -880,8 +884,7 @@ def analyze_tender(text: str, source_url: str | None = None) -> dict:
     """
     Analyse un appel d'offre. Si source_url est fourni et accessible publiquement,
     enrichit le texte avec le contenu de la page DCE avant l'analyse.
-    Essaie Claude en premier (score combiné 70 % Claude + 30 % local).
-    Fallback sur analyse locale si Claude indisponible.
+    Route vers Claude ou Mistral selon LLM_PROVIDER (.env). Fallback analyse locale.
     """
     if source_url:
         dce_content = fetch_dce_content(source_url)
@@ -889,8 +892,13 @@ def analyze_tender(text: str, source_url: str | None = None) -> dict:
             text = text + "\n\n[Contenu page DCE]\n" + dce_content
 
     local_result = _local_analyze(text)
+
+    provider = os.getenv("LLM_PROVIDER", "anthropic").strip().lower()
     try:
-        llm_result = _claude_analyze(text)
+        if provider == "mistral":
+            llm_result = _mistral_analyze(text)
+        else:
+            llm_result = _claude_analyze(text)
     except _LLMQuotaError:
         llm_result = None
 

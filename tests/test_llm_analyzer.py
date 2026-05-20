@@ -270,3 +270,63 @@ def test_mistral_analyze_returns_none_on_invalid_json(monkeypatch):
         result = llm_analyzer._mistral_analyze("test texte")
 
     assert result is None
+
+
+def test_analyze_tender_routes_to_mistral_when_provider_is_mistral(monkeypatch):
+    """LLM_PROVIDER=mistral -> _mistral_analyze appelé, pas _claude_analyze."""
+    monkeypatch.setenv("LLM_PROVIDER", "mistral")
+    import llm_analyzer
+
+    fake_mistral_result = {
+        "score_pertinence": 70,
+        "tag_pertinence": "Très pertinent",
+        "type_marche": "Maintenance",
+        "domaines_concernes": ["SSI"],
+        "territoire": "La Réunion",
+        "marques_concurrentes_citees": [],
+        "risques_penalites": None,
+        "justification_score": "SSI Réunion.",
+        "_source": "mistral",
+    }
+    calls = {"mistral": 0, "claude": 0}
+
+    def fake_mistral(text):
+        calls["mistral"] += 1
+        return fake_mistral_result
+
+    def fake_claude(text):
+        calls["claude"] += 1
+        return None
+
+    monkeypatch.setattr(llm_analyzer, "_mistral_analyze", fake_mistral)
+    monkeypatch.setattr(llm_analyzer, "_claude_analyze", fake_claude)
+
+    result = llm_analyzer.analyze_tender("Maintenance SSI La Réunion 974")
+
+    assert calls["mistral"] == 1
+    assert calls["claude"] == 0
+    assert result["_source"] == "mistral"
+
+
+def test_analyze_tender_routes_to_claude_by_default(monkeypatch):
+    """LLM_PROVIDER absent -> _claude_analyze appelé (rétrocompat)."""
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    import llm_analyzer
+
+    calls = {"mistral": 0, "claude": 0}
+
+    def fake_claude(text):
+        calls["claude"] += 1
+        return None
+
+    def fake_mistral(text):
+        calls["mistral"] += 1
+        return None
+
+    monkeypatch.setattr(llm_analyzer, "_claude_analyze", fake_claude)
+    monkeypatch.setattr(llm_analyzer, "_mistral_analyze", fake_mistral)
+
+    llm_analyzer.analyze_tender("Maintenance SSI La Réunion 974")
+
+    assert calls["claude"] == 1
+    assert calls["mistral"] == 0
