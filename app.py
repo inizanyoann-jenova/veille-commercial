@@ -11,7 +11,7 @@ import plotly.express as px
 import streamlit as st
 from sqlalchemy import func as _func, or_
 
-from database import SessionLocal, init_db
+from database import SessionLocal, init_db, clean_obsolete_data
 from apscheduler.schedulers.background import BackgroundScheduler as _BgScheduler
 from export_excel import generate_executive_report
 from llm_analyzer import (
@@ -139,6 +139,19 @@ def _init_db_once():
     init_db()
 
 _init_db_once()
+
+# ── Archivage automatique au démarrage (une seule fois par session) ───────────
+if "retention_done" not in st.session_state:
+    _db_ret = SessionLocal()
+    try:
+        n = clean_obsolete_data(_db_ret, days=30)
+        if n:
+            st.toast(f"🗂️ {n} offre(s) archivée(s) automatiquement (> 30 jours)", icon="ℹ️")
+    except Exception:
+        _log.warning("clean_obsolete_data: échec au démarrage", exc_info=True)
+    finally:
+        _db_ret.close()
+    st.session_state["retention_done"] = True
 
 # ── Scheduler ré-validation hebdomadaire ──────────────────────────────────────
 

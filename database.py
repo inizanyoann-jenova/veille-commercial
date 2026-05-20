@@ -99,7 +99,7 @@ def get_db():
         db.close()
 
 
-from datetime import datetime as _dt, timezone as _tz
+from datetime import datetime as _dt, timezone as _tz, timedelta as _td
 from difflib import SequenceMatcher as _SM
 from sqlalchemy import and_ as _and, or_ as _or
 
@@ -247,3 +247,37 @@ def load_pipeline_data(db, score_go: int = 65) -> dict:
     soumis.sort(key=_dl)
     resultats.sort(key=_pub, reverse=True)
     return {"go": go, "soumis": soumis, "resultats": resultats}
+
+
+def clean_obsolete_data(db, days: int = 30) -> int:
+    """Archive les tenders 'À qualifier' dont la publication_date dépasse `days` jours.
+
+    Règles strictes :
+    - Ne touche JAMAIS les tenders avec statut Soumis/Gagné/Perdu/Archivé
+    - Ne touche JAMAIS les tenders blacklistés
+    - Ne touche JAMAIS les tenders sans publication_date
+    - Retourne le nombre de tenders archivés
+    """
+    from models import Tender
+
+    cutoff = _dt.now(_tz.utc).replace(tzinfo=None) - _td(days=days)
+
+    tenders = (
+        db.query(Tender)
+        .filter(
+            Tender.status == "À qualifier",
+            Tender.is_blacklisted == False,
+            Tender.publication_date != None,
+            Tender.publication_date < cutoff,
+        )
+        .all()
+    )
+
+    for t in tenders:
+        t.status = "Archivé"
+
+    count = len(tenders)
+    if count:
+        db.commit()
+        _log.info("clean_obsolete_data : %d tenders archivés (> %d jours)", count, days)
+    return count
