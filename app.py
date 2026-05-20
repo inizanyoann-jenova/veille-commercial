@@ -846,19 +846,22 @@ def _collect_all_enabled_sources() -> None:
 
     per_source_new: dict[str, int] = {}
     per_source_ids: dict[str, set] = {}
+    per_source_status: list[dict] = []   # <-- nouveau
     errors = []
 
     with st.spinner("Collecte en cours…"):
         for source in sources:
             if source.is_manual or not source.scraper_module:
                 continue
-            if not source.enabled or not source.is_validated:
+            if not source.enabled:
                 continue
+            _src_error: str | None = None          # <-- nouveau
             try:
                 mod = importlib.import_module(source.scraper_module)
                 func = getattr(mod, source.scraper_func)
                 func()
             except Exception as exc:
+                _src_error = str(exc)              # <-- nouveau
                 errors.append(f"{source.name} : {exc}")
                 try:
                     from models import ScraperRun as _SR_cleanup
@@ -886,6 +889,11 @@ def _collect_all_enabled_sources() -> None:
             if new_ids:
                 per_source_ids[source.name] = new_ids
                 per_source_new[source.name] = len(new_ids)
+            per_source_status.append({             # <-- nouveau
+                "name": source.name,
+                "nb_new": len(new_ids),
+                "error": _src_error,
+            })
 
     _run_auto_analysis()
     st.cache_data.clear()
@@ -894,6 +902,7 @@ def _collect_all_enabled_sources() -> None:
     st.session_state["new_tender_ids"] = all_new_ids
     st.session_state["collection_results"] = per_source_new
     st.session_state["collection_source_ids"] = per_source_ids
+    st.session_state["collection_status"] = per_source_status   # <-- nouveau
 
     # Réinitialise les filtres source (supprime l'état d'une collecte précédente)
     for k in [k for k in st.session_state if k.startswith("src_filter_")]:
@@ -928,8 +937,7 @@ def _collect_all_enabled_sources() -> None:
         st.success(f"✅ {total} nouveau(x) marché(s) importé(s) — analyse automatique effectuée.")
     elif not errors:
         st.info("Aucune nouvelle offre trouvée.")
-    for err in errors:
-        st.warning(err)
+    # NOTE: les erreurs ne sont plus affichées ici — elles apparaissent dans _render_collection_status_sidebar()
 
 
 @st.fragment

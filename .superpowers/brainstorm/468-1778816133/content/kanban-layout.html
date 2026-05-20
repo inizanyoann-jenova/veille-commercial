@@ -1,0 +1,109 @@
+<h2>B — Pipeline Kanban : quel layout ?</h2>
+<p class="subtitle">Comment organiser les colonnes de statut dans la page Pipeline ?</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup" style="font-size:0.78rem">
+        <div class="mockup-header">📋 Pipeline commercial</div>
+        <div class="mockup-body" style="display:flex;gap:8px;padding:8px;min-height:160px">
+          <div style="flex:1;background:#f8f9fa;border-radius:6px;padding:8px;border-top:3px solid #6b7280">
+            <div style="font-weight:600;color:#6b7280;font-size:0.7rem;margin-bottom:6px">À QUALIFIER</div>
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px;padding:6px;margin-bottom:4px;font-size:0.68rem">Rénovation SSI Mairie de St-Denis</div>
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px;padding:6px;font-size:0.68rem">Vidéosurveillance Port Réunion</div>
+          </div>
+          <div style="flex:1;background:#f8f9fa;border-radius:6px;padding:8px;border-top:3px solid #16a34a">
+            <div style="font-weight:600;color:#16a34a;font-size:0.7rem;margin-bottom:6px">GO ✅</div>
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px;padding:6px;font-size:0.68rem">CMSI CHU Mayotte</div>
+          </div>
+          <div style="flex:1;background:#f8f9fa;border-radius:6px;padding:8px;border-top:3px solid #2563eb">
+            <div style="font-weight:600;color:#2563eb;font-size:0.7rem;margin-bottom:6px">SOUMIS</div>
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px;padding:6px;font-size:0.68rem">SSI Résidence Les Flamboyants</div>
+          </div>
+          <div style="flex:1;background:#f8f9fa;border-radius:6px;padding:8px;border-top:3px solid #cc2222">
+            <div style="font-weight:600;color:#cc2222;font-size:0.7rem;margin-bottom:6px">GAGNÉ 🏆</div>
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px;padding:6px;font-size:0.68rem">Courants faibles Hôtel Lux</div>
+          </div>
+          <div style="flex:1;background:#f8f9fa;border-radius:6px;padding:8px;border-top:3px solid #9ca3af">
+            <div style="font-weight:600;color:#9ca3af;font-size:0.7rem;margin-bottom:6px">PERDU / ARCHIVÉ</div>
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px;padding:6px;font-size:0.68rem">CCTV Aéroport Roland Garros</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — 5 colonnes complètes</h3>
+      <p>Tout le pipeline visible d'un coup : À qualifier → GO → Soumis → Gagné → Perdu. Vue exhaustive, mais large.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup" style="font-size:0.78rem">
+        <div class="mockup-header">📋 Pipeline commercial</div>
+        <div class="mockup-body" style="padding:8px;min-height:160px">
+          <div style="display:flex;gap:8px;margin-bottom:8px">
+            <div style="flex:1;background:#f8f9fa;border-radius:6px;padding:8px;border-top:3px solid #16a34a">
+              <div style="font-weight:600;color:#16a34a;font-size:0.7rem;margin-bottom:6px">GO ✅</div>
+              <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px;padding:6px;margin-bottom:4px;font-size:0.68rem">CMSI CHU Mayotte <span style="float:right;color:#cc2222;font-size:0.65rem">7j</span></div>
+              <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px;padding:6px;font-size:0.68rem">Rénovation SSI... <span style="float:right;color:#f59e0b;font-size:0.65rem">23j</span></div>
+            </div>
+            <div style="flex:1;background:#f8f9fa;border-radius:6px;padding:8px;border-top:3px solid #2563eb">
+              <div style="font-weight:600;color:#2563eb;font-size:0.7rem;margin-bottom:6px">SOUMIS</div>
+              <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px;padding:6px;font-size:0.68rem">SSI Résidence...</div>
+            </div>
+            <div style="flex:1;background:#f8f9fa;border-radius:6px;padding:8px;border-top:3px solid #cc2222">
+              <div style="font-weight:600;color:#cc2222;font-size:0.7rem;margin-bottom:6px">GAGNÉ 🏆</div>
+              <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px;padding:6px;font-size:0.68rem">Courants faibles Hôtel Lux</div>
+            </div>
+          </div>
+          <div style="background:#f1f5f9;border-radius:6px;padding:6px;font-size:0.68rem;color:#6b7280">
+            ▸ <strong>À qualifier :</strong> 12 marchés — <a style="color:#2563eb">voir la liste principale</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — 3 colonnes actives + lien vers liste</h3>
+      <p>Pipeline centré sur l'action : GO / Soumis / Gagné. "À qualifier" reste dans la liste principale. Plus focalisé.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup" style="font-size:0.78rem">
+        <div class="mockup-header">📋 Pipeline commercial</div>
+        <div class="mockup-body" style="display:flex;gap:8px;padding:8px;min-height:160px">
+          <div style="width:140px;background:#f8f9fa;border-radius:6px;padding:8px;border-left:3px solid #16a34a">
+            <div style="font-weight:600;color:#16a34a;font-size:0.7rem;margin-bottom:6px">GO ✅ (2)</div>
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px;padding:6px;margin-bottom:4px;font-size:0.65rem">CMSI CHU Mayotte<br><span style="color:#cc2222">⏰ 7j</span> · 82pts</div>
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px;padding:6px;font-size:0.65rem">Rénovation SSI...<br><span style="color:#f59e0b">⏰ 23j</span> · 75pts</div>
+          </div>
+          <div style="width:140px;background:#f8f9fa;border-radius:6px;padding:8px;border-left:3px solid #2563eb">
+            <div style="font-weight:600;color:#2563eb;font-size:0.7rem;margin-bottom:6px">SOUMIS (1)</div>
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px;padding:6px;font-size:0.65rem">SSI Résidence...<br><span style="color:#6b7280">déposé il y a 5j</span></div>
+          </div>
+          <div style="flex:1;background:#f8f9fa;border-radius:6px;padding:8px;border-left:3px solid #cc2222">
+            <div style="font-weight:600;color:#cc2222;font-size:0.7rem;margin-bottom:6px">RÉSULTATS</div>
+            <div style="display:flex;gap:8px">
+              <div style="flex:1">
+                <div style="font-size:0.65rem;color:#16a34a;font-weight:600">GAGNÉ 🏆</div>
+                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px;padding:6px;margin-top:4px;font-size:0.65rem">Courants faibles Hôtel Lux</div>
+              </div>
+              <div style="flex:1">
+                <div style="font-size:0.65rem;color:#9ca3af;font-weight:600">PERDU</div>
+                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:4px;padding:6px;margin-top:4px;font-size:0.65rem">CCTV Aéroport</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Colonnes verticales + carte enrichie</h3>
+      <p>Chaque carte affiche score + délai restant. Gagné/Perdu regroupés en une colonne "Résultats". Plus d'info par marché.</p>
+    </div>
+  </div>
+
+</div>

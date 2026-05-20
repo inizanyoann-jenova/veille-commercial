@@ -1,0 +1,94 @@
+<h2>C — Dashboard Urgences : où le placer ?</h2>
+<p class="subtitle">Les marchés GO avec deadline imminente doivent être visibles rapidement. Où ?</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup" style="font-size:0.75rem">
+        <div class="mockup-header">🔍 Veille Marchés — app.py</div>
+        <div class="mockup-body" style="padding:8px;min-height:150px">
+          <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:8px;margin-bottom:8px">
+            <div style="font-weight:600;color:#cc2222;font-size:0.72rem;margin-bottom:5px">⏰ Urgences délais — 2 marchés GO à traiter</div>
+            <div style="display:flex;gap:6px">
+              <div style="flex:1;background:#fff;border:1px solid #fecaca;border-radius:4px;padding:5px;font-size:0.65rem">
+                <strong>CMSI CHU Mayotte</strong><br>
+                <span style="color:#cc2222;font-weight:600">🔴 7 jours</span> · score 82
+              </div>
+              <div style="flex:1;background:#fff;border:1px solid #fde68a;border-radius:4px;padding:5px;font-size:0.65rem">
+                <strong>SSI Mairie St-Denis</strong><br>
+                <span style="color:#f59e0b;font-weight:600">🟡 12 jours</span> · score 75
+              </div>
+            </div>
+          </div>
+          <div style="background:#f3f4f6;border-radius:4px;padding:5px;font-size:0.65rem;color:#6b7280">🔍 Recherche…</div>
+          <div style="margin-top:5px;background:#f3f4f6;border-radius:4px;padding:5px;font-size:0.65rem;color:#6b7280">[Liste des marchés…]</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Widget en haut de la page principale</h3>
+      <p>Bandeau rouge discret au-dessus de la liste, visible dès l'ouverture de l'app. Masqué automatiquement si aucune urgence.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup" style="font-size:0.75rem">
+        <div class="mockup-header">⏰ Urgences — pages/urgences.py</div>
+        <div class="mockup-body" style="padding:8px;min-height:150px">
+          <div style="font-size:0.8rem;font-weight:700;margin-bottom:6px">⏰ Urgences délais</div>
+          <div style="display:flex;gap:6px;margin-bottom:6px">
+            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:6px;flex:1;font-size:0.65rem">
+              <div style="font-weight:600;color:#cc2222">🔴 &lt; 7 jours (2)</div>
+              <div style="margin-top:4px;background:#fff;border-radius:4px;padding:4px">CMSI CHU Mayotte · 7j · 82pts</div>
+              <div style="margin-top:3px;background:#fff;border-radius:4px;padding:4px">SSI Bâtiment B · 5j · 71pts</div>
+            </div>
+            <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:6px;flex:1;font-size:0.65rem">
+              <div style="font-weight:600;color:#f59e0b">🟡 7–15 jours (1)</div>
+              <div style="margin-top:4px;background:#fff;border-radius:4px;padding:4px">SSI Mairie St-Denis · 12j · 75pts</div>
+            </div>
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:6px;flex:1;font-size:0.65rem">
+              <div style="font-weight:600;color:#16a34a">🟢 15–30 jours (3)</div>
+              <div style="margin-top:4px;background:#fff;border-radius:4px;padding:4px">Vidéo Port Réunion · 18j</div>
+              <div style="margin-top:3px;background:#fff;border-radius:4px;padding:4px">+ 2 autres…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Page dédiée avec 3 niveaux d'urgence</h3>
+      <p>Page séparée dans le menu. 3 colonnes : &lt;7j (rouge), 7–15j (orange), 15–30j (vert). Vue complète et structurée.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup" style="font-size:0.75rem">
+        <div class="mockup-header">🔍 Veille Marchés — app.py</div>
+        <div class="mockup-body" style="display:flex;min-height:150px">
+          <div style="width:100px;background:#f9fafb;border-right:1px solid #e5e7eb;padding:6px;font-size:0.62rem">
+            <div style="font-weight:600;margin-bottom:4px">Filtres</div>
+            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:4px;margin-bottom:4px">
+              <div style="font-weight:600;color:#cc2222;font-size:0.6rem">⏰ Urgences</div>
+              <div style="color:#6b7280;font-size:0.58rem">CMSI CHU · 7j</div>
+              <div style="color:#6b7280;font-size:0.58rem">SSI Mairie · 12j</div>
+            </div>
+            <div style="color:#6b7280">Territoire…</div>
+            <div style="color:#6b7280">Domaine…</div>
+          </div>
+          <div style="flex:1;padding:6px;font-size:0.65rem">
+            <div style="background:#f3f4f6;border-radius:4px;padding:5px;margin-bottom:5px;color:#6b7280">🔍 Recherche…</div>
+            <div style="color:#6b7280">[Liste des marchés…]</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Section dans la sidebar existante</h3>
+      <p>Bloc "Urgences" en haut de la sidebar de filtres. Compact, toujours visible sans changer de page.</p>
+    </div>
+  </div>
+
+</div>
