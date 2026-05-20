@@ -50,7 +50,7 @@ def fetch_worldbank_projects(years_back: int = 3) -> int:
                 "format": "json",
                 "countrycode": code,
                 "rows": 100,
-                "fl": "id,project_name,countryname,status,closingdate,sector1,sector2,sector3,sector4,sector5",
+                "fl": "id,project_name,countryname,status,closingdate,approvaldate,boardapprovaldate,sector1,sector2,sector3,sector4,sector5",
             }
 
             try:

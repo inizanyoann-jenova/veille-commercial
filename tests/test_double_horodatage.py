@@ -47,7 +47,8 @@ def test_afd_build_tender_uses_real_publication_date():
     assert t.publication_date is not None
     assert t.publication_date.year == 2024   # real source date, not today
     assert t.date_extraction is not None
-    assert t.date_extraction.year == 2026    # collected today
+    from datetime import datetime as _now_dt
+    assert t.date_extraction.year == _now_dt.utcnow().year    # collected today
 
 
 def test_afd_build_tender_date_extraction_is_naive():
