@@ -12,6 +12,7 @@ class Tender(Base):
     description      = Column(String)
     source           = Column(String)
     publication_date = Column(DateTime)
+    date_extraction  = Column(DateTime)   # timestamp when our script collected this
     deadline         = Column(DateTime)
     status           = Column(String, default="À qualifier")
     relevance_score  = Column(Integer, default=0)
@@ -34,6 +35,7 @@ class Tender(Base):
         Index("idx_tender_deadline",        "deadline"),
         Index("idx_tender_publication",     "publication_date"),
         Index("idx_tender_score_blacklist", "relevance_score", "is_blacklisted"),
+        Index("idx_tender_extraction",      "date_extraction"),
     )
 
 

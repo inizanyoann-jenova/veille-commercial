@@ -19,6 +19,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Whitelist de migrations autorisées — (table, col_name, col_def)
 _MIGRATIONS: list[tuple[str, str, str]] = [
+    ("tenders", "date_extraction",        "DATETIME DEFAULT NULL"),
     ("tenders", "secteur",               "VARCHAR"),
     ("tenders", "type_opportunite",      "VARCHAR DEFAULT 'Marché Public'"),
     ("tenders", "amount",                "INTEGER"),

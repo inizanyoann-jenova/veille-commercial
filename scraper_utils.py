@@ -132,3 +132,11 @@ def insert_if_new(db, tender_obj, seen_ids: set[str]) -> bool:
     seen_ids.add(tender_obj.id)
     db.add(tender_obj)
     return True
+
+
+from datetime import timezone as _tz_utc
+
+
+def now_utc() -> datetime:
+    """Returns current UTC datetime without timezone info (SQLite-compatible)."""
+    return datetime.now(_tz_utc.utc).replace(tzinfo=None)
