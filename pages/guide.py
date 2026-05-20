@@ -139,21 +139,38 @@ st.markdown("---")
 # ── 1. Présentation ───────────────────────────────────────────────────────────
 st.header("1. Qu'est-ce que cette application ?")
 st.markdown("""
-Cette application est un **outil de veille automatique des marchés publics** pour les
-commerciaux de DEF Océan Indien.
+Cette application est un **outil de veille automatique des marchés publics** conçu spécifiquement
+pour les commerciaux de **DEF Océan Indien**.
 
-Elle surveille en continu les appels d'offres publiés sur **La Réunion (974)** et
-**Mayotte (976)** dans les domaines :
+### Ce qu'elle fait concrètement
 
-| Domaine | Exemples |
-|---------|---------|
-| 🔥 SSI / CMSI | Systèmes de sécurité incendie, centrales, désenfumage |
-| 🔍 Détection incendie | Alarmes, détecteurs, déclencheurs manuels |
-| 📷 Vidéosurveillance | CCTV, caméras IP/PTZ, NVR, VMS |
+Chaque jour, elle parcourt automatiquement **17 sources** (plateformes officielles, agrégateurs,
+sites privés, banques de développement) et collecte tous les appels d'offres publiés sur
+**La Réunion (974)** et **Mayotte (976)** — sans que vous ayez à vous connecter manuellement à chacune.
+
+Elle filtre ensuite les résultats selon les **4 domaines métier de DEF OI** :
+
+| Domaine | Exemples de marchés ciblés |
+|---------|---------------------------|
+| 🔥 SSI / CMSI | Systèmes de sécurité incendie, centrales de détection, désenfumage |
+| 🔍 Détection incendie | Alarmes, détecteurs optiques, déclencheurs manuels, sprinklers |
+| 📷 Vidéosurveillance | CCTV, caméras IP/PTZ, NVR, VMS, PC sécurité |
 | ⚡ Courants faibles | Contrôle d'accès, interphonie, GTB, anti-intrusion |
 
-L'IA (Claude d'Anthropic) analyse chaque opportunité et lui attribue un **score de pertinence**
-(0–100) basé sur le contenu du marché, la zone géographique et le type de prestation.
+### Ce qu'elle produit
+
+- Un **score de pertinence (0–100)** pour chaque appel d'offres, calculé automatiquement
+- Un **résumé en langage naturel** expliquant pourquoi le marché est (ou non) dans le périmètre DEF OI
+- Une **fiche commerciale** complète avec domaine technique, budget estimé, type de travaux, lots identifiés
+- Un **pipeline commercial** suivi statut par statut : À qualifier → En cours → Soumis → Gagné/Perdu
+- Un **rapport Direction** exportable (Excel et PDF) pour les réunions commerciales
+- Un **digest email quotidien** envoyé chaque matin avec les nouvelles opportunités
+
+### Ce qu'elle remplace
+
+Sans cet outil, un commercial devrait ouvrir manuellement 17 sites chaque matin, copier-coller
+les marchés pertinents dans un tableur, et évaluer lui-même la pertinence de chacun.
+Avec l'outil, cette veille quotidienne prend moins de **5 minutes** au lieu de 1 à 2 heures.
 """)
 
 # ── 2. Tableau de bord ────────────────────────────────────────────────────────
@@ -196,22 +213,74 @@ Si la clé API Claude n'est pas configurée, seul le moteur local (30 %) est uti
 
 # ── 3. Configurer la clé API Claude ──────────────────────────────────────────
 st.markdown("---")
-st.header("3. Configurer la clé API Claude (étape obligatoire)")
-st.info("**Sans cette clé, l'analyse IA ne fonctionne pas.** La collecte et le filtrage de base restent disponibles, mais le score sera calculé uniquement par les règles locales.", icon="⚠️")
+st.header("3. Clé API Claude — avantages et configuration")
+st.info("**Sans cette clé, l'analyse IA ne fonctionne pas.** La collecte et le filtrage de base restent disponibles, mais le score sera calculé uniquement par les règles locales (30 % de précision).", icon="⚠️")
 
 st.markdown("""
+### Pourquoi activer la clé API IA ?
+
+L'application intègre deux moteurs d'analyse qui travaillent en parallèle :
+
+| | Sans clé API | Avec clé API |
+|--|--|--|
+| **Précision du score** | 30 % (règles locales) | 100 % (70 % IA + 30 % règles) |
+| **Compréhension du texte** | Mots-clés exacts uniquement | Compréhension sémantique complète |
+| **Marchés détectés** | Les plus évidents | Y compris les marchés formulés indirectement |
+| **Justification** | Aucune | 3 phrases expliquant le score en français |
+| **Analyse structurée** | Non disponible | Budget estimé, lots, type de travaux, recommandation |
+| **Historique acheteur** | Non disponible | Analyse automatique des marchés passés |
+| **Coût** | Gratuit | Environ **0,50 € à 2 € / mois** selon le volume |
+
+**En résumé :** sans clé API, l'outil collecte et filtre mais ne "comprend" pas les marchés.
+Avec la clé, chaque appel d'offres est lu et analysé comme le ferait un ingénieur expérimenté.
+
+---
+
+### Compatibilité — quelle clé utiliser ?
+
+> ⚠️ **Important :** cette application utilise exclusivement l'IA **Claude d'Anthropic**.
+> Les clés OpenAI (ChatGPT), Google Gemini ou autres ne sont **pas compatibles**.
+> Vous devez impérativement utiliser une clé qui commence par `sk-ant-api03-…`
+
+---
+
+### Où acheter des crédits API Anthropic ?
+
+Toutes les offres sont sur la plateforme officielle Anthropic. Voici les liens directs :
+
+| Lien | Description |
+|------|-------------|
+| 🔑 [console.anthropic.com](https://console.anthropic.com) | Console principale — créer un compte, gérer les clés |
+| 💳 [console.anthropic.com/settings/billing](https://console.anthropic.com/settings/billing) | Ajouter des crédits (carte bancaire) |
+| 💰 [anthropic.com/pricing](https://www.anthropic.com/pricing) | Tarifs officiels par modèle |
+| 📘 [docs.anthropic.com](https://docs.anthropic.com) | Documentation et limites d'utilisation |
+| 🏢 [anthropic.com/api](https://www.anthropic.com/api) | Offres entreprise et API overview |
+
+**Tarif indicatif pour cette application :**
+L'outil utilise le modèle *Claude Haiku* (le plus économique d'Anthropic) pour les analyses courantes.
+Pour une utilisation typique (50 à 150 marchés analysés par mois), comptez **moins de 1 € / mois**.
+Un rechargement de **5 $ (≈ 4,60 €)** couvre généralement plusieurs mois d'utilisation.
+
+---
+
 ### Étape 1 — Créer un compte Anthropic
 Rendez-vous sur **[console.anthropic.com](https://console.anthropic.com)** et créez un compte
 avec l'adresse email de DEF OI (ou connectez-vous si vous avez déjà un compte).
 
-### Étape 2 — Créer une clé API
+### Étape 2 — Ajouter des crédits (si compte nouveau)
+1. Cliquez **Settings** → **Billing**
+2. Cliquez **Add credits**
+3. Entrez un montant (5 $ minimum recommandé pour démarrer)
+4. Payez par carte bancaire — les crédits sont disponibles immédiatement
+
+### Étape 3 — Créer une clé API
 1. Dans le menu de gauche, cliquez **API Keys**
 2. Cliquez **Create Key**
 3. Nommez-la (ex : *DEF OI Veille Marchés*)
 4. **Copiez la clé immédiatement** — elle commence par `sk-ant-api03-…`
    > ⚠️ La clé n'est affichée **qu'une seule fois**. Si vous la perdez, il faudra en créer une nouvelle.
 
-### Étape 3 — Saisir la clé dans l'application
+### Étape 4 — Saisir la clé dans l'application
 Deux méthodes équivalentes :
 
 **Méthode A — Directement dans l'interface (recommandée)**

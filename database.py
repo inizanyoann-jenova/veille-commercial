@@ -74,6 +74,8 @@ def init_db():
         for sql in [
             "ALTER TABLE tenders ADD COLUMN llm_structured JSON DEFAULT NULL",
             "ALTER TABLE tenders ADD COLUMN adaptive_score INTEGER DEFAULT NULL",
+            # Toutes les sources automatiques sont désormais validées par défaut
+            "UPDATE sources SET is_validated = 1 WHERE is_manual = 0 AND is_validated = 0",
             """CREATE TABLE IF NOT EXISTS score_weights (
                 keyword TEXT PRIMARY KEY,
                 weight_go REAL DEFAULT 0.0,
