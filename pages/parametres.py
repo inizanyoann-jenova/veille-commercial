@@ -19,7 +19,7 @@ st.title("⚙️ Paramètres")
 
 # ── Section sources à collecter ───────────────────────────────────────────────
 st.header("⚡ Sources à collecter")
-st.caption("Activez ou désactivez les sources prises en compte lors du lancement de la collecte.")
+st.caption("Toutes les sources sont actives par défaut. Désactivez celles que vous ne souhaitez pas collecter.")
 
 _db_src_p = _SL_src()
 try:
@@ -28,32 +28,62 @@ finally:
     _db_src_p.close()
 
 _CAT_ICONS = {"Public": "📋 Public", "Privé": "🏗️ Privé", "International": "🌍 International"}
+
+
+def _render_source_row(s):
+    if s.is_manual:
+        _col_toggle, _col_label, _col_open = st.columns([1, 7, 2])
+    else:
+        _col_toggle, _col_label = st.columns([1, 9])
+    with _col_toggle:
+        new_enabled = st.toggle(
+            "Activée",
+            value=bool(s.enabled),
+            key=f"src_enabled_{s.id}",
+            label_visibility="collapsed",
+        )
+    with _col_label:
+        if s.is_manual:
+            st.markdown(f"📋 **{s.name}**")
+        else:
+            _icon = "✅" if s.is_validated else "⚠️"
+            st.markdown(f"{_icon} **{s.name}**")
+    if s.is_manual:
+        with _col_open:
+            st.link_button("🔗 Ouvrir", url=s.url)
+    if new_enabled != bool(s.enabled):
+        _db_tog = _SL_src()
+        try:
+            _toggle_enabled(_db_tog, s.id)
+        finally:
+            _db_tog.close()
+        _action = "activée" if new_enabled else "désactivée"
+        st.toast(f"Source '{s.name}' {_action} ✓")
+        st.rerun()
+
+
 for _cat in ["Public", "Privé", "International"]:
     _cat_src = [s for s in _all_sources_p if s.category == _cat]
     if not _cat_src:
         continue
     st.subheader(_CAT_ICONS[_cat])
-    for _s in _cat_src:
-        _col_toggle, _col_label = st.columns([1, 9])
-        with _col_toggle:
-            _new_enabled = st.toggle(
-                "Activée",
-                value=bool(_s.enabled),
-                key=f"src_enabled_{_s.id}",
-                label_visibility="collapsed",
-            )
-        with _col_label:
-            _status_icon = "✅" if _s.is_validated else ("📋" if _s.is_manual else "⚠️")
-            st.markdown(f"{_status_icon} **{_s.name}**")
-        if _new_enabled != bool(_s.enabled):
-            _db_tog = _SL_src()
-            try:
-                _toggle_enabled(_db_tog, _s.id)
-            finally:
-                _db_tog.close()
-            _action = "activée" if _new_enabled else "désactivée"
-            st.toast(f"Source '{_s.name}' {_action} ✓")
-            st.rerun()  # obligatoire — _s est stale après toggle
+
+    _auto_src = [s for s in _cat_src if not s.is_manual]
+    _manual_src = [s for s in _cat_src if s.is_manual]
+
+    if _auto_src:
+        st.markdown("**🤖 Automatiques**")
+        st.caption("Collecte déclenchée via le pipeline — aucune action requise")
+        for _s in _auto_src:
+            _render_source_row(_s)
+
+    if _manual_src:
+        if _auto_src:
+            st.markdown("")
+        st.markdown("**👆 Manuelles** *(consultation guidée)*")
+        st.caption("À consulter manuellement — cliquez Ouvrir pour accéder au site")
+        for _s in _manual_src:
+            _render_source_row(_s)
 
 st.markdown("---")
 
@@ -76,12 +106,27 @@ with st.expander(
     st.markdown("""
 **Comment obtenir votre clé API ?**
 
-1. Ouvrez [console.anthropic.com](https://console.anthropic.com) dans votre navigateur
-2. Connectez-vous avec le compte DEF OI (ou créez un compte si besoin)
-3. Dans le menu de gauche, cliquez **API Keys**
-4. Cliquez **Create Key**, donnez-lui un nom (ex : "DEF OI Veille")
-5. Copiez la clé affichée — elle commence par `sk-ant-api03-…`
-   ⚠️ Cette clé n'est affichée **qu'une seule fois** — copiez-la immédiatement
+> ⚠️ **Cette application utilise exclusivement Claude d'Anthropic.**
+> Les clés OpenAI, Google ou autres ne sont pas compatibles.
+> La clé doit commencer par `sk-ant-api03-…`
+
+**Liens pour acheter des crédits et créer une clé :**
+
+| | |
+|--|--|
+| 🔑 Créer un compte / se connecter | [console.anthropic.com](https://console.anthropic.com) |
+| 💳 Ajouter des crédits (carte bancaire) | [console.anthropic.com/settings/billing](https://console.anthropic.com/settings/billing) |
+| 💰 Tarifs officiels | [anthropic.com/pricing](https://www.anthropic.com/pricing) |
+| 🏢 Offres entreprise | [anthropic.com/api](https://www.anthropic.com/api) |
+
+**Coût estimé :** moins de 1 €/mois pour 50–150 marchés analysés (modèle Haiku utilisé).
+Un rechargement de 5 $ couvre généralement plusieurs mois d'utilisation.
+
+**Procédure :**
+1. Connectez-vous sur [console.anthropic.com](https://console.anthropic.com)
+2. Menu **Settings → Billing** → **Add credits** (minimum 5 $)
+3. Menu **API Keys** → **Create Key** → nommez-la (ex : "DEF OI Veille")
+4. Copiez la clé immédiatement — elle n'est **affichée qu'une seule fois**
 
 Collez-la ci-dessous puis cliquez **Enregistrer**.
 """)
@@ -308,7 +353,7 @@ for site_key, (site_label, category) in _SITE_LABELS.items():
 # ── Section sources automatiques (HTTP ping) ──────────────────────────────────
 st.markdown("---")
 st.header("📡 Sources automatiques")
-st.caption("Un test HTTP vérifie que chaque source est accessible. Valider une source la fait apparaître dans la sidebar de collecte.")
+st.caption("Test de joignabilité HTTP de chaque source. Indicatif uniquement — le statut de validation n'empêche plus la collecte.")
 
 _db_auto = _SL_cred()
 try:
