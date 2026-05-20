@@ -90,7 +90,8 @@ def test_run_all_health_checks_returns_dict():
     mock_resp.text = '{"results": []}'
     mock_resp.json.return_value = {"results": []}
 
-    with patch("health_check.requests.get", return_value=mock_resp):
+    with patch("health_check.requests.get", return_value=mock_resp), \
+         patch("health_check.requests.post", return_value=mock_resp):
         results = run_all_health_checks()
 
     assert isinstance(results, dict)

@@ -509,6 +509,8 @@ def _get_health_status() -> dict:
     _db = SessionLocal()
     try:
         _hc.persist_health_results(_db, results)
+    except Exception:
+        _log.warning("persist_health_results: échec de la persistance", exc_info=True)
     finally:
         _db.close()
     return {name: {"ok": r.ok, "error": r.error} for name, r in results.items()}
@@ -537,6 +539,8 @@ if "auto_analyzed" not in st.session_state:
     _threading.Thread(target=_trigger_structured_analysis, daemon=True).start()
     st.session_state["auto_analyzed"] = True
 st.session_state.setdefault("new_tender_ids", set())
+
+_show_health_alerts()
 
 
 @st.cache_data(ttl=300)
@@ -1248,8 +1252,6 @@ st.markdown("""
   <div class="page-header-badge">Marchés Publics &amp; Privés</div>
 </div>
 """, unsafe_allow_html=True)
-
-_show_health_alerts()
 
 # Export button — génère le rapport uniquement sur clic (pas au chargement de page)
 _, col_btn, _ = st.columns([1, 2, 1])

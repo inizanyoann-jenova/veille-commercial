@@ -105,7 +105,7 @@ def check_source(
     """Vérifie une source : HTTP 200 + marqueur structurel."""
     try:
         if method == "post":
-            resp = requests.post(url, json=body or {}, timeout=TIMEOUT, headers=_HEADERS)
+            resp = requests.post(url, json=body or {}, timeout=TIMEOUT, headers=_HEADERS, allow_redirects=True)
         else:
             resp = requests.get(url, timeout=TIMEOUT, headers=_HEADERS, allow_redirects=True)
 
