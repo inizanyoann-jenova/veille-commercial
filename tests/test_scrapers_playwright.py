@@ -229,3 +229,58 @@ def test_fetch_isdb_skips_irrelevant():
                         from scraper_isdb import fetch_isdb_tenders
                         result = fetch_isdb_tenders()
     assert result == 0
+
+
+# ── SEMADER Réunion ───────────────────────────────────────────────────────────
+
+def test_fetch_semader_empty_page():
+    Session = _db_session()
+    mock_pw, _ = _mock_pw_context()
+    with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
+        with patch("scraper_semader.extract_cards", return_value=[]):
+            with patch("scraper_semader.paginate", return_value=False):
+                with patch("scraper_semader.SessionLocal", Session):
+                    with patch("scraper_semader.init_db"):
+                        from scraper_semader import fetch_semader_tenders
+                        result = fetch_semader_tenders()
+    assert result == 0
+
+
+def test_fetch_semader_inserts_relevant():
+    Session = _db_session()
+    mock_pw, _ = _mock_pw_context()
+    with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
+        with patch("scraper_semader.extract_cards", return_value=[{
+            "title": "Réhabilitation immeuble résidentiel — vidéosurveillance CCTV",
+            "description": "Programme logement social SEMADER Réunion",
+            "url": "https://www.semader.re/appels-d-offres/42",
+            "date": "20/05/2026",
+        }]):
+            with patch("scraper_semader.paginate", return_value=False):
+                with patch("scraper_semader.SessionLocal", Session):
+                    with patch("scraper_semader.init_db"):
+                        from scraper_semader import fetch_semader_tenders
+                        result = fetch_semader_tenders()
+    db = Session()
+    tenders = db.query(Tender).all()
+    db.close()
+    assert result == 1
+    assert len(tenders) == 1
+
+
+def test_fetch_semader_skips_irrelevant():
+    Session = _db_session()
+    mock_pw, _ = _mock_pw_context()
+    with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
+        with patch("scraper_semader.extract_cards", return_value=[{
+            "title": "Entretien espaces verts jardinage",
+            "description": "Taille de haies et tonte",
+            "url": "https://www.semader.re/appels-d-offres/10",
+            "date": "",
+        }]):
+            with patch("scraper_semader.paginate", return_value=False):
+                with patch("scraper_semader.SessionLocal", Session):
+                    with patch("scraper_semader.init_db"):
+                        from scraper_semader import fetch_semader_tenders
+                        result = fetch_semader_tenders()
+    assert result == 0
