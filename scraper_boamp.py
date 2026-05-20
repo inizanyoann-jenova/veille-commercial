@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import os
 from datetime import datetime, timedelta
 
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
@@ -27,13 +28,57 @@ _KEYWORD_FILTER = (
     " OR objet like '%CCTV%'"
     " OR objet like '%courants faibles%'"
 )
+_CONSTRUCTION_FILTER = (
+    "objet like '%construction%'"
+    " OR objet like '%chantier%'"
+    " OR objet like '%travaux%'"
+    " OR objet like '%réhabilitation%'"
+    " OR objet like '%rehabilitation%'"
+    " OR objet like '%rénovation%'"
+    " OR objet like '%renovation%'"
+    " OR objet like '%extension%'"
+    " OR objet like '%restructuration%'"
+    " OR objet like '%aménagement%'"
+    " OR objet like '%amenagement%'"
+)
+_ERP_FILTER = (
+    "objet like '%hôpital%'"
+    " OR objet like '%hopital%'"
+    " OR objet like '%clinique%'"
+    " OR objet like '%ehpad%'"
+    " OR objet like '%hôtel%'"
+    " OR objet like '%hotel%'"
+    " OR objet like '%école%'"
+    " OR objet like '%ecole%'"
+    " OR objet like '%lycée%'"
+    " OR objet like '%lycee%'"
+    " OR objet like '%collège%'"
+    " OR objet like '%college%'"
+    " OR objet like '%université%'"
+    " OR objet like '%universite%'"
+    " OR objet like '%centre commercial%'"
+    " OR objet like '%gymnase%'"
+    " OR objet like '%stade%'"
+    " OR objet like '%mairie%'"
+    " OR objet like '%tribunal%'"
+    " OR objet like '%aéroport%'"
+    " OR objet like '%aeroport%'"
+    " OR objet like '%gare%'"
+)
+_PUBLIC_SEARCH_FILTER = f"({_KEYWORD_FILTER}) OR (({_CONSTRUCTION_FILTER}) AND ({_ERP_FILTER}))"
 
 
-def fetch_boamp_tenders(departments: list[str] | None = None, years_back: int = 2) -> int:
+def fetch_boamp_tenders(departments: list[str] | None = None, years_back: int | None = None) -> int:
     if departments is None:
         departments = ["974", "976"]
 
-    date_min = (datetime.now() - timedelta(days=365 * years_back)).strftime("%Y-%m-%d")
+    # years_back conservé pour compatibilité ; sinon fenêtre glissante via env
+    if years_back is not None:
+        days_back = years_back * 365
+    else:
+        days_back = int(os.getenv("SCRAPER_WINDOW_DAYS", "90"))
+
+    date_min = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
 
     init_db()
     db = SessionLocal()
@@ -52,7 +97,7 @@ def fetch_boamp_tenders(departments: list[str] | None = None, years_back: int = 
                 params = {
                     "where": (
                         f"code_departement_prestation='{dept}'"
-                        f" AND ({_KEYWORD_FILTER})"
+                        f" AND ({_PUBLIC_SEARCH_FILTER})"
                         f" AND dateparution >= '{date_min}'"
                     ),
                     "limit":    limit,
