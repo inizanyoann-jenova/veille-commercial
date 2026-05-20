@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import os
 from datetime import datetime, timedelta
 
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
@@ -25,11 +26,66 @@ _KEYWORD_FILTER = (
     ' OR search(objetmarche, "CCTV")'
     ' OR search(objetmarche, "courants faibles")'
 )
+# Codes CPV SSI dans le dataset DECP Augmenté (champ "codecpv")
+# search() est utilisé car le champ peut contenir un libellé (ex: "45312100 - Alarme incendie") ;
+# si trop de faux positifs, basculer sur une égalité directe : codecpv = "45312100" OR ...
+# Si l'API retourne un 400, vérifier le nom du champ : GET .../records?limit=1&select=codecpv
+_CPV_FILTER = (
+    'search(codecpv, "45312100")'
+    ' OR search(codecpv, "35111300")'
+    ' OR search(codecpv, "50610000")'
+    ' OR search(codecpv, "45312200")'
+    ' OR search(codecpv, "42961000")'
+    ' OR search(codecpv, "35111000")'
+)
+_CONSTRUCTION_FILTER = (
+    'search(objetmarche, "construction")'
+    ' OR search(objetmarche, "chantier")'
+    ' OR search(objetmarche, "travaux")'
+    ' OR search(objetmarche, "réhabilitation")'
+    ' OR search(objetmarche, "rehabilitation")'
+    ' OR search(objetmarche, "rénovation")'
+    ' OR search(objetmarche, "renovation")'
+    ' OR search(objetmarche, "extension")'
+    ' OR search(objetmarche, "restructuration")'
+    ' OR search(objetmarche, "aménagement")'
+    ' OR search(objetmarche, "amenagement")'
+)
+_ERP_FILTER = (
+    'search(objetmarche, "hôpital")'
+    ' OR search(objetmarche, "hopital")'
+    ' OR search(objetmarche, "clinique")'
+    ' OR search(objetmarche, "ehpad")'
+    ' OR search(objetmarche, "hôtel")'
+    ' OR search(objetmarche, "hotel")'
+    ' OR search(objetmarche, "école")'
+    ' OR search(objetmarche, "ecole")'
+    ' OR search(objetmarche, "lycée")'
+    ' OR search(objetmarche, "lycee")'
+    ' OR search(objetmarche, "collège")'
+    ' OR search(objetmarche, "college")'
+    ' OR search(objetmarche, "université")'
+    ' OR search(objetmarche, "universite")'
+    ' OR search(objetmarche, "centre commercial")'
+    ' OR search(objetmarche, "gymnase")'
+    ' OR search(objetmarche, "stade")'
+    ' OR search(objetmarche, "mairie")'
+    ' OR search(objetmarche, "tribunal")'
+    ' OR search(objetmarche, "aéroport")'
+    ' OR search(objetmarche, "aeroport")'
+    ' OR search(objetmarche, "gare")'
+)
+_PUBLIC_SEARCH_FILTER = (
+    f"({_KEYWORD_FILTER}) OR ({_CPV_FILTER})"
+    f" OR (({_CONSTRUCTION_FILTER}) AND ({_ERP_FILTER}))"
+)
 
 
-def fetch_decp_tenders(years_back: int = 3) -> int:
-    date_min = (datetime.now() - timedelta(days=365 * years_back)).strftime("%Y-%m-%d")
-    where    = f"({_DEPT_FILTER}) AND ({_KEYWORD_FILTER}) AND (datenotification >= \"{date_min}\")"
+def fetch_decp_tenders(days_back: int | None = None) -> int:
+    if days_back is None:
+        days_back = int(os.getenv("SCRAPER_WINDOW_DAYS", "90"))
+    date_min = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    where    = f"({_DEPT_FILTER}) AND ({_PUBLIC_SEARCH_FILTER}) AND (datenotification >= \"{date_min}\")"
 
     init_db()
     db       = SessionLocal()
@@ -42,7 +98,7 @@ def fetch_decp_tenders(years_back: int = 3) -> int:
         limit  = 100
 
         while True:
-            params = {"where": where, "limit": limit, "offset": offset, "order_by": "datenotification DESC"}
+            params   = {"where": where, "limit": limit, "offset": offset, "order_by": "datenotification DESC"}
             response = retry_get(DECP_API, params=params, rate_delay=1.0)
             records  = response.json().get("results", [])
             if not records:

@@ -1,5 +1,7 @@
 import hashlib
 import logging
+import os
+from datetime import datetime, timedelta
 
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from filters import classify_relevance
@@ -8,19 +10,42 @@ from scraper_utils import parse_date, retry_post, load_existing_ids, insert_if_n
 
 _log = logging.getLogger(__name__)
 
-TED_API_URL = "https://api.ted.europa.eu/v3/notices/search"
+TED_API_URL = "https://ted.europa.eu/api/v3.0/notices/search"
 
 _METIERS = (
     "FT~SSI OR FT~CMSI OR FT~incendie OR FT~desenfumage"
     " OR FT~videosurveillance OR FT~camera OR FT~CCTV"
 )
+_CONSTRUCTION = (
+    "FT~construction OR FT~chantier OR FT~travaux OR FT~rehabilitation"
+    " OR FT~renovation OR FT~extension OR FT~restructuration OR FT~amenagement"
+)
+_ERP = (
+    "FT~hopital OR FT~clinique OR FT~ehpad OR FT~hotel OR FT~ecole"
+    " OR FT~lycee OR FT~college OR FT~universite OR FT~gymnase"
+    " OR FT~stade OR FT~mairie OR FT~tribunal OR FT~aeroport OR FT~gare"
+)
+# Codes CPV SSI : alarme incendie, matériel incendie, maintenance sécu,
+# anti-intrusion, contrôle d'accès, prévention incendie
+_CPV = (
+    "PC~45312100 OR PC~35111300 OR PC~50610000"
+    " OR PC~45312200 OR PC~42961000 OR PC~35111000"
+)
+_IMPLICITE_ERP = f"(({_CONSTRUCTION}) AND ({_ERP}))"
+_PUBLIC_SEARCH = f"({_METIERS}) OR ({_IMPLICITE_ERP}) OR ({_CPV})"
+
+# Variantes géographiques Mayotte — villes et gentilé pour meilleure couverture TED
+_MAYOTTE_GEO = (
+    "FT~Mayotte OR FT~Mahorais OR FT~Mamoudzou"
+    " OR FT~Kaweni OR FT~Dzaoudzi OR FT~Koungou OR FT~Bandraboua"
+)
 
 QUERIES = {
-    "La Réunion": f"FT~974 AND ({_METIERS})",
-    "Mayotte":    f"FT~Mayotte AND ({_METIERS})",
-    "Madagascar": f"FT~Madagascar AND ({_METIERS})",
-    "Maurice":    f"FT~Mauritius AND ({_METIERS})",
-    "Comores":    f"FT~Comoros AND ({_METIERS})",
+    "La Réunion": f"FT~974 AND ({_PUBLIC_SEARCH})",
+    "Mayotte":    f"({_MAYOTTE_GEO}) AND ({_PUBLIC_SEARCH})",
+    "Madagascar": f"FT~Madagascar AND ({_PUBLIC_SEARCH})",
+    "Maurice":    f"FT~Mauritius AND ({_PUBLIC_SEARCH})",
+    "Comores":    f"FT~Comoros AND ({_PUBLIC_SEARCH})",
 }
 
 _FIELDS = ["notice-title", "publication-number", "deadline-receipt-tender-date-lot", "description-glo"]
@@ -37,15 +62,17 @@ def _extract_fr(field_value) -> str:
     return str(field_value)
 
 
-def _fetch_query(db, query: str, existing_ids: set) -> int:
+def _fetch_query(db, query: str, existing_ids: set, date_from: str) -> int:
     inserted = 0
     page     = 1
     limit    = 100
 
+    # Filtre date glissante — évite de re-scraper l'historique à chaque run
+    full_query = f"({query}) AND PD>={date_from}"
     while True:
-        payload = {"query": query, "fields": _FIELDS, "page": page, "limit": limit}
-        r       = retry_post(TED_API_URL, json=payload, rate_delay=1.5)
-        notices = r.json().get("notices", [])
+        payload    = {"query": full_query, "fields": _FIELDS, "page": page, "limit": limit}
+        r          = retry_post(TED_API_URL, json=payload, rate_delay=1.5)
+        notices    = r.json().get("notices", [])
         if not notices:
             break
 
@@ -94,13 +121,16 @@ def fetch_ted_tenders(zones: list[str] | None = None) -> int:
     total = 0
     _run_id = start_scraper_run(db, "TED Europe")
 
+    window_days = int(os.getenv("SCRAPER_WINDOW_DAYS", "90"))
+    date_from   = (datetime.now() - timedelta(days=window_days)).strftime("%Y%m%d")  # TED PD>= exige YYYYMMDD sans tirets
+
     selected = {k: v for k, v in QUERIES.items() if zones is None or k in zones}
 
     try:
         existing_ids = load_existing_ids(db)
         for zone, query in selected.items():
             _log.info("TED : collecte zone '%s'", zone)
-            total += _fetch_query(db, query, existing_ids)
+            total += _fetch_query(db, query, existing_ids, date_from)
         if total:
             db.commit()
         finish_scraper_run(db, _run_id, nb_found=total, nb_new=total)
