@@ -1158,9 +1158,11 @@ with st.sidebar:
     if st.button("⚡ Lancer la collecte", use_container_width=True, type="primary"):
         _collect_all_enabled_sources()
 
+    _render_collection_status_sidebar()
+
     _col_results = st.session_state.get("collection_results", {})
     if _col_results:
-        st.markdown("**Résultats — filtrer par source :**")
+        st.markdown("**Filtrer par source :**")
         for _src_name, _nb_new in sorted(_col_results.items()):
             st.checkbox(
                 f"{_src_name} ({_nb_new})",
