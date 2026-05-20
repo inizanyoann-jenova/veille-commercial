@@ -86,3 +86,72 @@ def test_fetch_ungm_returns_zero_on_empty_html():
                     from scraper_ungm import fetch_ungm_tenders
                     result = fetch_ungm_tenders()
     assert result == 0
+
+
+# ── Tests scraper_devbanks — UNDP / ADB ───────────────────────────────────────
+
+def test_fetch_devbanks_undp_inserted():
+    """Un flux UNDP avec une entrée OI/construction doit être inséré."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from models import Base, Tender
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+
+    mock_entry = MagicMock()
+    mock_entry.get.side_effect = lambda k, default="": {
+        "title": "UNDP Procurement — Construction hospital Madagascar",
+        "summary": "Construction of new hospital infrastructure in madagascar health",
+        "link": "https://procurement-notices.undp.org/view_notice.cfm?notice_id=99999",
+    }.get(k, default)
+    mock_entry.published = None
+    mock_entry.updated = None
+
+    mock_feed = MagicMock()
+    mock_feed.entries = [mock_entry]
+
+    import feedparser
+    with patch("feedparser.parse", return_value=mock_feed):
+        with patch("scraper_devbanks.SessionLocal", Session):
+            with patch("scraper_devbanks.init_db"):
+                from scraper_devbanks import fetch_devbanks
+                result = fetch_devbanks()
+
+    db = Session()
+    tenders = db.query(Tender).all()
+    db.close()
+    assert result >= 1
+    assert any("UNDP" in t.title or "madagascar" in t.title.lower() for t in tenders)
+
+
+def test_fetch_devbanks_irrelevant_skipped():
+    """Une entrée sans lien OI/secteur ne doit pas être insérée."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from models import Base, Tender
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+
+    mock_entry = MagicMock()
+    mock_entry.get.side_effect = lambda k, default="": {
+        "title": "Project in Germany — Software Development",
+        "summary": "IT consulting project in Berlin",
+        "link": "https://www.adb.org/projects/12345",
+    }.get(k, default)
+    mock_entry.published = None
+    mock_entry.updated = None
+
+    mock_feed = MagicMock()
+    mock_feed.entries = [mock_entry]
+
+    with patch("feedparser.parse", return_value=mock_feed):
+        with patch("scraper_devbanks.SessionLocal", Session):
+            with patch("scraper_devbanks.init_db"):
+                from scraper_devbanks import fetch_devbanks
+                result = fetch_devbanks()
+
+    assert result == 0

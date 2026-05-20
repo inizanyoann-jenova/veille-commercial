@@ -25,6 +25,8 @@ FLUX_DEVBANKS = [
     ("Madagascar", "JICA Madagascar", "https://www.jica.go.jp/madagascar/en/activities/rss.xml"),
     ("Maurice",    "JICA Maurice",    "https://www.jica.go.jp/mauritius/en/activities/rss.xml"),
     ("Zone IO", "KfW Dev Bank",       "https://www.kfw-entwicklungsbank.de/rss/news.xml"),
+    ("Zone IO", "UNDP Procurement",   "https://procurement-notices.undp.org/rss_notices.cfm"),
+    ("Zone IO", "ADB — Projets",      "https://www.adb.org/rss/projects.xml"),
 ]
 
 PAYS_IO = [
