@@ -121,7 +121,10 @@ export default function TendersTable({
                 <tr
                   key={t.id}
                   onClick={() => onRowClick?.(t.id)}
-                  className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer"
+                  className={`border-b border-gray-50 hover:bg-gray-50 transition-colors${onRowClick ? ' cursor-pointer' : ''}`}
+                  role={onRowClick ? 'button' : undefined}
+                  tabIndex={onRowClick ? 0 : undefined}
+                  onKeyDown={onRowClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') onRowClick(t.id) } : undefined}
                 >
                   <td className="px-4 py-3 font-medium text-gray-900 max-w-xs truncate">
                     {t.title}

@@ -152,4 +152,22 @@ describe('TendersTable', () => {
     fireEvent.click(screen.getByText('Marché SSI Réunion'))
     expect(onRowClick).toHaveBeenCalledWith('1')
   })
+
+  it('n\'affiche pas cursor-pointer si onRowClick absent', () => {
+    useTenders.mockReturnValue({ data: MOCK_TENDERS, isLoading: false, isError: false })
+    const { container } = render(<TendersTable {...DEFAULT_PROPS} />)
+    const rows = container.querySelectorAll('tbody tr')
+    rows.forEach((row) => {
+      expect(row.className).not.toContain('cursor-pointer')
+    })
+  })
+
+  it('active la ligne avec la touche Enter quand onRowClick fourni', () => {
+    useTenders.mockReturnValue({ data: MOCK_TENDERS, isLoading: false, isError: false })
+    const onRowClick = vi.fn()
+    render(<TendersTable {...DEFAULT_PROPS} onRowClick={onRowClick} />)
+    const firstRow = screen.getAllByRole('button')[0]
+    fireEvent.keyDown(firstRow, { key: 'Enter' })
+    expect(onRowClick).toHaveBeenCalledWith('1')
+  })
 })
