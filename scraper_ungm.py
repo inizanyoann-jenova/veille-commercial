@@ -55,9 +55,11 @@ def fetch_ungm_tenders() -> int:
 
     try:
         existing_ids = load_existing_ids(db)
+        nb_found     = 0
 
         for keyword in _UNGM_KEYWORDS:
             notices = _search_ungm(keyword)
+            nb_found += len(notices)
 
             for notice in notices:
                 title = (notice.get("Title") or notice.get("title")
@@ -103,8 +105,8 @@ def fetch_ungm_tenders() -> int:
 
         if inserted:
             db.commit()
-        finish_scraper_run(db, _run_id, nb_found=inserted, nb_new=inserted)
-        _log.info("UNGM : %d inséré(s)", inserted)
+        finish_scraper_run(db, _run_id, nb_found=nb_found, nb_new=inserted)
+        _log.info("UNGM : %d trouvés, %d inséré(s)", nb_found, inserted)
     except Exception as exc:
         _log.exception("UNGM : erreur collecte")
         finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
