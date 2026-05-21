@@ -1470,30 +1470,30 @@ def _render_collection_status_sidebar() -> None:
 
     llm_status = st.session_state.get("llm_analysis_status")
     if llm_status:
-        provider_label = llm_status["provider"].capitalize()
+        provider_label = (llm_status.get("provider") or "inconnu").capitalize()
         st.markdown("---")
         st.markdown(
             f"<div style='font-size:0.72rem;font-weight:700;color:#a78bfa;"
             f"text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;'>"
-            f"Analyse IA — {provider_label}</div>",
+            f"Analyse IA — {_html.escape(provider_label)}</div>",
             unsafe_allow_html=True,
         )
-        if llm_status["error"]:
+        if llm_status.get("retry_after", -1) >= 0:
+            _mins = max(1, llm_status["retry_after"] // 60)
+            st.warning(f"⚠️ Quota atteint — réessayez dans ~{_mins} min.")
+        elif (llm_status.get("error") or "").strip():
             st.markdown(
                 f"<div style='background:#1a0a1a;border:1px solid rgba(248,113,113,.3);"
                 f"border-radius:6px;padding:6px 8px;'>"
                 f"<span style='color:#f87171;font-size:0.8rem;'>"
-                f"✗ {_html.escape(llm_status['error'][:120])}</span>"
+                f"✗ {_html.escape((llm_status['error'] or '')[:120])}</span>"
                 f"</div>",
                 unsafe_allow_html=True,
             )
-        elif llm_status["retry_after"] >= 0:
-            _mins = max(1, llm_status["retry_after"] // 60)
-            st.warning(f"⚠️ Quota atteint — réessayez dans ~{_mins} min.")
         else:
-            _c1, _c2 = st.columns(2)
-            _c1.metric("✅ Analysés", llm_status["nb_done"])
-            _c2.metric("❌ Échecs", llm_status["nb_failed"])
+            c1, c2 = st.columns(2)
+            c1.metric("✅ Analysés", max(0, llm_status.get("nb_done", 0)))
+            c2.metric("❌ Échecs", max(0, llm_status.get("nb_failed", 0)))
 
 with st.sidebar:
     st.markdown("## 🔥 DEF Océan Indien")
