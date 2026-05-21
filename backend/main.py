@@ -9,9 +9,11 @@ import importlib
 import logging
 import os
 import sys
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -182,25 +184,52 @@ def _tender_to_dict(t: Tender) -> dict:
     }
 
 
-# ── Application ───────────────────────────────────────────────────────────────
+# ── Scheduler jobs ───────────────────────────────────────────────────────────
 
-app = FastAPI(
-    title="DEF OI — Veille Marchés API",
-    description="API REST pour la veille marchés DEF Océan Indien",
-    version="1.0.0",
-)
+def _send_daily_digest() -> None:
+    """Job APScheduler — envoi digest email quotidien."""
+    try:
+        from email_digest import send_digest as _sd
+        required = ["DIGEST_SMTP_HOST", "DIGEST_SMTP_PORT", "DIGEST_TO"]
+        missing = [p for p in required if not os.getenv(p)]
+        if missing:
+            _log.error("Digest email: paramètres SMTP manquants: %s", missing)
+            return
+        cfg = {
+            "host": os.getenv("DIGEST_SMTP_HOST"),
+            "port": int(os.getenv("DIGEST_SMTP_PORT", "587")),
+            "user": os.getenv("DIGEST_SMTP_USER"),
+            "password": os.getenv("DIGEST_SMTP_PASSWORD"),
+            "to": os.getenv("DIGEST_TO"),
+        }
+        _sd(cfg)
+        _log.info("Digest quotidien envoyé")
+    except Exception as exc:
+        _log.error("Échec envoi digest email : %s", exc, exc_info=True)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
+def _weekly_adaptive_scores() -> None:
+    """Job APScheduler — recalcul hebdomadaire des scores adaptatifs."""
+    try:
+        from score_adaptive import recompute_adaptive_scores as _r
+        _r()
+        _log.info("Scores adaptatifs recalculés")
+    except Exception as exc:
+        _log.error("Échec recalcul scores adaptatifs : %s", exc, exc_info=True)
 
 
-@app.on_event("startup")
-def _on_startup():
+def _weekly_source_ping() -> None:
+    """Job APScheduler — ping hebdomadaire des sources."""
+    try:
+        from source_registry import _run_weekly_ping as _rwp
+        _rwp()
+    except Exception as exc:
+        _log.error("Échec weekly_ping : %s", exc, exc_info=True)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ── Startup ───────────────────────────────────────────────────────────
     init_db()
     db = SessionLocal()
     try:
@@ -211,6 +240,45 @@ def _on_startup():
         _log.warning("clean_obsolete_data échoué au démarrage", exc_info=True)
     finally:
         db.close()
+
+    scheduler = BackgroundScheduler(
+        job_defaults={"max_instances": 1, "coalesce": True}
+    )
+    scheduler.add_job(_weekly_source_ping, "interval", weeks=1, id="weekly_ping")
+    scheduler.add_job(
+        _weekly_adaptive_scores, "interval", weeks=1, id="weekly_adaptive_scores"
+    )
+    digest_hour = int(os.getenv("DIGEST_HOUR", "7"))
+    if os.getenv("DIGEST_SMTP_HOST") and os.getenv("DIGEST_TO"):
+        scheduler.add_job(
+            _send_daily_digest, "cron", hour=digest_hour, minute=0, id="daily_digest"
+        )
+    scheduler.start()
+    _log.info("Scheduler APScheduler démarré (%d jobs)", len(scheduler.get_jobs()))
+
+    yield  # ── Application en cours ──────────────────────────────────────
+
+    # ── Shutdown ──────────────────────────────────────────────────────────
+    scheduler.shutdown(wait=False)
+    _log.info("Scheduler APScheduler arrêté")
+
+
+# ── Application ───────────────────────────────────────────────────────────────
+
+app = FastAPI(
+    title="DEF OI — Veille Marchés API",
+    description="API REST pour la veille marchés DEF Océan Indien",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # ── Schémas Pydantic ──────────────────────────────────────────────────────────
