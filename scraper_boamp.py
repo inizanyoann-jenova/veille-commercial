@@ -65,7 +65,7 @@ _ERP_FILTER = (
     " OR objet like '%aeroport%'"
     " OR objet like '%gare%'"
 )
-_PUBLIC_SEARCH_FILTER = f"({_KEYWORD_FILTER}) OR (({_CONSTRUCTION_FILTER}) AND ({_ERP_FILTER}))"
+_PUBLIC_SEARCH_FILTER = f"({_KEYWORD_FILTER}) OR ({_CONSTRUCTION_FILTER})"
 
 
 def fetch_boamp_tenders(departments: list[str] | None = None, years_back: int | None = None) -> int:
