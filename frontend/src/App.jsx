@@ -1,6 +1,6 @@
 import { Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout'
-import Pipeline from './pages/Pipeline'
+import Dashboard from './pages/Dashboard'
 import Analytics from './pages/Analytics'
 import Direction from './pages/Direction'
 import Urgences from './pages/Urgences'
@@ -11,7 +11,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Layout />}>
-        <Route index element={<Pipeline />} />
+        <Route index element={<Dashboard />} />
         <Route path="analytics" element={<Analytics />} />
         <Route path="direction" element={<Direction />} />
         <Route path="urgences" element={<Urgences />} />
