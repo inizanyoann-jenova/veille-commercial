@@ -9,7 +9,7 @@ import importlib
 import logging
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
@@ -147,7 +147,7 @@ def _tender_to_dict(t: Tender) -> dict:
     score = a.get("score_pertinence", t.relevance_score or 0)
     domaine = _detect_domaine(t.title or "", t.description or "")
     territoire = _detect_territoire(t.title or "", t.description or "")
-    jours_restants = (t.deadline - datetime.utcnow()).days if t.deadline else None
+    jours_restants = (t.deadline - datetime.now(timezone.utc).replace(tzinfo=None)).days if t.deadline else None
     fiche_data = _compute_fiche_data(
         score, jours_restants, domaine, territoire,
         bool(t.is_maintenance), t.title or "", a
