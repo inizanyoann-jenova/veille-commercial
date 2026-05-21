@@ -1,4 +1,5 @@
 import hashlib
+import html
 import json
 import logging
 import os
@@ -277,180 +278,253 @@ def _local_analyze(text: str) -> dict:
     return result.copy()
 
 
-def _local_analyze_impl(text: str) -> dict:
+def _count_keyword_matches(text: str, keyword_list: list) -> int:
+    """Compte le nombre de correspondances pour une liste de mots-clés."""
     t = f" {text.lower()} "
+    return sum(1 for kw in keyword_list if _match(kw, t))
 
-    # --- Type de marché ---
-    score_maint = sum(1 for kw in _KW_MAINTENANCE if _match(kw, t))
-    score_trav = sum(1 for kw in _KW_TRAVAUX if _match(kw, t))
+def _calculate_market_type(text: str) -> str:
+    """Détermine le type de marché (Maintenance, Travaux, Inconnu)."""
+    score_maint = _count_keyword_matches(text, _KW_MAINTENANCE)
+    score_trav = _count_keyword_matches(text, _KW_TRAVAUX)
+
     if score_maint > score_trav:
-        type_marche = "Maintenance"
+        return "Maintenance"
     elif score_trav > 0:
-        type_marche = "Travaux"
+        return "Travaux"
     else:
-        type_marche = "Inconnu"
+        return "Inconnu"
 
-    # --- Marques concurrentes ---
+def _find_competitor_brands(text: str) -> list:
+    """Identifie les marques concurrentes mentionnées dans le texte."""
+    t = f" {text.lower()} "
     marques = [m for m in _MARQUES_TOUTES if re.search(r'\b' + re.escape(m) + r'\b', t)]
-    marques = list(dict.fromkeys(marques))
+    return list(dict.fromkeys(marques))
 
-    # --- Risques / pénalités ---
+def _detect_penalties(text: str) -> str | None:
+    """Détecte les clauses de pénalités dans le texte."""
+    t = f" {text.lower()} "
     penalites_trouvees = [kw for kw in _KW_PENALITES if kw in t]
+
     if penalites_trouvees:
         match = re.search(
             r'(pénalité|penalite|retenue)[^.]{0,80}(\d[\d\s]*[€%])',
             text, re.IGNORECASE
         )
-        risques = (f"Pénalités détectées : {match.group(0)[:120]}" if match
-                   else f"Clauses de pénalités/garantie ({', '.join(penalites_trouvees[:3])})")
-    else:
-        risques = None
+        return (f"Pénalités détectées : {match.group(0)[:120]}" if match
+                else f"Clauses de pénalités/garantie ({', '.join(penalites_trouvees[:3])})")
+    return None
 
-    # --- Comptage des signaux métier ---
-    nb_ssi  = sum(1 for kw in _KW_SSI if _match(kw, t))
-    nb_cmsi = sum(1 for kw in _KW_CMSI if _match(kw, t))
-    nb_vid  = sum(1 for kw in _KW_VIDEO if _match(kw, t))
-    nb_cf   = sum(1 for kw in _KW_COURANTS_FAIBLES if _match(kw, t))
-    nb_qhse = sum(1 for kw in _KW_QHSE if _match(kw, t))
-    nb_erp  = sum(1 for kw in _KW_ERP if _match(kw, t))
-    nb_excl = sum(1 for kw in _KW_EXCLUSION if _match(kw, t))
+def _calculate_technical_scores(text: str) -> dict:
+    """Calcule les scores techniques pour chaque domaine."""
+    return {
+        'ssi': _count_keyword_matches(text, _KW_SSI),
+        'cmsi': _count_keyword_matches(text, _KW_CMSI),
+        'vid': _count_keyword_matches(text, _KW_VIDEO),
+        'cf': _count_keyword_matches(text, _KW_COURANTS_FAIBLES),
+        'qhse': _count_keyword_matches(text, _KW_QHSE),
+        'erp': _count_keyword_matches(text, _KW_ERP),
+        'excl': _count_keyword_matches(text, _KW_EXCLUSION)
+    }
 
-    # Signal technique global (pour la pénalité d'exclusion)
-    signal_technique = nb_ssi + nb_cmsi + nb_vid + nb_cf
+def _calculate_technical_signal(scores: dict) -> int:
+    """Calcule le signal technique global."""
+    return scores['ssi'] + scores['cmsi'] + scores['vid'] + scores['cf']
 
-    # --- Score de pertinence DEF ---
+def _calculate_relevance_score(scores: dict, technical_signal: int, market_type: str, brands: list, text: str) -> int:
+    """Calcule le score de pertinence DEF OI."""
     score = 0
 
     # Bloc technique (0–55) : SSI/CMSI primaires, Vidéo/CF secondaires
-    if nb_ssi >= 3:        score += 55
-    elif nb_ssi == 2:      score += 50
-    elif nb_ssi == 1:      score += 40
-    if nb_cmsi >= 2:       score += 30   # CMSI signal primaire (si SSI absent)
-    elif nb_cmsi == 1:     score += 20   # CMSI signal primaire (si SSI absent)
-    if nb_vid >= 2:        score += 35
-    elif nb_vid == 1:      score += 28
-    if nb_cf >= 1:         score += 20
-    if nb_qhse >= 1:       score += 10
+    if scores['ssi'] >= 3:        score += 55
+    elif scores['ssi'] == 2:      score += 50
+    elif scores['ssi'] == 1:      score += 40
+    if scores['cmsi'] >= 2:       score += 30   # CMSI signal primaire (si SSI absent)
+    elif scores['cmsi'] == 1:     score += 20   # CMSI signal primaire (si SSI absent)
+    if scores['vid'] >= 2:        score += 35
+    elif scores['vid'] == 1:      score += 28
+    if scores['cf'] >= 1:         score += 20
+    if scores['qhse'] >= 1:       score += 10
     score = min(score, 55)  # plafond technique
 
     # Bloc géographique (0–30)
-    if any(_match(kw, t) for kw in _KW_TERRITOIRE_REUNION):  score += 30
-    elif any(_match(kw, t) for kw in _KW_TERRITOIRE_MAYOTTE): score += 28
-    elif any(_match(kw, t) for kw in _KW_TERRITOIRE_IO):      score += 15
+    t_lower = f" {text.lower()} "
+    if any(_match(kw, t_lower) for kw in _KW_TERRITOIRE_REUNION):  score += 30
+    elif any(_match(kw, t_lower) for kw in _KW_TERRITOIRE_MAYOTTE): score += 28
+    elif any(_match(kw, t_lower) for kw in _KW_TERRITOIRE_IO):      score += 15
 
     # Bonus ERP (0–10) : bâtiment à obligation réglementaire SSI
-    if nb_erp > 0 and signal_technique > 0:
-        score += min(nb_erp * 4, 10)
+    if scores['erp'] > 0 and technical_signal > 0:
+        score += min(scores['erp'] * 4, 10)
 
     # Bonus maintenance (0–10)
-    if type_marche == "Maintenance":
+    if market_type == "Maintenance":
         score += 10
 
     # Bonus marques concurrentes citées = DCE détaillé (0–5)
-    if marques:
-        score += min(len(marques) * 2, 5)
-
-    score = min(score, 100)
+    if brands:
+        score += min(len(brands) * 2, 5)
 
     # Pénalité exclusion : si signaux hors périmètre ET signal technique faible
-    if nb_excl > 0 and signal_technique < 2:
-        malus = min(nb_excl * 12, 30)
+    if scores['excl'] > 0 and technical_signal < 2:
+        malus = min(scores['excl'] * 12, 30)
         score = max(5, score - malus)
 
-    # --- Domaines concernés ---
-    domaines = []
-    if nb_ssi > 0:   domaines.append("SSI")
-    if nb_cmsi > 0:  domaines.append("CMSI")
-    if nb_vid > 0:   domaines.append("Vidéosurveillance")
-    if nb_cf > 0:    domaines.append("Courants faibles")
-    if nb_qhse > 0:  domaines.append("QHSE")
-    if nb_erp > 0:   domaines.append("ERP")
-    if type_marche == "Maintenance": domaines.append("Maintenance")
+    return min(score, 100)
 
-    # --- Territoire local ---
+def _determine_territory(text: str) -> str:
+    """Détermine le territoire local."""
+    t = f" {text.lower()} "
     if any(_match(kw, t) for kw in _KW_TERRITOIRE_REUNION):
-        territoire_ia = "La Réunion"
+        return "La Réunion"
     elif any(_match(kw, t) for kw in _KW_TERRITOIRE_MAYOTTE):
-        territoire_ia = "Mayotte"
+        return "Mayotte"
     elif any(_match(kw, t) for kw in _KW_TERRITOIRE_IO):
-        territoire_ia = "Océan Indien"
+        return "Océan Indien"
     else:
-        territoire_ia = "Non précisé"
+        return "Non précisé"
 
-    # --- Justification enrichie DEF OI ---
+def _generate_technical_justification(scores: dict, technical_signal: int) -> list:
+    """Génère la justification technique."""
     parts = []
 
-    # Pertinence technique
-    if nb_ssi >= 3:
-        parts.append(f"Marché SSI fortement qualifié ({nb_ssi} références techniques détectées : centrale, détecteurs, déclencheurs, alarme) — cœur de métier DEF OI, offre à préparer")
-    elif nb_ssi == 2:
-        parts.append(f"Marché SSI bien identifié ({nb_ssi} indices techniques) — cœur de métier DEF OI")
-    elif nb_ssi == 1:
+    # SSI
+    if scores['ssi'] >= 3:
+        parts.append(f"Marché SSI fortement qualifié ({scores['ssi']} références techniques détectées : centrale, détecteurs, déclencheurs, alarme) — cœur de métier DEF OI, offre à préparer")
+    elif scores['ssi'] == 2:
+        parts.append(f"Marché SSI bien identifié ({scores['ssi']} indices techniques) — cœur de métier DEF OI")
+    elif scores['ssi'] == 1:
         parts.append("Signal SSI/incendie présent — cœur de métier DEF OI, vérifier la profondeur dans le CCTP")
-    if nb_cmsi >= 2:
-        parts.append(f"CMSI/désenfumage clairement qualifié ({nb_cmsi} références) — compétence rare, peu de concurrents locaux qualifiés")
-    elif nb_cmsi == 1:
+
+    # CMSI
+    if scores['cmsi'] >= 2:
+        parts.append(f"CMSI/désenfumage clairement qualifié ({scores['cmsi']} références) — compétence rare, peu de concurrents locaux qualifiés")
+    elif scores['cmsi'] == 1:
         parts.append("CMSI/désenfumage mentionné — spécialité DEF OI, avantage concurrentiel local")
-    if nb_vid >= 2:
-        parts.append(f"Vidéosurveillance bien identifiée ({nb_vid} références : caméras IP, NVR, VMS) — dans le portefeuille DEF OI")
-    elif nb_vid == 1:
+
+    # Vidéo
+    if scores['vid'] >= 2:
+        parts.append(f"Vidéosurveillance bien identifiée ({scores['vid']} références : caméras IP, NVR, VMS) — dans le portefeuille DEF OI")
+    elif scores['vid'] == 1:
         parts.append("Composante vidéosurveillance détectée — expertise DEF OI, souvent couplée au SSI sur les ERP")
-    if nb_cf >= 1:
-        parts.append(f"Courants faibles ({nb_cf} signal(s) : contrôle d'accès, interphonie, GTB) — prestation complémentaire du portefeuille DEF OI")
-    if nb_qhse >= 1:
+
+    # Courants faibles
+    if scores['cf'] >= 1:
+        parts.append(f"Courants faibles ({scores['cf']} signal(s) : contrôle d'accès, interphonie, GTB) — prestation complémentaire du portefeuille DEF OI")
+
+    # QHSE
+    if scores['qhse'] >= 1:
         parts.append("Signal QHSE/réglementaire incendie — opportunité d'accompagnement ERP (audit, formation, mise en conformité)")
-    if nb_erp > 0 and signal_technique > 0:
-        parts.append(f"Type de bâtiment ERP détecté ({nb_erp} indice(s)) — obligation réglementaire SSI catégorie A/B ; DEF OI a l'expertise et les certifications requises")
-    elif nb_erp > 0 and signal_technique == 0:
+
+    # ERP
+    if scores['erp'] > 0 and technical_signal > 0:
+        parts.append(f"Type de bâtiment ERP détecté ({scores['erp']} indice(s)) — obligation réglementaire SSI catégorie A/B ; DEF OI a l'expertise et les certifications requises")
+    elif scores['erp'] > 0 and technical_signal == 0:
         parts.append(f"Bâtiment ERP détecté mais aucun domaine technique DEF OI explicite — potentiel SSI latent, vérifier le CCTP")
-    if signal_technique == 0 and nb_erp == 0:
+
+    if technical_signal == 0 and scores['erp'] == 0:
         parts.append("Aucun domaine métier DEF OI (SSI/CMSI/Vidéo/Courants faibles) ni bâtiment ERP détecté dans le texte — pertinence technique faible")
 
-    # Pénalités d'exclusion signalées
-    if nb_excl > 0 and signal_technique < 2:
+    return parts
+
+def _generate_exclusion_justification(scores: dict, technical_signal: int, text: str) -> list:
+    """Génère la justification pour les pénalités d'exclusion."""
+    parts = []
+    if scores['excl'] > 0 and technical_signal < 2:
+        t = f" {text.lower()} "
         excl_hits = [kw for kw in _KW_EXCLUSION if _match(kw, t)][:3]
         parts.append(f"Signaux hors périmètre DEF OI détectés ({', '.join(excl_hits)}) — risque de confusion avec gardiennage/génie civil/électricité générale ; score pénalisé")
+    return parts
 
-    # Géographie
-    if territoire_ia == "La Réunion":
+def _generate_geographical_justification(territory: str) -> list:
+    """Génère la justification géographique."""
+    parts = []
+    if territory == "La Réunion":
         parts.append("La Réunion (974) : territoire principal DEF OI — présence locale, réseau établi, connaissance des donneurs d'ordre publics, avantage décisif sur les concurrents métropolitains")
-    elif territoire_ia == "Mayotte":
+    elif territory == "Mayotte":
         parts.append("Mayotte (976) : territoire principal DEF OI — marché peu concurrentiel, DEF OI parmi les rares opérateurs locaux qualifiés SSI/CMSI")
-    elif territoire_ia == "Océan Indien":
+    elif territory == "Océan Indien":
         parts.append("Zone Océan Indien : axe de développement stratégique DEF OI — peu de concurrents locaux certifiés, opportunité de positionnement régional")
     else:
         parts.append("Territoire non localisé dans la zone Océan Indien — réduire la priorité ; confirmer le lien géographique avant d'engager des ressources")
+    return parts
 
-    # Type de prestation
-    if type_marche == "Maintenance":
+def _generate_market_type_justification(market_type: str) -> list:
+    """Génère la justification pour le type de marché."""
+    parts = []
+    if market_type == "Maintenance":
         parts.append("Contrat de maintenance = CA récurrent et prévisible, taux de marge élevé, fidélisation client sur plusieurs années")
-    elif type_marche == "Travaux":
+    elif market_type == "Travaux":
         parts.append("Marché travaux (installation/rénovation) = revenus ponctuels mais ouvre la porte à un contrat de maintenance annuel si DEF OI remporte")
+    return parts
 
-    # Marques concurrentes
-    if marques:
-        parts.append(f"Marques citées dans le DCE : {', '.join(marques[:4])} — étudier la compatibilité technique ou la possibilité de substitution agréée")
+def _generate_brands_justification(brands: list) -> list:
+    """Génère la justification pour les marques concurrentes."""
+    parts = []
+    if brands:
+        parts.append(f"Marques citées dans le DCE : {', '.join(brands[:4])} — étudier la compatibilité technique ou la possibilité de substitution agréée")
+    return parts
 
-    justification = ". ".join(parts) + "."
+def _local_analyze_impl(text: str) -> dict:
+    """Analyse locale optimisée du texte pour déterminer la pertinence DEF OI."""
+    # Calculs initiaux
+    market_type = _calculate_market_type(text)
+    brands = _find_competitor_brands(text)
+    penalties = _detect_penalties(text)
+    technical_scores = _calculate_technical_scores(text)
+    technical_signal = _calculate_technical_signal(technical_scores)
+    relevance_score = _calculate_relevance_score(technical_scores, technical_signal, market_type, brands, text)
+    territory = _determine_territory(text)
 
+    # Génération des justifications
+    justification_parts = []
+
+    # Justification technique
+    justification_parts.extend(_generate_technical_justification(technical_scores, technical_signal))
+
+    # Justification d'exclusion
+    justification_parts.extend(_generate_exclusion_justification(technical_scores, technical_signal, text))
+
+    # Justification géographique
+    justification_parts.extend(_generate_geographical_justification(territory))
+
+    # Justification type de marché
+    justification_parts.extend(_generate_market_type_justification(market_type))
+
+    # Justification marques
+    justification_parts.extend(_generate_brands_justification(brands))
+
+    # Construction du résultat
     return {
-        "type_marche": type_marche,
-        "marques_concurrentes_citees": marques,
-        "risques_penalites": risques,
-        "score_pertinence": score,
-        "tag_pertinence": _score_to_tag(score),
-        "domaines_concernes": domaines,
-        "territoire_ia": territoire_ia,
-        "justification_score": justification,
+        "type_marche": market_type,
+        "marques_concurrentes_citees": brands,
+        "risques_penalites": penalties,
+        "score_pertinence": relevance_score,
+        "tag_pertinence": _score_to_tag(relevance_score),
+        "domaines_concernes": _build_domains_list(technical_scores, market_type),
+        "territoire_ia": territory,
+        "justification_score": ". ".join(justification_parts) + ".",
         "_source": "local",
         # compteurs bruts — utilisés dans _render_strategic_analysis
-        "_nb_ssi": nb_ssi,
-        "_nb_cmsi": nb_cmsi,
-        "_nb_vid": nb_vid,
-        "_nb_cf": nb_cf,
-        "_nb_erp": nb_erp,
-        "_nb_excl": nb_excl,
+        "_nb_ssi": technical_scores['ssi'],
+        "_nb_cmsi": technical_scores['cmsi'],
+        "_nb_vid": technical_scores['vid'],
+        "_nb_cf": technical_scores['cf'],
+        "_nb_erp": technical_scores['erp'],
+        "_nb_excl": technical_scores['excl'],
     }
+
+def _build_domains_list(scores: dict, market_type: str) -> list:
+    """Construire la liste des domaines concernés."""
+    domaines = []
+    if scores['ssi'] > 0:   domaines.append("SSI")
+    if scores['cmsi'] > 0:  domaines.append("CMSI")
+    if scores['vid'] > 0:   domaines.append("Vidéosurveillance")
+    if scores['cf'] > 0:    domaines.append("Courants faibles")
+    if scores['qhse'] > 0:  domaines.append("QHSE")
+    if scores['erp'] > 0:   domaines.append("ERP")
+    if market_type == "Maintenance": domaines.append("Maintenance")
+    return domaines
 
 
 # ---------------------------------------------------------------------------
@@ -559,7 +633,7 @@ def _get_mistral_client():
         return None
     if _mistral_client is None:
         try:
-            from mistralai import Mistral
+            from mistralai.client import Mistral
             _mistral_client = Mistral(api_key=api_key)
         except Exception:
             return None
@@ -634,8 +708,8 @@ def _claude_analyze(text: str) -> dict | None:
         import anthropic
         response = client.messages.create(
             model="claude-opus-4-7",
-            max_tokens=8192,
-            thinking={"type": "enabled", "budget_tokens": 6000},
+            max_tokens=16000,
+            thinking={"type": "enabled", "budget_tokens": 10000},
             system=[
                 {
                     "type": "text",
@@ -690,27 +764,94 @@ def _claude_analyze(text: str) -> dict | None:
 # Récupération du contenu DCE depuis l'URL source (pages publiques uniquement)
 # ---------------------------------------------------------------------------
 
-_SKIP_DCE_DOMAINS = (
-    "marchessecurises", "instao", "tendersgo", "aws-achat",
-    "achatpublic", "boamp.fr",  # BOAMP retourne du JS dynamique peu utile
-)
+# Whitelist de domaines autorisés pour fetch_dce_content
+_ALLOWED_DCE_DOMAINS = {
+    "boamp.fr", "marchessecurises.com", "tendersgo.com",
+    "instao.com", "aws-achat.com", "achatpublic.com",
+    "marcheonline.fr", "marchespublicsinfo.fr"
+}
 
+# Domains à ignorer (retournent du contenu non utile ou dynamique)
+_SKIP_DCE_DOMAINS = {
+    "marchessecurises.com", "instao.com", "tendersgo.com", "aws-achat.com",
+    "achatpublic.com", "boamp.fr"  # BOAMP retourne du JS dynamique peu utile
+}
 
 def fetch_dce_content(url: str) -> str | None:
     """
-    Tente de récupérer le texte brut d'une page DCE publique.
-    Retourne None si l'URL est vide, protégée par auth, ou si la requête échoue.
-    Limite à 6 000 caractères pour rester dans le budget Gemini.
+    Tente de récupérer le texte brut d'une page DCE publique avec validation de sécurité.
+
+    Sécurité :
+    - Validation stricte du format URL et du domaine
+    - Liste blanche de domaines autorisés
+    - Liste noire de domaines à ignorer
+    - Timeout court (8s) pour éviter les blocages
+    - Limite de taille stricte (2MB)
+    - Vérification du Content-Type
+    - Lecture chunk par chunk pour éviter les débordements mémoire
+    - Suppression des scripts et styles pour éviter les attaques XSS
+
+    Retourne None si :
+    - URL invalide ou malformée
+    - Domaine non autorisé ou dans la liste noire
+    - Erreur HTTP (status != 200)
+    - Content-Type non HTML
+    - Taille dépassant 2MB
+    - Exception lors de la requête
+    - Contenu trop court (< 150 caractères)
     """
-    if not url or not url.startswith(("http://", "https://")):
+    if not url or not isinstance(url, str):
+        _log.debug("fetch_dce_content: URL vide ou non-string")
         return None
-    if any(d in url.lower() for d in _SKIP_DCE_DOMAINS):
-        return None
+
+    # Validation du format URL
     try:
-        import html as _html
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        if not all([parsed.scheme, parsed.netloc]):
+            _log.debug("fetch_dce_content: URL malformée (%s)", url)
+            return None
+
+        # Vérifier le schéma HTTP/HTTPS
+        if parsed.scheme not in ("http", "https"):
+            _log.debug("fetch_dce_content: Schéma non supporté (%s)", parsed.scheme)
+            return None
+
+        # Extraire le domaine principal
+        domain = parsed.netloc.lower()
+        if domain.startswith("www."):
+            domain = domain[4:]
+
+        # Vérifier contre la liste noire
+        if domain in _SKIP_DCE_DOMAINS:
+            _log.debug("fetch_dce_content: Domaine dans la liste noire (%s)", domain)
+            return None
+
+        # Vérifier contre la liste blanche (pour les domaines non dans la liste noire)
+        domain_allowed = any(
+            domain == allowed or domain.endswith(f".{allowed}")
+            for allowed in _ALLOWED_DCE_DOMAINS
+        )
+        if not domain_allowed:
+            _log.debug("fetch_dce_content: Domaine non autorisé (%s)", domain)
+            return None
+
+    except Exception as e:
+        _log.warning("fetch_dce_content: Erreur de validation URL (%s): %s", url, str(e))
+        return None
+
+    try:
         import requests as _req
 
         _MAX_DCE_BYTES = 2_000_000  # 2 MB max avant lecture
+        _MAX_URL_LENGTH = 2048     # Limite de longueur pour l'URL
+
+        # Vérifier la longueur de l'URL
+        if len(url) > _MAX_URL_LENGTH:
+            _log.debug("fetch_dce_content: URL trop longue (%d caractères)", len(url))
+            return None
+
+        _log.debug("fetch_dce_content: Récupération de %s", url)
         with _req.get(
             url,
             timeout=8,
@@ -719,15 +860,19 @@ def fetch_dce_content(url: str) -> str | None:
             stream=True,
         ) as resp:
             if resp.status_code != 200:
+                _log.debug("fetch_dce_content: Status HTTP %d pour %s", resp.status_code, url)
                 return None
-            ct = resp.headers.get("content-type", "")
+
+            ct = resp.headers.get("content-type", "").lower()
             if not any(t in ct for t in ("text/html", "text/plain", "application/xhtml")):
                 _log.debug("fetch_dce_content: Content-Type non HTML (%s) — skipped", ct[:60])
                 return None
+
             content_length = int(resp.headers.get("content-length", 0) or 0)
             if content_length > _MAX_DCE_BYTES:
                 _log.debug("fetch_dce_content: Content-Length trop grand (%d bytes) — skipped", content_length)
                 return None
+
             # Lecture chunk par chunk pour respecter la limite même sans Content-Length
             chunks: list[bytes] = []
             size = 0
@@ -737,18 +882,31 @@ def fetch_dce_content(url: str) -> str | None:
                     _log.debug("fetch_dce_content: corps > %d bytes — lecture interrompue", _MAX_DCE_BYTES)
                     return None
                 chunks.append(chunk)
+
             encoding = resp.encoding or "utf-8"
             raw = b"".join(chunks).decode(encoding, errors="replace")
-        # Supprimer scripts et styles
+
+        # Supprimer scripts et styles pour éviter les attaques XSS
         raw = re.sub(
-            r"<(script|style)[^>]*>.*?</\1>", " ", raw,
+            r"<(script|style)[^>]*>.*?</\1>", " ",
+            raw,
             flags=re.IGNORECASE | re.DOTALL,
         )
         text = re.sub(r"<[^>]+>", " ", raw)
-        text = _html.unescape(text)
+        text = html.unescape(text)
         text = re.sub(r"\s+", " ", text).strip()
-        return text[:6000] if len(text) > 150 else None
-    except Exception:
+
+        # Vérifier que le texte extrait est suffisamment long
+        if len(text) <= 150:
+            _log.debug("fetch_dce_content: Contenu trop court (%d caractères)", len(text))
+            return None
+
+        result = text[:6000]
+        _log.debug("fetch_dce_content: Succès - %d caractères extraits", len(result))
+        return result
+
+    except Exception as e:
+        _log.warning("fetch_dce_content: Exception lors de la récupération de %s: %s", url, str(e))
         return None
 
 
@@ -819,7 +977,7 @@ def auto_analyze_claude(
         text = f"{t.title or ''} {t.description or ''}"
         local_result = _local_analyze(text)
 
-        provider = os.getenv("LLM_PROVIDER", "anthropic").strip().lower()
+        provider = os.getenv("LLM_PROVIDER", "mistral").strip().lower()
         try:
             if provider == "mistral":
                 llm_result = _mistral_analyze(text)
@@ -835,8 +993,10 @@ def auto_analyze_claude(
             return nb_done, retry
 
         if llm_result is None:
-            # Erreur non-quota (réseau, JSON invalide…) : on saute ce marché
-            # Délai respecté même en cas d'erreur pour éviter les rafales vers l'API
+            _log.warning(
+                "auto_analyze_claude: marché '%s' — %s a retourné None (clé absente, JSON invalide ou erreur réseau)",
+                (t.title or t.id)[:60], provider,
+            )
             if i < len(pending) - 1:
                 time.sleep(delay)
             continue
@@ -893,7 +1053,7 @@ def analyze_tender(text: str, source_url: str | None = None) -> dict:
 
     local_result = _local_analyze(text)
 
-    provider = os.getenv("LLM_PROVIDER", "anthropic").strip().lower()
+    provider = os.getenv("LLM_PROVIDER", "mistral").strip().lower()
     try:
         if provider == "mistral":
             llm_result = _mistral_analyze(text)
@@ -960,8 +1120,8 @@ def analyze_tender_structured(
     if not description or len(description.strip()) < 50:
         return None
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
+    client = _get_mistral_client()
+    if client is None:
         return None
 
     amount_str = f"{amount:,} €".replace(",", " ") if amount else "Non renseigné"
@@ -972,15 +1132,14 @@ def analyze_tender_structured(
     )
 
     try:
-        import anthropic as _anthropic
-        client = _anthropic.Anthropic(api_key=api_key)
-        msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=512,
-            system=_STRUCTURED_SYSTEM,
-            messages=[{"role": "user", "content": prompt}],
+        response = client.chat.complete(
+            model="mistral-small-latest",
+            messages=[
+                {"role": "system", "content": _STRUCTURED_SYSTEM},
+                {"role": "user", "content": prompt},
+            ],
         )
-        raw = msg.content[0].text.strip()
+        raw = response.choices[0].message.content.strip()
         start = raw.find("{")
         end = raw.rfind("}") + 1
         if start == -1 or end == 0:
