@@ -136,4 +136,12 @@ describe('TendersTable', () => {
     const { container } = render(<TendersTable {...DEFAULT_PROPS} />)
     expect(container.querySelectorAll('.animate-pulse')).toHaveLength(5)
   })
+
+  it('affiche 0 pour un relevance_score nul', () => {
+    const tenderNullScore = { ...MOCK_TENDERS[0], relevance_score: null }
+    useTenders.mockReturnValue({ data: [tenderNullScore], isLoading: false, isError: false })
+    render(<TendersTable {...DEFAULT_PROPS} />)
+    const scores = screen.getAllByText('0')
+    expect(scores.length).toBeGreaterThan(0)
+  })
 })
