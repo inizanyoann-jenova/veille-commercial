@@ -60,10 +60,10 @@ SCORE_GO = 65
 SCORE_ETUDE = 35
 
 DOMAINES: dict[str, list] = {
-    "SSI / Détection incendie": _KW_SSI,
-    "CMSI / Désenfumage": _KW_CMSI,
-    "Vidéosurveillance / CCTV": _KW_VIDEO,
-    "Courants faibles": _KW_COURANTS_FAIBLES,
+    "🔥 SSI / Détection incendie": _KW_SSI,
+    "💨 CMSI / Désenfumage": _KW_CMSI,
+    "📷 Vidéosurveillance / CCTV": _KW_VIDEO,
+    "⚡ Courants faibles": _KW_COURANTS_FAIBLES,
 }
 
 TERRITOIRES: dict[str, list[str]] = {

@@ -50,3 +50,11 @@ def test_fiche_data_has_required_keys():
 def test_jours_restants_is_none_when_no_deadline():
     result = _tender_to_dict(_make_mock_tender())
     assert result['jours_restants'] is None
+
+
+def test_fiche_data_sm_score_for_ssi_tender():
+    t = _make_mock_tender()
+    result = _tender_to_dict(t)
+    assert result['fiche_data']['sm'] == 45, (
+        f"Expected sm=45 for SSI/La Réunion tender, got {result['fiche_data']['sm']}"
+    )
