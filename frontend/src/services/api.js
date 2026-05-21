@@ -85,6 +85,6 @@ export const resetDb = () =>
   api.post('/admin/reset-db').then((r) => r.data)
 
 export const archiveOld = (days = 30) =>
-  api.post(`/admin/archive-old?days=${days}`).then((r) => r.data)
+  api.post('/admin/archive-old', null, { params: { days } }).then((r) => r.data)
 
 export default api
