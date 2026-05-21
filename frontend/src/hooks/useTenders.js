@@ -137,8 +137,8 @@ export const useDeleteTender = () => {
 export const useAnalyzeTender = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: analyzeTender,
-    onSuccess: (_, id) => qc.invalidateQueries({ queryKey: ['tender', id] }),
+    mutationFn: ({ id }) => analyzeTender(id),
+    onSuccess: (_, { id }) => qc.invalidateQueries({ queryKey: ['tender', id] }),
   })
 }
 
