@@ -43,8 +43,11 @@ def fetch_isdb_tenders() -> int:
                         finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
                         return 0
                     page_count = 0
+                    nb_found   = 0
                     while page_count < 5:
-                        for card in extract_cards(page, _CARD, _FIELDS):
+                        cards = extract_cards(page, _CARD, _FIELDS)
+                        nb_found += len(cards)
+                        for card in cards:
                             title = card.get("title", "").strip()
                             desc = card.get("description", "").strip()
                             relevant, extra_tags = classify_relevance(f"{title} {desc}")
@@ -76,8 +79,8 @@ def fetch_isdb_tenders() -> int:
 
         if inserted:
             db.commit()
-        finish_scraper_run(db, _run_id, nb_found=inserted, nb_new=inserted)
-        _log.info("IsDB : %d inséré(s)", inserted)
+        finish_scraper_run(db, _run_id, nb_found=nb_found, nb_new=inserted)
+        _log.info("IsDB : %d trouvés, %d inséré(s)", nb_found, inserted)
     except Exception as exc:
         _log.exception("IsDB : erreur collecte")
         finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
