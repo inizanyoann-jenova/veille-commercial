@@ -2,7 +2,7 @@ import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from unittest.mock import MagicMock
+from unittest.mock import patch, MagicMock
 from main import _tender_to_dict
 
 
@@ -58,3 +58,20 @@ def test_fiche_data_sm_score_for_ssi_tender():
     assert result['fiche_data']['sm'] == 45, (
         f"Expected sm=45 for SSI/La Réunion tender, got {result['fiche_data']['sm']}"
     )
+
+
+def test_lifespan_starts_and_stops_scheduler():
+    """Le scheduler doit démarrer au startup et s'arrêter proprement."""
+    with patch("main.BackgroundScheduler") as mock_cls:
+        mock_scheduler = MagicMock()
+        mock_scheduler.get_jobs.return_value = [MagicMock(), MagicMock()]
+        mock_cls.return_value = mock_scheduler
+
+        from fastapi.testclient import TestClient
+        import main as m
+        with TestClient(m.app) as client:
+            resp = client.get("/api/tenders")
+            assert resp.status_code == 200
+
+        mock_scheduler.start.assert_called_once()
+        mock_scheduler.shutdown.assert_called_once_with(wait=False)
