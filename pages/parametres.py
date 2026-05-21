@@ -2,7 +2,7 @@ import os
 import streamlit as st
 from dotenv import load_dotenv
 from credential_manager import CredentialManager
-from database import init_db
+from database import init_db, reset_tenders_db as _reset_tenders_db
 from database import SessionLocal as _SL_src
 from source_registry import Source as _SrcModel, toggle_enabled as _toggle_enabled
 
@@ -715,3 +715,27 @@ else:
             _nb = _recompute()
         st.success(f"✅ {_nb} marchés mis à jour")
         st.cache_data.clear()
+
+# ── Zone Danger ───────────────────────────────────────────────────────────────
+st.markdown("---")
+st.header("⚠️ Zone Danger")
+st.caption("Ces actions sont irréversibles. La base de données ne peut pas être restaurée après suppression.")
+
+_confirm_reset = st.checkbox(
+    "Je confirme vouloir supprimer tous les marchés et l'historique de collecte",
+    key="confirm_reset_db",
+)
+
+if st.button(
+    "🗑️ Remettre la base à zéro",
+    type="primary",
+    disabled=not _confirm_reset,
+    key="btn_reset_db",
+):
+    _db_reset = _SL_src()
+    try:
+        _nb_deleted = _reset_tenders_db(_db_reset)
+    finally:
+        _db_reset.close()
+    st.success(f"✅ Base remise à zéro — {_nb_deleted} marché(s) supprimé(s).")
+    st.rerun()
