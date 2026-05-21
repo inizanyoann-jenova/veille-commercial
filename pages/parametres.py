@@ -89,99 +89,7 @@ st.markdown("---")
 
 # ── Section Intelligence Artificielle ────────────────────────────────────────
 st.header("🤖 Intelligence Artificielle")
-st.caption("Choisissez le fournisseur IA et configurez votre clé. Une seule clé suffit.")
-
-_current_provider = os.getenv("LLM_PROVIDER", "anthropic").strip().lower()
-_provider_options = ["Anthropic (Claude)", "Mistral"]
-_provider_index = 1 if _current_provider == "mistral" else 0
-
-_selected_provider = st.radio(
-    "Fournisseur IA actif",
-    _provider_options,
-    index=_provider_index,
-    horizontal=True,
-    help="Le fournisseur sélectionné sera utilisé pour toutes les analyses de marchés.",
-)
-
-_new_provider_value = "mistral" if _selected_provider == "Mistral" else "anthropic"
-if _new_provider_value != _current_provider:
-    from dotenv import set_key as _set_key
-    _set_key(".env", "LLM_PROVIDER", _new_provider_value)
-    os.environ["LLM_PROVIDER"] = _new_provider_value
-    st.success(f"Fournisseur basculé vers **{_selected_provider}** ✓")
-    st.rerun()
-
-st.markdown("---")
-
-# ── Sous-section Anthropic ────────────────────────────────────────────────────
-st.subheader("🔵 Anthropic (Claude)")
-st.caption("Modèle utilisé : claude-opus-4-7. Clé commençant par `sk-ant-`.")
-
-current_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
-_key_ok = bool(current_key and not current_key.startswith("sk-ant-...") and len(current_key) > 20)
-
-if _key_ok:
-    st.success(f"✅ Clé configurée (`{current_key[:8]}…{'*' * 8}`)")
-else:
-    st.warning("⚠️ Clé non configurée — saisir ci-dessous pour activer Claude.")
-
-with st.expander("🔑 Configurer la clé Anthropic", expanded=not _key_ok):
-    st.markdown("""
-**Obtenir une clé :** [console.anthropic.com](https://console.anthropic.com) → API Keys → Create Key
-
-**Coût estimé :** moins de 1 €/mois pour 50–150 marchés analysés.
-Un rechargement de 5 $ couvre généralement plusieurs mois d'utilisation.
-""")
-    new_key = st.text_input(
-        "Clé API Anthropic",
-        type="password",
-        placeholder="sk-ant-api03-…",
-        key="anthropic_api_key_input",
-        help="La clé doit commencer par sk-ant-",
-    )
-    col_save, col_test, col_spacer = st.columns([2, 2, 4])
-    with col_save:
-        if st.button("💾 Enregistrer la clé", key="save_anthropic_key", type="primary"):
-            key_to_save = new_key.strip()
-            if key_to_save.startswith("sk-ant-") and len(key_to_save) > 20:
-                from dotenv import set_key as _set_key
-                _set_key(".env", "ANTHROPIC_API_KEY", key_to_save)
-                os.environ["ANTHROPIC_API_KEY"] = key_to_save
-                try:
-                    import llm_analyzer
-                    llm_analyzer._anthropic_client = None
-                except Exception:
-                    pass
-                st.success("✅ Clé enregistrée — active immédiatement, sans redémarrage.")
-                st.rerun()
-            else:
-                st.error("Format invalide — la clé doit commencer par `sk-ant-`")
-    with col_test:
-        if st.button("🧪 Tester la clé", key="test_anthropic_key"):
-            key_to_test = new_key.strip() or current_key
-            if not key_to_test or key_to_test == "sk-ant-...":
-                st.error("Entrez d'abord une clé.")
-            else:
-                with st.spinner("Connexion à Claude en cours…"):
-                    try:
-                        import anthropic as _ant
-                        _test_client = _ant.Anthropic(api_key=key_to_test)
-                        _test_client.messages.create(
-                            model="claude-haiku-4-5-20251001",
-                            max_tokens=5,
-                            messages=[{"role": "user", "content": "OK"}],
-                        )
-                        st.success("✅ Clé valide — connexion à Claude réussie.")
-                    except _ant.AuthenticationError:
-                        st.error("❌ Clé invalide — vérifiez la valeur copiée depuis console.anthropic.com")
-                    except Exception as exc:
-                        st.error(f"Erreur inattendue : {exc}")
-
-st.markdown("")
-
-# ── Sous-section Mistral ──────────────────────────────────────────────────────
-st.subheader("🟠 Mistral AI")
-st.caption("Modèle utilisé : mistral-large-latest. Plan gratuit : 1 milliard de tokens/mois.")
+st.caption("Configurez votre clé Mistral AI pour activer l'analyse des marchés. Plan gratuit disponible.")
 
 current_mistral_key = os.getenv("MISTRAL_API_KEY", "").strip()
 _mistral_key_ok = bool(current_mistral_key and len(current_mistral_key) > 20)
@@ -228,7 +136,7 @@ with st.expander("🔑 Configurer la clé Mistral", expanded=not _mistral_key_ok
             else:
                 with st.spinner("Connexion à Mistral en cours…"):
                     try:
-                        from mistralai import Mistral as _Mistral
+                        from mistralai.client import Mistral as _Mistral
                         _test_mistral = _Mistral(api_key=key_to_test)
                         _test_mistral.chat.complete(
                             model="mistral-small-latest",

@@ -40,6 +40,7 @@ def fetch_nukema_tenders() -> int:
     _run_id  = start_scraper_run(db, "Nukema")
     try:
         existing_ids = load_existing_ids(db)
+        nb_found     = 0
 
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=True)
@@ -63,7 +64,9 @@ def fetch_nukema_tenders() -> int:
                             return 0
                         page_count = 0
                         while page_count < 5:
-                            for card in extract_cards(page, _CARD, _FIELDS):
+                            cards = extract_cards(page, _CARD, _FIELDS)
+                            nb_found += len(cards)
+                            for card in cards:
                                 title = card.get("title", "").strip()
                                 desc  = card.get("description", "").strip()
                                 relevant, extra_tags = classify_relevance(f"{title} {desc}")
@@ -95,8 +98,8 @@ def fetch_nukema_tenders() -> int:
 
         if inserted:
             db.commit()
-        finish_scraper_run(db, _run_id, nb_found=inserted, nb_new=inserted)
-        _log.info("Nukema : %d inséré(s)", inserted)
+        finish_scraper_run(db, _run_id, nb_found=nb_found, nb_new=inserted)
+        _log.info("Nukema : %d trouvés, %d inséré(s)", nb_found, inserted)
     except Exception as exc:
         _log.exception("Nukema : erreur collecte")
         finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))

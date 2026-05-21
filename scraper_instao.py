@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import random
 
 from playwright.sync_api import sync_playwright
 
@@ -47,6 +48,7 @@ def fetch_instao_tenders() -> int:
     _run_id  = start_scraper_run(db, "Instao")
     try:
         existing_ids = load_existing_ids(db)
+        nb_found     = 0
 
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=True)
@@ -61,7 +63,9 @@ def fetch_instao_tenders() -> int:
                     page.wait_for_load_state("networkidle", timeout=30000)
                     page_count = 0
                     while page_count < 5:
-                        for card in extract_cards(page, _CARD, _FIELDS):
+                        cards = extract_cards(page, _CARD, _FIELDS)
+                        nb_found += len(cards)
+                        for card in cards:
                             title = card.get("title", "").strip()
                             desc  = card.get("description", "").strip()
                             relevant, extra_tags = classify_relevance(f"{title} {desc}")
@@ -85,6 +89,9 @@ def fetch_instao_tenders() -> int:
                                 inserted += 1
                         if not paginate(page, _NEXT):
                             break
+                        # Délai anti-429 : 3–6 s entre pages pour simuler un humain
+                        delay_ms = 3000 + random.randint(0, 3000)
+                        page.wait_for_timeout(delay_ms)
                         page_count += 1
                 finally:
                     page.close()
@@ -93,8 +100,8 @@ def fetch_instao_tenders() -> int:
 
         if inserted:
             db.commit()
-        finish_scraper_run(db, _run_id, nb_found=inserted, nb_new=inserted)
-        _log.info("Instao : %d inséré(s)", inserted)
+        finish_scraper_run(db, _run_id, nb_found=nb_found, nb_new=inserted)
+        _log.info("Instao : %d trouvés, %d inséré(s)", nb_found, inserted)
     except Exception as exc:
         _log.exception("Instao : erreur collecte")
         finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))

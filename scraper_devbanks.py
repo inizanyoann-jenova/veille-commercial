@@ -75,7 +75,8 @@ def _dedup_id(url: str) -> str:
 def fetch_devbanks() -> int:
     init_db()
     db = SessionLocal()
-    total = 0
+    nb_found = 0
+    inserted = 0
     _run_id = start_scraper_run(db, "Banques Dev. (BAD/BEI/COI)")
 
     try:
@@ -91,6 +92,8 @@ def fetch_devbanks() -> int:
             if not feed.entries:
                 _log.debug("Feed '%s' : aucune entrée", nom)
                 continue
+
+            nb_found += len(feed.entries)
 
             for entry in feed.entries:
                 title = entry.get("title") or ""
@@ -118,12 +121,12 @@ def fetch_devbanks() -> int:
                     type_opportunite="Banque Dev.",
                 )
                 if insert_if_new(db, t, existing_ids):
-                    total += 1
+                    inserted += 1
 
-        if total:
+        if inserted:
             db.commit()
-        finish_scraper_run(db, _run_id, nb_found=total, nb_new=total)
-        _log.info("Banques Dev. : %d inséré(s)", total)
+        finish_scraper_run(db, _run_id, nb_found=nb_found, nb_new=inserted)
+        _log.info("Banques Dev. : %d trouvés, %d inséré(s)", nb_found, inserted)
     except Exception as exc:
         _log.exception("Banques Dev. : erreur collecte")
         finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
@@ -131,7 +134,7 @@ def fetch_devbanks() -> int:
     finally:
         db.close()
 
-    return total
+    return inserted
 
 
 if __name__ == "__main__":

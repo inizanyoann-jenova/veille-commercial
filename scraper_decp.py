@@ -76,14 +76,14 @@ _ERP_FILTER = (
     ' OR search(objetmarche, "gare")'
 )
 _PUBLIC_SEARCH_FILTER = (
-    f"({_KEYWORD_FILTER}) OR ({_CPV_FILTER})"
-    f" OR (({_CONSTRUCTION_FILTER}) AND ({_ERP_FILTER}))"
+    f"({_KEYWORD_FILTER}) OR ({_CPV_FILTER}) OR ({_CONSTRUCTION_FILTER})"
 )
 
 
 def fetch_decp_tenders(days_back: int | None = None) -> int:
     if days_back is None:
-        days_back = int(os.getenv("SCRAPER_WINDOW_DAYS", "90"))
+        # DECP a des données plus anciennes, on utilise 3 ans par défaut
+        days_back = int(os.getenv("DECP_WINDOW_DAYS", "1095"))  # 3 ans
     date_min = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
     where    = f"({_DEPT_FILTER}) AND ({_PUBLIC_SEARCH_FILTER}) AND (datenotification >= \"{date_min}\")"
 
@@ -94,8 +94,9 @@ def fetch_decp_tenders(days_back: int | None = None) -> int:
 
     try:
         existing_ids = load_existing_ids(db)
-        offset = 0
-        limit  = 100
+        offset   = 0
+        limit    = 100
+        nb_found = 0
 
         while True:
             params   = {"where": where, "limit": limit, "offset": offset, "order_by": "datenotification DESC"}
@@ -103,6 +104,8 @@ def fetch_decp_tenders(days_back: int | None = None) -> int:
             records  = response.json().get("results", [])
             if not records:
                 break
+
+            nb_found += len(records)
 
             for record in records:
                 acheteur_nom = record.get("nomacheteur") or ""
@@ -136,8 +139,8 @@ def fetch_decp_tenders(days_back: int | None = None) -> int:
 
         if inserted:
             db.commit()
-        finish_scraper_run(db, _run_id, nb_found=inserted, nb_new=inserted)
-        _log.info("DECP : %d inséré(s)", inserted)
+        finish_scraper_run(db, _run_id, nb_found=nb_found, nb_new=inserted)
+        _log.info("DECP : %d trouvés, %d inséré(s)", nb_found, inserted)
     except Exception as exc:
         _log.exception("DECP : erreur collecte")
         finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))

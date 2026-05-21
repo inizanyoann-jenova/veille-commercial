@@ -72,6 +72,7 @@ def fetch_afd_projects(years_back: int = 3) -> int:
 
     try:
         existing_ids = load_existing_ids(db)
+        nb_found = 0
 
         for pays_label, pays_kw in PAYS_OI.items():
             offset = 0
@@ -96,6 +97,8 @@ def fetch_afd_projects(years_back: int = 3) -> int:
                 if not records:
                     break
 
+                nb_found += len(records)
+
                 for rec in records:
                     if not _secteur_ok(rec):
                         continue
@@ -110,8 +113,8 @@ def fetch_afd_projects(years_back: int = 3) -> int:
 
         if inserted:
             db.commit()
-        finish_scraper_run(db, _run_id, nb_found=inserted, nb_new=inserted)
-        _log.info("AFD : %d inséré(s)", inserted)
+        finish_scraper_run(db, _run_id, nb_found=nb_found, nb_new=inserted)
+        _log.info("AFD : %d trouvés, %d inséré(s)", nb_found, inserted)
     except Exception as exc:
         _log.exception("AFD : erreur collecte")
         finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))

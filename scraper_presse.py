@@ -80,17 +80,19 @@ def _dedup_id(url: str) -> str:
     return "RSS-" + hashlib.md5(url.encode()).hexdigest()[:14]
 
 
-def _fetch_feed(territoire: str, nom: str, url: str, db, type_opp: str, filter_fn, existing_ids: set) -> int:
+def _fetch_feed(territoire: str, nom: str, url: str, db, type_opp: str, filter_fn, existing_ids: set) -> tuple[int, int]:
     inserted = 0
     try:
         feed = feedparser.parse(url)
     except Exception as exc:
         _log.warning("Feed RSS '%s' inaccessible : %s", nom, type(exc).__name__)
-        return 0
+        return 0, 0
 
     if not feed.entries:
         _log.debug("Feed '%s' : aucune entrée", nom)
-        return 0
+        return 0, 0
+
+    nb_found = len(feed.entries)
 
     for entry in feed.entries:
         title = entry.get("title") or ""
@@ -120,33 +122,38 @@ def _fetch_feed(territoire: str, nom: str, url: str, db, type_opp: str, filter_f
         if insert_if_new(db, t, existing_ids):
             inserted += 1
 
-    return inserted
+    return nb_found, inserted
 
 
 def fetch_presse_io() -> int:
     init_db()
     db = SessionLocal()
-    total = 0
+    nb_found = 0
+    inserted = 0
     _run_id = start_scraper_run(db, "Presse & Institutions IO")
     try:
         existing_ids = load_existing_ids(db)
 
         for territoire, nom, url in FLUX_PRESSE:
-            total += _fetch_feed(territoire, nom, url, db, "Presse", is_prive_relevant, existing_ids)
+            f, i = _fetch_feed(territoire, nom, url, db, "Presse", is_prive_relevant, existing_ids)
+            nb_found += f
+            inserted += i
         for territoire, nom, url in FLUX_INSTITUTIONS:
-            total += _fetch_feed(territoire, nom, url, db, "Institution", is_prive_relevant, existing_ids)
+            f, i = _fetch_feed(territoire, nom, url, db, "Institution", is_prive_relevant, existing_ids)
+            nb_found += f
+            inserted += i
 
-        if total:
+        if inserted:
             db.commit()
-        finish_scraper_run(db, _run_id, nb_found=total, nb_new=total)
-        _log.info("Presse & Institutions IO : %d inséré(s)", total)
+        finish_scraper_run(db, _run_id, nb_found=nb_found, nb_new=inserted)
+        _log.info("Presse & Institutions IO : %d trouvés, %d inséré(s)", nb_found, inserted)
     except Exception as exc:
         _log.exception("Presse IO : erreur collecte")
         finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
         raise
     finally:
         db.close()
-    return total
+    return inserted
 
 
 if __name__ == "__main__":

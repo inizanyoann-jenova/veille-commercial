@@ -29,7 +29,8 @@ def _is_secteur_pertinent(project: dict) -> bool:
         s = project.get(key)
         if not s:
             continue
-        name = (s.get("Name") or "").lower()
+        # L'API retourne parfois une string au lieu d'un dict
+        name = (s.get("Name") if isinstance(s, dict) else str(s)).lower()
         if any(k in name for k in SECTORS_PERTINENTS):
             return True
     return False
@@ -44,61 +45,83 @@ def fetch_worldbank_projects(years_back: int = 3) -> int:
 
     try:
         existing_ids = load_existing_ids(db)
+        nb_found     = 0
+        _rows        = 100
 
         for code, country_name in COUNTRIES.items():
-            params = {
-                "format": "json",
-                "countrycode": code,
-                "rows": 100,
-                "fl": "id,project_name,countryname,status,closingdate,approvaldate,boardapprovaldate,sector1,sector2,sector3,sector4,sector5",
-            }
+            start = 0
+            while True:
+                params = {
+                    "format":      "json",
+                    "countrycode": code,
+                    "rows":        _rows,
+                    "start":       start,
+                    "fl": "id,project_name,countryname,status,closingdate,approvaldate,boardapprovaldate,sector1,sector2,sector3,sector4,sector5",
+                }
 
-            try:
-                r = retry_get(WB_API, params=params, rate_delay=1.0)
-            except Exception as exc:
-                _log.warning("Banque Mondiale API (%s) inaccessible : %s", country_name, type(exc).__name__)
-                continue
+                try:
+                    r = retry_get(WB_API, params=params, rate_delay=1.0)
+                except Exception as exc:
+                    _log.warning("Banque Mondiale API (%s) inaccessible : %s", country_name, type(exc).__name__)
+                    break
 
-            items = list((r.json().get("projects") or {}).values())
+                payload = r.json()
+                items   = list((payload.get("projects") or {}).values())
+                if not items:
+                    break
 
-            for proj in items:
-                if (proj.get("status") or "").lower() not in ("active", "en cours", ""):
-                    continue
-                if not _is_secteur_pertinent(proj):
-                    continue
+                nb_found += len(items)
 
-                closing = parse_date(proj.get("closingdate"))
-                if closing and closing < date_min:
-                    continue
+                for proj in items:
+                    if not isinstance(proj, dict):
+                        continue
+                    if (proj.get("status") or "").lower() not in ("active", "en cours", ""):
+                        continue
+                    if not _is_secteur_pertinent(proj):
+                        continue
 
-                proj_id = proj.get("id") or ""
-                tender_id = f"WB-{proj_id}"
+                    closing = parse_date(proj.get("closingdate"))
+                    if closing and closing < date_min:
+                        continue
 
-                sector_label = (proj.get("sector1") or {}).get("Name") or "Infrastructure"
-                pub_date = (
-                    parse_date(proj.get("approvaldate"))
-                    or parse_date(proj.get("boardapprovaldate"))
-                )
-                t = Tender(
-                    id=tender_id,
-                    title=proj.get("project_name") or f"Projet BM {proj_id}",
-                    description=f"Banque Mondiale — Pays : {country_name} — Secteur : {sector_label}",
-                    source=f"https://projects.worldbank.org/en/projects-operations/project-detail/{proj_id}",
-                    publication_date=pub_date,
-                    date_extraction=now_utc(),
-                    deadline=closing,
-                    status="À qualifier",
-                    relevance_score=0,
-                    is_maintenance=False,
-                    llm_analysis=None,
-                )
-                if insert_if_new(db, t, existing_ids):
-                    inserted += 1
+                    proj_id   = proj.get("id") or ""
+                    tender_id = f"WB-{proj_id}"
+
+                    sector1 = proj.get("sector1")
+                    if isinstance(sector1, dict):
+                        sector_label = sector1.get("Name") or "Infrastructure"
+                    elif isinstance(sector1, str):
+                        sector_label = sector1
+                    else:
+                        sector_label = "Infrastructure"
+                    pub_date = (
+                        parse_date(proj.get("approvaldate"))
+                        or parse_date(proj.get("boardapprovaldate"))
+                    )
+                    t = Tender(
+                        id=tender_id,
+                        title=proj.get("project_name") or f"Projet BM {proj_id}",
+                        description=f"Banque Mondiale — Pays : {country_name} — Secteur : {sector_label}",
+                        source=f"https://projects.worldbank.org/en/projects-operations/project-detail/{proj_id}",
+                        publication_date=pub_date,
+                        date_extraction=now_utc(),
+                        deadline=closing,
+                        status="À qualifier",
+                        relevance_score=0,
+                        is_maintenance=False,
+                        llm_analysis=None,
+                    )
+                    if insert_if_new(db, t, existing_ids):
+                        inserted += 1
+
+                if len(items) < _rows:
+                    break
+                start += _rows
 
         if inserted:
             db.commit()
-        finish_scraper_run(db, _run_id, nb_found=inserted, nb_new=inserted)
-        _log.info("Banque Mondiale : %d inséré(s)", inserted)
+        finish_scraper_run(db, _run_id, nb_found=nb_found, nb_new=inserted)
+        _log.info("Banque Mondiale : %d trouvés, %d inséré(s)", nb_found, inserted)
     except Exception as exc:
         _log.exception("Banque Mondiale : erreur collecte")
         finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
