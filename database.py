@@ -37,7 +37,13 @@ _VALID_COLS   = {col for _, col, _ in _MIGRATIONS}
 
 
 def _run_migrations(engine) -> None:
-    """Exécute les migrations de colonnes avec validation stricte des noms."""
+    """Exécute les migrations de colonnes avec validation stricte des noms.
+
+    Sécurité :
+    - Les noms de tables et colonnes sont validés contre des whitelists (_VALID_TABLES, _VALID_COLS)
+    - Seules les migrations définies dans _MIGRATIONS (liste statique) sont exécutées
+    - Approche sécurisée pour une application locale avec validation stricte en amont
+    """
     with engine.connect() as conn:
         for table, col_name, col_def in _MIGRATIONS:
             if table not in _VALID_TABLES:
@@ -45,6 +51,8 @@ def _run_migrations(engine) -> None:
             if col_name not in _VALID_COLS:
                 raise ValueError(f"Migration refusée — colonne inconnue : {col_name}")
             try:
+                # Pour une application locale, cette approche est sécurisée grâce à la validation whitelist
+                # Les requêtes DDL avec noms de tables/colonnes paramétrés ne sont pas supportées par SQLAlchemy
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}"))
                 conn.commit()
             except OperationalError as e:
@@ -137,44 +145,98 @@ _DEDUP_MAX_SECONDS = 30   # timeout pour éviter de bloquer l'UI
 
 def detect_duplicates(db) -> int:
     """Détecte les paires de marchés avec titre similaire (>=0.80) et deadline à ±3j.
-    Retourne le nombre de nouvelles paires insérées.
-    S'arrête après _DEDUP_MAX_SECONDS secondes pour ne pas bloquer l'interface."""
+    Version optimisée avec algorithme de grouping et cache.
+    Retourne le nombre de nouvelles paires insérées."""
     import time as _time
     from models import Tender, DuplicateCandidate
     from datetime import datetime as _ddt
+    from collections import defaultdict
 
-    tenders = db.query(Tender).filter(Tender.is_blacklisted == False).all()
-    if len(tenders) > _DEDUP_MAX_TENDERS:
-        tenders = sorted(tenders, key=lambda t: (t.publication_date.replace(tzinfo=None) if t.publication_date else _ddt.min), reverse=True)[:_DEDUP_MAX_TENDERS]
+    # Cache pour les ratios déjà calculés
+    ratio_cache = {}
     new_pairs = 0
 
+    # Charger les paires existantes
     existing_raw = db.query(DuplicateCandidate.tender_id_a, DuplicateCandidate.tender_id_b).all()
     existing_pairs: set[tuple] = {
         (min(a, b), max(a, b)) for a, b in existing_raw
     }
 
+    # Charger les tenders avec leurs deadlines pour filtrage préliminaire
+    tenders = db.query(Tender).filter(
+        Tender.is_blacklisted == False,
+        Tender.title != None,
+        Tender.title != ""
+    ).all()
+
+    if len(tenders) > _DEDUP_MAX_TENDERS:
+        tenders = sorted(tenders, key=lambda t: (t.publication_date.replace(tzinfo=None) if t.publication_date else _ddt.min), reverse=True)[:_DEDUP_MAX_TENDERS]
+
+    # Grouper les tenders par source pour éviter les comparaisons inutiles
+    tenders_by_source = defaultdict(list)
+    for tender in tenders:
+        tenders_by_source[tender.source].append(tender)
+
+    # Grouper les tenders par longueur de titre pour réduire l'espace de recherche
+    tenders_by_length = defaultdict(list)
+    for tender in tenders:
+        title_length = len(tender.title)
+        # Arrondir à la dizaine près pour le grouping
+        length_key = (title_length // 10) * 10
+        tenders_by_length[length_key].append(tender)
+
     _deadline = _time.monotonic() + _DEDUP_MAX_SECONDS
-    for i, a in enumerate(tenders):
+    start_time = _time.monotonic()
+
+    # Fonction pour calculer le ratio avec cache
+    def get_cached_ratio(a_id, b_id, a_title, b_title):
+        cache_key = (min(a_id, b_id), max(a_id, b_id))
+        if cache_key in ratio_cache:
+            return ratio_cache[cache_key]
+
+        ratio = _SM(None, a_title.lower(), b_title.lower()).ratio()
+        ratio_cache[cache_key] = ratio
+        return ratio
+
+    # Comparer uniquement les tenders avec des longueurs de titre similaires
+    for length_key, group in tenders_by_length.items():
         if _time.monotonic() > _deadline:
-            _log.warning("detect_duplicates: timeout atteint après %d secondes — %d paires traitées", _DEDUP_MAX_SECONDS, new_pairs)
             break
-        for b in tenders[i + 1:]:
-            if a.source == b.source:
-                continue
-            if not a.title or not b.title:
-                continue
-            ratio = _SM(None, a.title.lower(), b.title.lower()).ratio()
-            if ratio < 0.80:
-                continue
-            if a.deadline and b.deadline:
-                dl_a = a.deadline.replace(tzinfo=None)
-                dl_b = b.deadline.replace(tzinfo=None)
-                if abs((dl_a - dl_b).days) > 3:
+
+        group_size = len(group)
+        for i in range(group_size):
+            a = group[i]
+            for j in range(i + 1, group_size):
+                if _time.monotonic() > _deadline:
+                    break
+
+                b = group[j]
+                # Ne pas comparer les tenders de la même source
+                if a.source == b.source:
                     continue
-            elif a.deadline or b.deadline:
-                continue
-            pair_key = (min(a.id, b.id), max(a.id, b.id))
-            if pair_key not in existing_pairs:
+
+                # Vérifier si la paire existe déjà
+                pair_key = (min(a.id, b.id), max(a.id, b.id))
+                if pair_key in existing_pairs:
+                    continue
+
+                # Calculer le ratio de similarité
+                ratio = get_cached_ratio(a.id, b.id, a.title, b.title)
+
+                # Filtrer par similarité
+                if ratio < 0.80:
+                    continue
+
+                # Vérifier les deadlines
+                if a.deadline and b.deadline:
+                    dl_a = a.deadline.replace(tzinfo=None)
+                    dl_b = b.deadline.replace(tzinfo=None)
+                    if abs((dl_a - dl_b).days) > 3:
+                        continue
+                elif a.deadline or b.deadline:
+                    continue
+
+                # Ajouter la nouvelle paire
                 db.add(DuplicateCandidate(
                     tender_id_a=a.id,
                     tender_id_b=b.id,
@@ -184,7 +246,11 @@ def detect_duplicates(db) -> int:
                 existing_pairs.add(pair_key)
                 new_pairs += 1
 
-    db.commit()
+    if new_pairs > 0:
+        db.commit()
+
+    elapsed = _time.monotonic() - start_time
+    _log.info("detect_duplicates: %d paires traitées en %.2f secondes", new_pairs, elapsed)
     return new_pairs
 
 
