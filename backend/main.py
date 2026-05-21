@@ -696,83 +696,121 @@ def analyze_one(tender_id: str, db: Session = Depends(get_db)):
 # ── POST /api/collect ─────────────────────────────────────────────────────────
 
 @app.post("/api/collect", summary="Lancer la collecte (toutes sources ou liste)")
-def collect(body: CollectRequest, background_tasks: BackgroundTasks):
+def collect(body: CollectRequest):
     """
-    Lance les scrapers en tâche de fond et retourne immédiatement un job_id.
-    Le frontend peut ensuite interroger GET /api/scraper-runs pour suivre l'avancement.
+    Exécute les scrapers de façon synchrone et renvoie un bilan par source.
+    - 200 {"status": "ok"} : toutes sources OK
+    - 200 {"status": "partial"} : au moins une source KO, mais au moins une OK
+    - 500 : aucune source configurée/active, ou toutes les sources ont échoué
     """
-    def _run_collection(source_names: Optional[list[str]]):
-        db = SessionLocal()
+    db = SessionLocal()
+    try:
+        sources = list_sources(db)
+        if body.source_names:
+            sources = [s for s in sources if s.name in body.source_names]
+        sources = [
+            s for s in sources
+            if not s.is_manual and s.scraper_module and s.enabled and s.is_validated
+        ]
+    finally:
+        db.close()
+
+    if not sources:
+        raise HTTPException(
+            status_code=500,
+            detail="Aucune source active et validée trouvée — collecte annulée"
+        )
+
+    pre_db = SessionLocal()
+    try:
+        known_ids: set = {row.id for row in pre_db.query(Tender.id).all()}
+    finally:
+        pre_db.close()
+
+    results: list[dict] = []
+
+    for source in sources:
+        run_db = SessionLocal()
         try:
-            sources = list_sources(db)
-            if source_names:
-                sources = [s for s in sources if s.name in source_names]
+            run_id = start_scraper_run(run_db, source.name)
+        finally:
+            run_db.close()
 
-            known_ids = {row.id for row in db.query(Tender.id).all()}
-            db.close()
-
-            for source in sources:
-                if source.is_manual or not source.scraper_module:
-                    continue
-                if not source.enabled or not source.is_validated:
-                    continue
-                run_db = SessionLocal()
-                try:
-                    run_id = start_scraper_run(run_db, source.name)
-                finally:
-                    run_db.close()
-                try:
-                    mod = importlib.import_module(source.scraper_module)
-                    func = getattr(mod, source.scraper_func)
-                    func()
-                    post_db = SessionLocal()
-                    try:
-                        new_count = post_db.query(Tender).filter(
-                            ~Tender.id.in_(known_ids)
-                        ).count()
-                        finish_scraper_run(post_db, run_id, nb_found=new_count, nb_new=new_count)
-                    finally:
-                        post_db.close()
-                except Exception as exc:
-                    _log.critical(
-                        "SCRAPER FAILURE [%s] — %s: %s",
-                        source.name, type(exc).__name__, exc,
-                        exc_info=True,
-                    )
-                    err_db = SessionLocal()
-                    try:
-                        finish_scraper_run(
-                            err_db, run_id, nb_found=0, nb_new=0, error=str(exc)
-                        )
-                    finally:
-                        err_db.close()
-
-                    # ── Alertes externes (activer en production) ──────────
-                    # import sentry_sdk
-                    # sentry_sdk.capture_exception(exc)
-                    #
-                    # from email_digest import send_alert_email
-                    # send_alert_email(
-                    #     subject=f"[DEF OI] Scraper FAILED: {source.name}",
-                    #     body=f"{type(exc).__name__}: {exc}",
-                    # )
-                    # ─────────────────────────────────────────────────────
-
-            # Analyse automatique post-collecte
-            analysis_db = SessionLocal()
+        try:
+            mod = importlib.import_module(source.scraper_module)
+            func = getattr(mod, source.scraper_func)
+            func()
+            post_db = SessionLocal()
             try:
-                auto_analyze_pending(analysis_db)
-                auto_analyze_claude(analysis_db, max_per_run=10)
-            except Exception as exc:
-                _log.warning("Analyse post-collecte échouée : %s", exc, exc_info=True)
+                new_count = post_db.query(Tender).filter(
+                    ~Tender.id.in_(known_ids)
+                ).count()
+                finish_scraper_run(post_db, run_id, nb_found=new_count, nb_new=new_count)
             finally:
-                analysis_db.close()
+                post_db.close()
+            results.append({"source": source.name, "status": "ok", "nb_new": new_count})
 
         except Exception as exc:
-            _log.error("Erreur globale _run_collection : %s", exc, exc_info=True)
+            _log.critical(
+                "SCRAPER FAILURE [%s] — %s: %s",
+                source.name, type(exc).__name__, exc,
+                exc_info=True,
+            )
+            err_db = SessionLocal()
+            try:
+                finish_scraper_run(
+                    err_db, run_id, nb_found=0, nb_new=0, error=str(exc)
+                )
+            finally:
+                err_db.close()
 
-    background_tasks.add_task(_run_collection, body.source_names)
-    return {"status": "started", "message": "Collecte lancée en arrière-plan"}
+            # ── Alertes externes (activer en production) ──────────────────
+            # import sentry_sdk
+            # sentry_sdk.capture_exception(exc)
+            #
+            # from email_digest import send_alert_email
+            # send_alert_email(
+            #     subject=f"[DEF OI] Scraper FAILED: {source.name}",
+            #     body=f"{type(exc).__name__}: {exc}",
+            # )
+            # ─────────────────────────────────────────────────────────────
+
+            results.append({
+                "source": source.name,
+                "status": "error",
+                "error": type(exc).__name__,
+            })
+
+    # Analyse automatique post-collecte
+    try:
+        analysis_db = SessionLocal()
+        try:
+            auto_analyze_pending(analysis_db)
+            auto_analyze_claude(analysis_db, max_per_run=10)
+        finally:
+            analysis_db.close()
+    except Exception as exc:
+        _log.warning("Analyse post-collecte échouée : %s", exc, exc_info=True)
+
+    nb_ok = sum(1 for r in results if r["status"] == "ok")
+    nb_err = sum(1 for r in results if r["status"] == "error")
+
+    if nb_ok == 0 and nb_err > 0:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": f"Toutes les sources ont échoué ({nb_err}/{len(results)})",
+                "results": results,
+            },
+        )
+
+    return {
+        "status": "partial" if nb_err > 0 else "ok",
+        "nb_ok": nb_ok,
+        "nb_error": nb_err,
+        "message": f"{nb_ok} source(s) collectée(s), {nb_err} erreur(s)",
+        "results": results,
+    }
 
 
 # ── POST /api/analyze-pending ─────────────────────────────────────────────────
