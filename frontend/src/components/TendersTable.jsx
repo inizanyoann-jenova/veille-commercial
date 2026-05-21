@@ -6,6 +6,7 @@ const STATUTS = ['Tous', 'À qualifier', 'En cours', 'Soumis', 'Gagné', 'Perdu'
 const SECTEURS = ['Public', 'Privé', 'International']
 
 function GonogoBadge({ gonogo }) {
+  if (!gonogo) return <span className="text-gray-400 text-xs">—</span>
   if (gonogo === 'GO')
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">
@@ -133,10 +134,10 @@ export default function TendersTable({
                       <div className="w-16 bg-gray-200 rounded-full h-1.5">
                         <div
                           className="bg-indigo-500 h-1.5 rounded-full"
-                          style={{ width: `${Math.min(t.relevance_score, 100)}%` }}
+                          style={{ width: `${Math.min(t.relevance_score ?? 0, 100)}%` }}
                         />
                       </div>
-                      <span className="text-gray-700 tabular-nums">{t.relevance_score}</span>
+                      <span className="text-gray-700 tabular-nums">{t.relevance_score ?? 0}</span>
                     </div>
                   </td>
                   <td className="px-4 py-3">
