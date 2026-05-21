@@ -305,6 +305,12 @@ class SavedUpdate(BaseModel):
 class CollectRequest(BaseModel):
     source_names: Optional[list[str]] = None  # None = toutes les sources activées
 
+class CollectResult(BaseModel):
+    source: str
+    status: str  # "ok" | "error"
+    nb_new: Optional[int] = None
+    error: Optional[str] = None
+
 
 # ── GET /api/tenders ──────────────────────────────────────────────────────────
 
@@ -724,6 +730,8 @@ def collect(body: CollectRequest):
     pre_db = SessionLocal()
     try:
         known_ids: set = {row.id for row in pre_db.query(Tender.id).all()}
+        # Snapshot pris une fois avant le loop : les ids insérés par une source
+        # peuvent décaler le nb_new des sources suivantes (acceptable, sources indépendantes).
     finally:
         pre_db.close()
 
@@ -782,15 +790,16 @@ def collect(body: CollectRequest):
             })
 
     # Analyse automatique post-collecte
+    analysis_db = None
     try:
         analysis_db = SessionLocal()
-        try:
-            auto_analyze_pending(analysis_db)
-            auto_analyze_claude(analysis_db, max_per_run=10)
-        finally:
-            analysis_db.close()
+        auto_analyze_pending(analysis_db)
+        auto_analyze_claude(analysis_db, max_per_run=10)
     except Exception as exc:
         _log.warning("Analyse post-collecte échouée : %s", exc, exc_info=True)
+    finally:
+        if analysis_db is not None:
+            analysis_db.close()
 
     nb_ok = sum(1 for r in results if r["status"] == "ok")
     nb_err = sum(1 for r in results if r["status"] == "error")
