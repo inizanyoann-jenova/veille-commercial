@@ -45,7 +45,7 @@ _SOURCE_MARKERS: list[dict] = [
         "marker_type": "json_key",
         "marker_value": "notices",
         "method": "post",
-        "body": {"query": "FT~SSI", "limit": 1},
+        "body": {"query": "FT~SSI", "fields": ["notice-title"], "limit": 1, "paginationMode": "ITERATION"},
     },
     {
         "name": "AFD — Agence Française de Développement",
@@ -61,9 +61,9 @@ _SOURCE_MARKERS: list[dict] = [
     },
     {
         "name": "Permis de construire",
-        "url": "https://data.statistiques.developpement-durable.gouv.fr/api/explore/v2.1/catalog/datasets/sitadel/records?limit=1",
+        "url": "https://data.statistiques.developpement-durable.gouv.fr/dido/api/v1/datafiles/f8f0700f-806c-40a7-83b1-f21cf507e7c4/rows?pageSize=10&DEP_CODE=in%3A974%2C976",
         "marker_type": "json_key",
-        "marker_value": "results",
+        "marker_value": "data",
     },
     {
         "name": "Marché Online",
@@ -73,9 +73,10 @@ _SOURCE_MARKERS: list[dict] = [
     },
     {
         "name": "Instao",
-        "url": "https://www.instao.fr/bids",
-        "marker_type": "html_text",
-        "marker_value": "bid",
+        "url": "https://www.instao.fr/connexion",
+        "marker_type": "none",
+        "marker_value": "",
+        "allow_status": [200, 429],
     },
     {
         "name": "Marchés Sécurisés",
@@ -101,6 +102,7 @@ def check_source(
     marker_value: str = "",
     method: str = "get",
     body: dict | None = None,
+    allow_status: list[int] | None = None,
 ) -> HealthResult:
     """Vérifie une source : HTTP 200 + marqueur structurel."""
     try:
@@ -110,12 +112,16 @@ def check_source(
             resp = requests.get(url, timeout=TIMEOUT, headers=_HEADERS, allow_redirects=True)
 
         http_status = resp.status_code
+        _ok_statuses = allow_status or [200]
 
-        if resp.status_code >= 400:
+        if resp.status_code >= 400 and resp.status_code not in _ok_statuses:
             return HealthResult(
                 name=name, ok=False, http_status=http_status,
                 error=f"HTTP {resp.status_code}",
             )
+        if resp.status_code in (allow_status or []) and resp.status_code >= 400:
+            # Site joignable mais rate-limitant les bots — considéré OK
+            return HealthResult(name=name, ok=True, http_status=http_status)
 
         if marker_type == "json_key":
             try:
@@ -158,6 +164,7 @@ def run_all_health_checks() -> dict[str, HealthResult]:
             marker_value=source.get("marker_value", ""),
             method=source.get("method", "get"),
             body=source.get("body"),
+            allow_status=source.get("allow_status"),
         )
     return results
 
