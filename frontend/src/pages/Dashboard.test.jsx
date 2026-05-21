@@ -16,8 +16,16 @@ vi.mock('../components/TendersTable', () => ({
       <button onClick={() => props.onStatusChange('En cours')}>set-status</button>
       <button onClick={() => props.onSecteurChange('Privé')}>set-secteur</button>
       <button onClick={() => props.onSearchChange('test')}>set-search</button>
+      <button onClick={() => props.onRowClick?.('t-1')}>row-click</button>
     </div>
   ),
+}))
+
+vi.mock('../components/TenderDetail', () => ({
+  default: (props) =>
+    props.tenderId
+      ? <div data-testid="tender-detail" data-tender-id={props.tenderId} />
+      : null,
 }))
 
 describe('Dashboard', () => {
@@ -58,5 +66,18 @@ describe('Dashboard', () => {
     render(<Dashboard />)
     fireEvent.click(screen.getByText('set-search'))
     expect(screen.getByTestId('prop-search').textContent).toBe('test')
+  })
+
+  it('TenderDetail n\'est pas rendu initialement', () => {
+    render(<Dashboard />)
+    expect(screen.queryByTestId('tender-detail')).not.toBeInTheDocument()
+  })
+
+  it('ouvre TenderDetail avec le bon tenderId au clic sur une ligne', () => {
+    render(<Dashboard />)
+    fireEvent.click(screen.getByText('row-click'))
+    const detail = screen.getByTestId('tender-detail')
+    expect(detail).toBeInTheDocument()
+    expect(detail.dataset.tenderId).toBe('t-1')
   })
 })
