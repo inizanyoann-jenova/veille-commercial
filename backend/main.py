@@ -717,8 +717,10 @@ def collect(body: CollectRequest, background_tasks: BackgroundTasks):
                 if not source.enabled or not source.is_validated:
                     continue
                 run_db = SessionLocal()
-                run_id = start_scraper_run(run_db, source.name)
-                run_db.close()
+                try:
+                    run_id = start_scraper_run(run_db, source.name)
+                finally:
+                    run_db.close()
                 try:
                     mod = importlib.import_module(source.scraper_module)
                     func = getattr(mod, source.scraper_func)
