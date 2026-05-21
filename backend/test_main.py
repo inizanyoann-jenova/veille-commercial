@@ -1,3 +1,4 @@
+import logging
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -77,9 +78,6 @@ def test_lifespan_starts_and_stops_scheduler():
         mock_scheduler.shutdown.assert_called_once_with(wait=False)
 
 
-import logging
-
-
 def test_collect_critical_log_on_scraper_failure(caplog):
     """Un scraper qui lève une exception doit générer un log CRITICAL."""
     import main as m
@@ -104,6 +102,6 @@ def test_collect_critical_log_on_scraper_failure(caplog):
         resp = client.post("/api/collect", json={})
 
     assert any(
-        r.levelno >= logging.CRITICAL and "FakeSource" in r.message
+        r.levelno >= logging.CRITICAL and "FakeSource" in r.getMessage()
         for r in caplog.records
     ), "Aucun log CRITICAL trouvé pour le scraper en échec"
