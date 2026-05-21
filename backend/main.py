@@ -732,10 +732,29 @@ def collect(body: CollectRequest, background_tasks: BackgroundTasks):
                     finally:
                         post_db.close()
                 except Exception as exc:
+                    _log.critical(
+                        "SCRAPER FAILURE [%s] — %s: %s",
+                        source.name, type(exc).__name__, exc,
+                        exc_info=True,
+                    )
                     err_db = SessionLocal()
-                    finish_scraper_run(err_db, run_id, nb_found=0, nb_new=0, error=str(exc))
-                    err_db.close()
-                    _log.error("Erreur scraper %s : %s", source.name, exc, exc_info=True)
+                    try:
+                        finish_scraper_run(
+                            err_db, run_id, nb_found=0, nb_new=0, error=str(exc)
+                        )
+                    finally:
+                        err_db.close()
+
+                    # ── Alertes externes (activer en production) ──────────
+                    # import sentry_sdk
+                    # sentry_sdk.capture_exception(exc)
+                    #
+                    # from email_digest import send_alert_email
+                    # send_alert_email(
+                    #     subject=f"[DEF OI] Scraper FAILED: {source.name}",
+                    #     body=f"{type(exc).__name__}: {exc}",
+                    # )
+                    # ─────────────────────────────────────────────────────
 
             # Analyse automatique post-collecte
             analysis_db = SessionLocal()
