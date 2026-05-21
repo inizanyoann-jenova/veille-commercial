@@ -1296,14 +1296,15 @@ def _collect_all_enabled_sources() -> None:
     # Analyse LLM automatique si de nouveaux marchés existent
     if all_new_ids:
         _nb_attempted = min(len(all_new_ids), 10)
+        _llm_provider = os.getenv("LLM_PROVIDER", "mistral")
         _db_llm = new_db()
         try:
             _nb_done, _retry_after = auto_analyze_claude(_db_llm, max_per_run=10)
             st.session_state["llm_analysis_status"] = {
                 "nb_done": _nb_done,
-                "nb_failed": _nb_attempted - _nb_done,
+                "nb_failed": max(0, _nb_attempted - _nb_done),
                 "retry_after": _retry_after,
-                "provider": os.getenv("LLM_PROVIDER", "mistral"),
+                "provider": _llm_provider,
                 "error": None,
             }
         except Exception as _exc:
@@ -1311,7 +1312,7 @@ def _collect_all_enabled_sources() -> None:
                 "nb_done": 0,
                 "nb_failed": _nb_attempted,
                 "retry_after": -1,
-                "provider": os.getenv("LLM_PROVIDER", "mistral"),
+                "provider": _llm_provider,
                 "error": str(_exc),
             }
         finally:
