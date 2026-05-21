@@ -119,8 +119,14 @@ def classify_relevance(text: str) -> tuple[bool, list[str]]:
 
     has_chantier = any(kw in text_lower for kw in KEYWORDS_CONSTRUCTION)
     has_erp = any(kw in text_lower for kw in KEYWORDS_ERP_CIBLES)
-    if has_chantier and has_erp:
-        return True, ["Potentiel SSI implicite"]
+    
+    # Logique assouplie : construction seule = potentiel SSI pour ERP publics
+    if has_chantier:
+        if has_erp:
+            return True, ["Potentiel SSI implicite"]
+        # Ajout : tout projet de construction dans 974/976 est potentiellement pertinent
+        if "974" in text_lower or "976" in text_lower or "réunion" in text_lower or "mayotte" in text_lower:
+            return True, ["Potentiel SSI implicite"]
 
     return False, []
 
