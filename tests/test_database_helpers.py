@@ -122,16 +122,15 @@ def test_insert_if_new_skips_duplicate(db):
 
 def test_reset_tenders_db_vide_les_trois_tables(db, make_tender):
     from models import ScraperRun, DuplicateCandidate
-    from datetime import datetime
+    from datetime import datetime, timezone
     from database import reset_tenders_db
 
-    # Populate
     make_tender(id="T-RESET-1")
     make_tender(id="T-RESET-2")
-    db.add(ScraperRun(source_name="test", started_at=datetime.utcnow(), status="done"))
+    db.add(ScraperRun(source_name="test", started_at=datetime.now(timezone.utc).replace(tzinfo=None), status="done"))
     db.add(DuplicateCandidate(
         tender_id_a="T-RESET-1", tender_id_b="T-RESET-2",
-        similarity_score=0.9, detected_at=datetime.utcnow(),
+        similarity_score=0.9, detected_at=datetime.now(timezone.utc).replace(tzinfo=None),
     ))
     db.flush()
 
@@ -148,6 +147,8 @@ def test_reset_tenders_db_preserve_sources(db):
     from database import reset_tenders_db
     from source_registry import Source
 
-    nb_sources_avant = db.query(Source).count()
+    db.add(Source(name="test-source", url="https://example.com", category="Public", is_manual=True, is_validated=True))
+    db.flush()
+
     reset_tenders_db(db)
-    assert db.query(Source).count() == nb_sources_avant
+    assert db.query(Source).count() == 1
