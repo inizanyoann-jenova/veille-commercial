@@ -28,3 +28,12 @@ __pycache__/
 
 # Fichiers temporaires Superpowers (brainstorm)
 .superpowers/brainstorm/
+
+# Cache plugins Claude Code (skills locaux)
+.skill/
+
+# Configuration IDE (locale)
+.vscode/
+
+# Fichiers de profiling Python
+*.prof
