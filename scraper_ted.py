@@ -62,19 +62,32 @@ def _extract_fr(field_value) -> str:
     return str(field_value)
 
 
-def _fetch_query(db, query: str, existing_ids: set, date_from: str) -> int:
+def _fetch_query(db, query: str, existing_ids: set, date_from: str) -> tuple[int, int]:
     inserted = 0
-    page     = 1
+    nb_found = 0
     limit    = 100
 
     # Filtre date glissante — évite de re-scraper l'historique à chaque run
     full_query = f"({query}) AND PD>={date_from}"
+    token: str | None = None
     while True:
-        payload    = {"query": full_query, "fields": _FIELDS, "page": page, "limit": limit}
-        r          = retry_post(TED_API_URL, json=payload, rate_delay=1.5)
-        notices    = r.json().get("notices", [])
+        payload: dict = {
+            "query":          full_query,
+            "fields":         _FIELDS,
+            "limit":          limit,
+            "paginationMode": "ITERATION",
+            "scope":          "ACTIVE",
+        }
+        if token:
+            payload["iterationNextToken"] = token
+
+        r       = retry_post(TED_API_URL, json=payload, rate_delay=1.5)
+        data    = r.json()
+        notices = data.get("notices", [])
         if not notices:
             break
+
+        nb_found += len(notices)
 
         for notice in notices:
             pub_num     = notice.get("publication-number") or ""
@@ -109,18 +122,19 @@ def _fetch_query(db, query: str, existing_ids: set, date_from: str) -> int:
             if insert_if_new(db, t, existing_ids):
                 inserted += 1
 
-        if len(notices) < limit:
+        token = data.get("iterationNextToken")
+        if not token or len(notices) < limit:
             break
-        page += 1
 
-    return inserted
+    return nb_found, inserted
 
 
 def fetch_ted_tenders(zones: list[str] | None = None) -> int:
     init_db()
-    db    = SessionLocal()
-    total = 0
-    _run_id = start_scraper_run(db, "TED Europe")
+    db       = SessionLocal()
+    nb_found = 0
+    inserted = 0
+    _run_id  = start_scraper_run(db, "TED Europe")
 
     window_days = int(os.getenv("SCRAPER_WINDOW_DAYS", "90"))
     date_from   = (datetime.now() - timedelta(days=window_days)).strftime("%Y%m%d")  # TED PD>= exige YYYYMMDD sans tirets
@@ -131,11 +145,13 @@ def fetch_ted_tenders(zones: list[str] | None = None) -> int:
         existing_ids = load_existing_ids(db)
         for zone, query in selected.items():
             _log.info("TED : collecte zone '%s'", zone)
-            total += _fetch_query(db, query, existing_ids, date_from)
-        if total:
+            found, new = _fetch_query(db, query, existing_ids, date_from)
+            nb_found += found
+            inserted += new
+        if inserted:
             db.commit()
-        finish_scraper_run(db, _run_id, nb_found=total, nb_new=total)
-        _log.info("TED : %d marché(s) inséré(s)", total)
+        finish_scraper_run(db, _run_id, nb_found=nb_found, nb_new=inserted)
+        _log.info("TED : %d trouvés, %d marché(s) inséré(s)", nb_found, inserted)
     except Exception as exc:
         _log.exception("TED : erreur collecte")
         finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
@@ -143,10 +159,10 @@ def fetch_ted_tenders(zones: list[str] | None = None) -> int:
     finally:
         db.close()
 
-    return total
+    return inserted
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     count = fetch_ted_tenders()
-    _log.info("TED terminé — %d marché(s)", count)
+    _log.info("TED terminé — %d marché(s) inséré(s)", count)
