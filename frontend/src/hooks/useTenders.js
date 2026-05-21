@@ -83,10 +83,11 @@ export const useUpdateStatus = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, status }) => updateStatus(id, status),
-    onSuccess: () => {
+    onSuccess: (_, { id }) => {
       qc.invalidateQueries({ queryKey: ['tenders'] })
       qc.invalidateQueries({ queryKey: ['kpis'] })
       qc.invalidateQueries({ queryKey: ['pipeline'] })
+      qc.invalidateQueries({ queryKey: ['tender', id] })
     },
   })
 }
