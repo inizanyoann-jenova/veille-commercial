@@ -190,7 +190,7 @@ def _send_daily_digest() -> None:
     """Job APScheduler — envoi digest email quotidien."""
     try:
         from email_digest import send_digest as _sd
-        required = ["DIGEST_SMTP_HOST", "DIGEST_SMTP_PORT", "DIGEST_TO"]
+        required = ["DIGEST_SMTP_HOST", "DIGEST_SMTP_PORT", "DIGEST_TO", "DIGEST_SMTP_USER"]
         missing = [p for p in required if not os.getenv(p)]
         if missing:
             _log.error("Digest email: paramètres SMTP manquants: %s", missing)
@@ -248,7 +248,11 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(
         _weekly_adaptive_scores, "interval", weeks=1, id="weekly_adaptive_scores"
     )
-    digest_hour = int(os.getenv("DIGEST_HOUR", "7"))
+    try:
+        digest_hour = int(os.getenv("DIGEST_HOUR", "7"))
+    except ValueError:
+        _log.warning("DIGEST_HOUR invalide, utilisation de la valeur par défaut 7")
+        digest_hour = 7
     if os.getenv("DIGEST_SMTP_HOST") and os.getenv("DIGEST_TO"):
         scheduler.add_job(
             _send_daily_digest, "cron", hour=digest_hour, minute=0, id="daily_digest"
