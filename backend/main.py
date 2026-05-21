@@ -738,6 +738,7 @@ def collect(body: CollectRequest):
     results: list[dict] = []
 
     for source in sources:
+        run_id = None
         run_db = SessionLocal()
         try:
             run_id = start_scraper_run(run_db, source.name)
@@ -764,13 +765,14 @@ def collect(body: CollectRequest):
                 source.name, type(exc).__name__, exc,
                 exc_info=True,
             )
-            err_db = SessionLocal()
-            try:
-                finish_scraper_run(
-                    err_db, run_id, nb_found=0, nb_new=0, error=str(exc)
-                )
-            finally:
-                err_db.close()
+            if run_id is not None:
+                err_db = SessionLocal()
+                try:
+                    finish_scraper_run(
+                        err_db, run_id, nb_found=0, nb_new=0, error=str(exc)
+                    )
+                finally:
+                    err_db.close()
 
             # ── Alertes externes (activer en production) ──────────────────
             # import sentry_sdk
