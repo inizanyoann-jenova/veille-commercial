@@ -1,6 +1,6 @@
 // frontend/src/components/TendersTable.test.jsx
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import TendersTable from './TendersTable'
 
 vi.mock('../hooks/useTenders', () => ({
@@ -143,5 +143,13 @@ describe('TendersTable', () => {
     render(<TendersTable {...DEFAULT_PROPS} />)
     const scores = screen.getAllByText('0')
     expect(scores.length).toBeGreaterThan(0)
+  })
+
+  it('appelle onRowClick avec l\'id du marché au clic sur une ligne', () => {
+    useTenders.mockReturnValue({ data: MOCK_TENDERS, isLoading: false, isError: false })
+    const onRowClick = vi.fn()
+    render(<TendersTable {...DEFAULT_PROPS} onRowClick={onRowClick} />)
+    fireEvent.click(screen.getByText('Marché SSI Réunion'))
+    expect(onRowClick).toHaveBeenCalledWith('1')
   })
 })

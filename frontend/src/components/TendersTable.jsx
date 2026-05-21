@@ -38,6 +38,7 @@ export default function TendersTable({
   onStatusChange,
   onSecteurChange,
   onSearchChange,
+  onRowClick,
 }) {
   const { data: tenders = [], isLoading, isError } = useTenders({ status, secteur })
 
@@ -119,7 +120,8 @@ export default function TendersTable({
               {filtered.map((t) => (
                 <tr
                   key={t.id}
-                  className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
+                  onClick={() => onRowClick?.(t.id)}
+                  className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer"
                 >
                   <td className="px-4 py-3 font-medium text-gray-900 max-w-xs truncate">
                     {t.title}
