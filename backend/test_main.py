@@ -75,3 +75,35 @@ def test_lifespan_starts_and_stops_scheduler():
 
         mock_scheduler.start.assert_called_once()
         mock_scheduler.shutdown.assert_called_once_with(wait=False)
+
+
+import logging
+
+
+def test_collect_critical_log_on_scraper_failure(caplog):
+    """Un scraper qui lève une exception doit générer un log CRITICAL."""
+    import main as m
+
+    failing_source = MagicMock()
+    failing_source.is_manual = False
+    failing_source.scraper_module = "fake_module"
+    failing_source.scraper_func = "fake_func"
+    failing_source.enabled = True
+    failing_source.is_validated = True
+    failing_source.name = "FakeSource"
+
+    with patch("main.list_sources", return_value=[failing_source]), \
+         patch("main.SessionLocal") as mock_sl, \
+         patch("main.start_scraper_run", return_value=99), \
+         patch("main.finish_scraper_run"), \
+         patch("importlib.import_module", side_effect=RuntimeError("playwright crash")), \
+         caplog.at_level(logging.CRITICAL, logger="main"):
+
+        from fastapi.testclient import TestClient
+        client = TestClient(m.app)
+        resp = client.post("/api/collect", json={})
+
+    assert any(
+        r.levelno >= logging.CRITICAL and "FakeSource" in r.message
+        for r in caplog.records
+    ), "Aucun log CRITICAL trouvé pour le scraper en échec"
