@@ -347,3 +347,50 @@ def clean_obsolete_data(db, days: int = 30) -> int:
         db.commit()
         _log.info("clean_obsolete_data : %d tenders archivés (> %d jours)", count, days)
     return count
+
+
+def delete_old_tenders(db, months: int = 3) -> int:
+    """Supprime définitivement les tenders publiés il y a plus de `months` mois.
+
+    Règles strictes :
+    - Ne supprime JAMAIS les tenders avec statut Soumis/Gagné/Perdu
+    - Ne supprime JAMAIS les tenders sans publication_date
+    - Retourne le nombre de tenders supprimés
+    """
+    from models import Tender
+
+    cutoff = _dt.now(_tz.utc).replace(tzinfo=None) - _td(days=months * 30)
+
+    tenders = (
+        db.query(Tender)
+        .filter(
+            Tender.publication_date != None,
+            Tender.publication_date < cutoff,
+            ~Tender.status.in_(["Soumis", "Gagné", "Perdu"]),
+        )
+        .all()
+    )
+
+    count = len(tenders)
+    for t in tenders:
+        db.delete(t)
+    if count:
+        db.commit()
+        _log.info("delete_old_tenders : %d tenders supprimés (> %d mois)", count, months)
+    return count
+
+
+def reset_tenders_db(db) -> int:
+    """Vide tenders, scraper_runs et duplicate_candidates. Retourne le nb de tenders supprimés.
+
+    Préserve : sources, credentials, score_weights.
+    """
+    from models import Tender, ScraperRun, DuplicateCandidate
+
+    nb_tenders = db.query(Tender).count()
+    db.query(DuplicateCandidate).delete(synchronize_session=False)
+    db.query(ScraperRun).delete(synchronize_session=False)
+    db.query(Tender).delete(synchronize_session=False)
+    db.commit()
+    _log.info("reset_tenders_db : %d tenders supprimés", nb_tenders)
+    return nb_tenders
