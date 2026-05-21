@@ -17,6 +17,7 @@ function formatAmount(amount) {
 }
 
 function GonogoBadge({ gonogo }) {
+  if (!gonogo) return <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold bg-gray-100 text-gray-500">—</span>
   if (gonogo === 'GO')
     return <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold bg-green-100 text-green-800">🟢 GO</span>
   if (gonogo === 'Étudier')
