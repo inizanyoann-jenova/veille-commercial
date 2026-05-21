@@ -2,11 +2,7 @@ import hashlib
 import logging
 import re
 
-import playwright.sync_api as _playwright_sync
-
-
-def sync_playwright():
-    return _playwright_sync.sync_playwright()
+from playwright.sync_api import sync_playwright
 
 from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
 from filters import classify_relevance
@@ -183,8 +179,8 @@ def fetch_marcheonline_tenders() -> int:
 
         if inserted:
             db.commit()
-        finish_scraper_run(db, _run_id, nb_found=inserted, nb_new=inserted)
-        _log.info("Marché Online : %d inséré(s)", inserted)
+        finish_scraper_run(db, _run_id, nb_found=len(candidates), nb_new=inserted)
+        _log.info("Marché Online : %d trouvés, %d inséré(s)", len(candidates), inserted)
     except Exception as exc:
         _log.exception("Marché Online : erreur collecte")
         finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
