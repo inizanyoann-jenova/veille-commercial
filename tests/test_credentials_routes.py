@@ -105,3 +105,31 @@ def test_get_credentials_env_overrides_db():
     nukema = next(d for d in resp.json() if d['site'] == 'nukema')
     assert nukema['status'] == 'env_override'
     assert nukema['email'] == 'env@test.com'
+
+
+def test_save_credential_known_site():
+    with patch.object(_m, '_CredMgr') as mock_cm:
+        resp = _client.post('/api/credentials/nukema',
+                            json={'email': 'u@u.com', 'password': 'secret'})
+    assert resp.status_code == 200
+    assert resp.json()['ok'] is True
+    mock_cm.save.assert_called_once_with('nukema', 'u@u.com', 'secret')
+
+
+def test_save_credential_unknown_site():
+    resp = _client.post('/api/credentials/nonexistent_xyz',
+                        json={'email': 'u@u.com', 'password': 'p'})
+    assert resp.status_code == 404
+
+
+def test_delete_credential_known_site():
+    with patch.object(_m, '_CredMgr') as mock_cm:
+        resp = _client.delete('/api/credentials/instao')
+    assert resp.status_code == 200
+    assert resp.json()['ok'] is True
+    mock_cm.delete.assert_called_once_with('instao')
+
+
+def test_delete_credential_unknown_site():
+    resp = _client.delete('/api/credentials/nonexistent_xyz')
+    assert resp.status_code == 404
