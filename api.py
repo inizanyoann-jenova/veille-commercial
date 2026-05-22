@@ -20,8 +20,44 @@ _log = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app):
+    import threading
+    import os as _os
+    from apscheduler.schedulers.background import BackgroundScheduler as _BgScheduler
+    from source_registry import _run_weekly_ping as _rwp
+    from score_adaptive import recompute_adaptive_scores as _ras
+
     init_db()
+
+    scheduler = _BgScheduler(job_defaults={"max_instances": 1, "coalesce": True})
+
+    scheduler.add_job(_rwp, "interval", weeks=1, id="weekly_ping")
+    scheduler.add_job(_ras, "interval", weeks=1, id="weekly_adaptive_scores")
+
+    _digest_hour = int(_os.getenv("DIGEST_HOUR", "7"))
+    if _os.getenv("DIGEST_SMTP_HOST") and _os.getenv("DIGEST_TO"):
+        def _send_daily_digest():
+            try:
+                from email_digest import send_digest as _sd
+                _cfg = {
+                    "host": _os.getenv("DIGEST_SMTP_HOST"),
+                    "port": int(_os.getenv("DIGEST_SMTP_PORT", "587")),
+                    "user": _os.getenv("DIGEST_SMTP_USER"),
+                    "password": _os.getenv("DIGEST_SMTP_PASSWORD"),
+                    "to": _os.getenv("DIGEST_TO"),
+                }
+                _sd(_cfg)
+            except Exception:
+                _log.exception("Échec envoi digest email")
+
+        scheduler.add_job(_send_daily_digest, "cron", hour=_digest_hour, minute=0, id="daily_digest")
+
+    scheduler.start()
+    _log.info("Scheduler APScheduler démarré")
+
     yield
+
+    scheduler.shutdown(wait=False)
+    _log.info("Scheduler APScheduler arrêté")
 
 app = FastAPI(title="DEF OI Veille Commerciale", version="2.0.0", lifespan=lifespan)
 
