@@ -44,11 +44,11 @@ def test_local_analyze_gardiennage_low_score():
 
 
 def test_analyze_tender_returns_combined_score(monkeypatch):
-    """Vérifie que analyze_tender combine scores quand Claude répond."""
+    """Vérifie que analyze_tender combine scores quand Mistral répond."""
     from llm_analyzer import _local_analyze
     import llm_analyzer
 
-    fake_claude = {
+    fake_mistral = {
         "score_pertinence": 80,
         "tag_pertinence": "Très pertinent",
         "type_marche": "Maintenance",
@@ -57,15 +57,15 @@ def test_analyze_tender_returns_combined_score(monkeypatch):
         "marques_concurrentes_citees": [],
         "risques_penalites": None,
         "justification_score": "Marché SSI direct.",
-        "_source": "claude",
+        "_source": "mistral",
     }
-    monkeypatch.setattr(llm_analyzer, "_claude_analyze", lambda text: fake_claude)
+    monkeypatch.setattr(llm_analyzer, "_mistral_analyze", lambda text: fake_mistral)
 
     result = llm_analyzer.analyze_tender("Maintenance SSI La Réunion 974")
     local = _local_analyze("Maintenance SSI La Réunion 974")
     expected_score = round(80 * 0.70 + local["score_pertinence"] * 0.30)
     assert result["score_pertinence"] == expected_score
-    assert result["_source"] == "claude"
+    assert result["_source"] == "mistral"
 
 
 def test_local_analyze_empty_string():
@@ -74,35 +74,6 @@ def test_local_analyze_empty_string():
     assert "score_pertinence" in result
     assert result["score_pertinence"] == 0
 
-
-def test_authentication_error_does_not_log_key(monkeypatch, caplog):
-    """AuthenticationError must not expose the API key in logs."""
-    import llm_analyzer
-    import anthropic
-    import logging
-
-    fake_key = "sk-ant-api03-FAKE_SECRET_KEY_1234567890"
-
-    def _raise_auth(*args, **kwargs):
-        raise anthropic.AuthenticationError(
-            message="401 Invalid API key",
-            response=None,
-            body={"error": {"type": "authentication_error"}},
-        )
-
-    monkeypatch.setattr(llm_analyzer, "_anthropic_client", None)
-    monkeypatch.setenv("ANTHROPIC_API_KEY", fake_key)
-    monkeypatch.setattr(anthropic.Anthropic, "messages", property(lambda self: type("M", (), {"create": _raise_auth})()))
-
-    with caplog.at_level(logging.WARNING, logger="llm_analyzer"):
-        result = llm_analyzer._claude_analyze("test")
-
-    assert result is None
-    for record in caplog.records:
-        assert fake_key not in record.getMessage()
-
-
-from unittest.mock import patch, MagicMock
 
 
 def test_analyze_tender_structured_returns_none_for_short_description():
@@ -113,8 +84,10 @@ def test_analyze_tender_structured_returns_none_for_short_description():
 
 
 def test_analyze_tender_structured_returns_none_without_api_key(monkeypatch):
-    """Pas de cle API -> None."""
-    monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
+    """Pas de MISTRAL_API_KEY -> None."""
+    monkeypatch.delenv('MISTRAL_API_KEY', raising=False)
+    import llm_analyzer
+    llm_analyzer._mistral_client = None
     from llm_analyzer import analyze_tender_structured
     result = analyze_tender_structured(
         'Installation SSI ERP type J',
@@ -124,24 +97,27 @@ def test_analyze_tender_structured_returns_none_without_api_key(monkeypatch):
 
 
 def test_analyze_tender_structured_parses_valid_json(monkeypatch):
-    """Reponse Claude JSON valide -> dict avec les bons champs."""
-    monkeypatch.setenv('ANTHROPIC_API_KEY', 'sk-ant-test-key')
-    mock_response_json = '''{        "budget_estime": "150 000 euro",        "type_travaux": "Installation neuve",        "lots": ["Lot 1 - Detection"],        "keywords_techniques": ["SSI categorie A"],        "acheteur_type": "Etablissement scolaire",        "niveau_concurrence": "Eleve",        "recommandation": "GO",        "score_confiance": 82,        "justification": "ERP type J, coeur de metier."    }'''
+    """Réponse Mistral JSON valide -> dict avec les bons champs."""
+    monkeypatch.setenv('MISTRAL_API_KEY', 'fake-mistral-key-1234')
+    import llm_analyzer
+    from unittest.mock import MagicMock
 
-    mock_msg = MagicMock()
-    mock_msg.content = [MagicMock(text=mock_response_json)]
+    fake_json = '{"budget_estime": "150 000 euro", "type_travaux": "Installation neuve", "lots": ["Lot 1 - Detection"], "keywords_techniques": ["SSI categorie A"], "acheteur_type": "Etablissement scolaire", "niveau_concurrence": "Eleve", "recommandation": "GO", "score_confiance": 82, "justification": "ERP type J, coeur de metier."}'
+    mock_choice = MagicMock()
+    mock_choice.message.content = fake_json
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+
+    mock_client = MagicMock()
+    mock_client.chat.complete.return_value = mock_response
+    monkeypatch.setattr(llm_analyzer, "_get_mistral_client", lambda: mock_client)
 
     from llm_analyzer import analyze_tender_structured
-    with patch('anthropic.Anthropic') as MockAnthropic:
-        mock_client = MagicMock()
-        MockAnthropic.return_value = mock_client
-        mock_client.messages.create.return_value = mock_msg
-
-        result = analyze_tender_structured(
-            'Installation SSI ERP type J',
-            'Installation d un systeme de securite incendie dans un ERP de type J categorie 2, desenfumage CMSI inclus.',
-            amount=150000,
-        )
+    result = analyze_tender_structured(
+        'Installation SSI ERP type J',
+        'Installation d un systeme de securite incendie dans un ERP de type J categorie 2, desenfumage CMSI inclus.',
+        amount=150000,
+    )
 
     assert result is not None
     assert result['recommandation'] == 'GO'
@@ -151,23 +127,25 @@ def test_analyze_tender_structured_parses_valid_json(monkeypatch):
 
 
 def test_analyze_tender_structured_handles_invalid_json(monkeypatch):
-    """Claude retourne du texte invalide -> None sans exception."""
-    monkeypatch.setenv('ANTHROPIC_API_KEY', 'sk-ant-test-key')
+    """Mistral retourne du texte invalide -> None sans exception."""
+    monkeypatch.setenv('MISTRAL_API_KEY', 'fake-mistral-key-1234')
+    import llm_analyzer
+    from unittest.mock import MagicMock
 
-    mock_msg = MagicMock()
-    mock_msg.content = [MagicMock(text='Desole, je ne peux pas repondre.')]
+    mock_choice = MagicMock()
+    mock_choice.message.content = 'Desole, je ne peux pas repondre.'
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+
+    mock_client = MagicMock()
+    mock_client.chat.complete.return_value = mock_response
+    monkeypatch.setattr(llm_analyzer, "_get_mistral_client", lambda: mock_client)
 
     from llm_analyzer import analyze_tender_structured
-    with patch('anthropic.Anthropic') as MockAnthropic:
-        mock_client = MagicMock()
-        MockAnthropic.return_value = mock_client
-        mock_client.messages.create.return_value = mock_msg
-
-        result = analyze_tender_structured(
-            'Installation SSI',
-            'Installation d un systeme de securite incendie complet avec CMSI et desenfumage.',
-        )
-
+    result = analyze_tender_structured(
+        'Installation SSI',
+        'Installation d un systeme de securite incendie complet avec CMSI et desenfumage.',
+    )
     assert result is None
 
 
@@ -272,9 +250,8 @@ def test_mistral_analyze_returns_none_on_invalid_json(monkeypatch):
     assert result is None
 
 
-def test_analyze_tender_routes_to_mistral_when_provider_is_mistral(monkeypatch):
-    """LLM_PROVIDER=mistral -> _mistral_analyze appelé, pas _claude_analyze."""
-    monkeypatch.setenv("LLM_PROVIDER", "mistral")
+def test_analyze_tender_routes_to_mistral(monkeypatch):
+    """analyze_tender utilise toujours _mistral_analyze."""
     import llm_analyzer
 
     fake_mistral_result = {
@@ -288,48 +265,18 @@ def test_analyze_tender_routes_to_mistral_when_provider_is_mistral(monkeypatch):
         "justification_score": "SSI Réunion.",
         "_source": "mistral",
     }
-    calls = {"mistral": 0, "claude": 0}
+    calls = {"mistral": 0}
 
     def fake_mistral(text):
         calls["mistral"] += 1
         return fake_mistral_result
 
-    def fake_claude(text):
-        calls["claude"] += 1
-        return None
-
     monkeypatch.setattr(llm_analyzer, "_mistral_analyze", fake_mistral)
-    monkeypatch.setattr(llm_analyzer, "_claude_analyze", fake_claude)
 
     result = llm_analyzer.analyze_tender("Maintenance SSI La Réunion 974")
 
     assert calls["mistral"] == 1
-    assert calls["claude"] == 0
     assert result["_source"] == "mistral"
-
-
-def test_analyze_tender_routes_to_claude_by_default(monkeypatch):
-    """LLM_PROVIDER absent -> _claude_analyze appelé (rétrocompat)."""
-    monkeypatch.delenv("LLM_PROVIDER", raising=False)
-    import llm_analyzer
-
-    calls = {"mistral": 0, "claude": 0}
-
-    def fake_claude(text):
-        calls["claude"] += 1
-        return None
-
-    def fake_mistral(text):
-        calls["mistral"] += 1
-        return None
-
-    monkeypatch.setattr(llm_analyzer, "_claude_analyze", fake_claude)
-    monkeypatch.setattr(llm_analyzer, "_mistral_analyze", fake_mistral)
-
-    llm_analyzer.analyze_tender("Maintenance SSI La Réunion 974")
-
-    assert calls["claude"] == 1
-    assert calls["mistral"] == 0
 
 
 def test_reset_mistral_client_sets_none():
