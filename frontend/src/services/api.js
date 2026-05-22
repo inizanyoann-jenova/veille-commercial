@@ -87,4 +87,19 @@ export const resetDb = () =>
 export const archiveOld = (days = 30) =>
   api.post('/admin/archive-old', null, { params: { days } }).then((r) => r.data)
 
+// ── Doublons ──────────────────────────────────────────────────────────────────
+
+export const getDuplicates = () =>
+  api.get('/duplicates').then((r) => r.data)
+
+export const resolveDuplicate = (pairId, action, keepId, archiveId) => {
+  if (action === 'ignore') {
+    return api.post(`/duplicates/${pairId}/resolve`, { action: 'ignore' }).then((r) => r.data)
+  }
+  return api
+    .delete(`/tenders/${archiveId}`)
+    .then(() => api.post(`/duplicates/${pairId}/resolve`, { action: 'keep' }))
+    .then((r) => r.data)
+}
+
 export default api
