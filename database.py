@@ -33,14 +33,13 @@ _MIGRATIONS: list[tuple[str, str, str]] = [
 ]
 
 _VALID_TABLES = {"tenders", "sources"}
-_VALID_COLS   = {col for _, col, _ in _MIGRATIONS}
 
 
 def _run_migrations(engine) -> None:
     """Exécute les migrations de colonnes avec validation stricte des noms.
 
     Sécurité :
-    - Les noms de tables et colonnes sont validés contre des whitelists (_VALID_TABLES, _VALID_COLS)
+    - Les noms de tables sont validés contre _VALID_TABLES
     - Seules les migrations définies dans _MIGRATIONS (liste statique) sont exécutées
     - Approche sécurisée pour une application locale avec validation stricte en amont
     """
@@ -48,8 +47,6 @@ def _run_migrations(engine) -> None:
         for table, col_name, col_def in _MIGRATIONS:
             if table not in _VALID_TABLES:
                 raise ValueError(f"Migration refusée — table inconnue : {table}")
-            if col_name not in _VALID_COLS:
-                raise ValueError(f"Migration refusée — colonne inconnue : {col_name}")
             try:
                 # Pour une application locale, cette approche est sécurisée grâce à la validation whitelist
                 # Les requêtes DDL avec noms de tables/colonnes paramétrés ne sont pas supportées par SQLAlchemy
