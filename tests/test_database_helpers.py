@@ -121,12 +121,28 @@ def test_insert_if_new_rejects_tender_without_date(db):
     assert "X-NODATE" not in existing
 
 
+def test_insert_if_new_rejects_tender_too_old(db):
+    from scraper_utils import insert_if_new
+    from models import Tender
+    from datetime import datetime, timedelta
+    t = Tender(id="X-OLD", title="Vieux", source="https://example.com",
+               publication_date=datetime.now() - timedelta(days=45),
+               status="À qualifier", relevance_score=0, is_blacklisted=False)
+    existing = set()
+    inserted = insert_if_new(db, t, existing)
+    assert inserted is False
+    assert "X-OLD" not in existing
+
+
 def test_insert_if_new_skips_duplicate(db):
     from scraper_utils import load_existing_ids, insert_if_new
     from models import Tender
+    from datetime import datetime, timedelta
     t1 = Tender(id="X-002", title="Test", source="https://example.com",
+                publication_date=datetime.now() - timedelta(days=3),
                 status="À qualifier", relevance_score=0, is_blacklisted=False)
     t2 = Tender(id="X-002", title="Test bis", source="https://example.com",
+                publication_date=datetime.now() - timedelta(days=3),
                 status="À qualifier", relevance_score=0, is_blacklisted=False)
     existing = load_existing_ids(db)
     insert_if_new(db, t1, existing)

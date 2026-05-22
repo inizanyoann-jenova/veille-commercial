@@ -10,7 +10,7 @@ Fournit :
 """
 import logging
 import time
-from datetime import datetime, timezone as _tz
+from datetime import datetime, timedelta, timezone as _tz
 
 import requests
 
@@ -136,7 +136,6 @@ def insert_if_new(db, tender_obj, seen_ids: set[str]) -> bool:
     if not tender_obj.publication_date:
         _log.debug("insert_if_new: article ignoré (date absente) — %s", tender_obj.id)
         return False
-    from datetime import timedelta
     cutoff = datetime.now() - timedelta(days=_MAX_ARTICLE_AGE_DAYS)
     if tender_obj.publication_date.replace(tzinfo=None) < cutoff:
         _log.debug("insert_if_new: article ignoré (trop ancien) — %s", tender_obj.id)
