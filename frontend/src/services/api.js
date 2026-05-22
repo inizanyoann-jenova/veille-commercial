@@ -92,13 +92,13 @@ export const archiveOld = (days = 30) =>
 export const getDuplicates = () =>
   api.get('/duplicates').then((r) => r.data)
 
-export const resolveDuplicate = (pairId, action, keepId, archiveId) => {
+export const resolveDuplicate = (pairId, action, archiveId) => {
   if (action === 'ignore') {
     return api.post(`/duplicates/${pairId}/resolve`, { action: 'ignore' }).then((r) => r.data)
   }
   return api
-    .delete(`/tenders/${archiveId}`)
-    .then(() => api.post(`/duplicates/${pairId}/resolve`, { action: 'keep' }))
+    .post(`/duplicates/${pairId}/resolve`, { action: 'keep' })
+    .then(() => api.delete(`/tenders/${archiveId}`))
     .then((r) => r.data)
 }
 
