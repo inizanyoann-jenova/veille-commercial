@@ -38,7 +38,7 @@ def fetch_instao_tenders() -> int:
         db = SessionLocal()
         try:
             _run_id = start_scraper_run(db, "Instao")
-            finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error="Pas d'identifiants configurés")
+            finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error="CREDENTIALS_MISSING")
         finally:
             db.close()
         return 0
