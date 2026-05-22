@@ -37,7 +37,7 @@ from database import (  # noqa: E402
     start_scraper_run,
     finish_scraper_run,
 )
-from models import DuplicateCandidate, ScraperRun, Tender  # noqa: E402
+from models import Credential, DuplicateCandidate, ScraperRun, Tender  # noqa: E402
 from source_registry import list_sources, add_source, remove_source, toggle_enabled  # noqa: E402
 from health_check import run_all_health_checks  # noqa: E402
 from export_excel import generate_executive_report  # noqa: E402
@@ -55,9 +55,7 @@ from llm_analyzer import (  # noqa: E402
     auto_analyze_claude,
     auto_analyze_pending,
 )
-import json as _json
-import subprocess as _subprocess
-from credential_manager import CredentialManager as _CredMgr, _ENV_MAP as _CRED_ENV_MAP  # noqa: E402
+from credential_manager import _ENV_MAP as _CRED_ENV_MAP  # noqa: E402
 
 _log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -1021,13 +1019,8 @@ def export_excel(db: Session = Depends(get_db)):
 # ── GET /api/credentials ──────────────────────────────────────────────────────
 
 @app.get("/api/credentials", summary="Liste les 8 sites protégés et leur statut d'auth")
-def list_credentials():
-    from models import Credential as _Cred
-    db = SessionLocal()
-    try:
-        db_creds = {c.site: c for c in db.query(_Cred).all()}
-    finally:
-        db.close()
+def list_credentials(db: Session = Depends(get_db)):
+    db_creds = {c.site: c for c in db.query(Credential).all()}
     result = []
     for site, label in sorted(_ALL_CREDENTIAL_SITES.items()):
         email_var, _ = _CRED_ENV_MAP.get(site, (f"{site.upper()}_EMAIL", ""))
