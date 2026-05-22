@@ -1,4 +1,4 @@
-from models import Source  # noqa: re-export — `from source_registry import Source` fonctionne toujours
+from models import Source  # noqa: F401  # re-export — `from source_registry import Source` fonctionne toujours
 import requests
 from datetime import datetime as _dt_src, timezone as _tz_src
 

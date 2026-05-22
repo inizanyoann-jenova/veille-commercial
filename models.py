@@ -87,7 +87,7 @@ class Source(Base):
     id                  = Column(Integer, primary_key=True, autoincrement=True)
     name                = Column(String, nullable=False)
     url                 = Column(String, nullable=False)
-    category            = Column(String, nullable=False)
+    category            = Column(String, nullable=False)   # 'Public' | 'Privé' | 'International'
     scraper_module      = Column(String, default=None)
     scraper_func        = Column(String, default=None)
     is_manual           = Column(Boolean, default=False)
