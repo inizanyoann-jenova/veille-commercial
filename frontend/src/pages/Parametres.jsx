@@ -95,7 +95,7 @@ function CollectSection() {
 function CredentialsSection() {
   const { data: sites = [], refetch } = useCredentials()
   const { mutate: save, isPending: saving } = useSaveCredential()
-  const { mutate: remove } = useDeleteCredential()
+  const { mutate: remove, isPending: deleting } = useDeleteCredential()
   const { mutate: test, isPending: testing } = useTestCredential()
 
   const [open, setOpen] = useState(null)
@@ -241,7 +241,8 @@ function CredentialsSection() {
                   {entry.status === 'configured' && (
                     <button
                       onClick={() => handleDelete(entry.site)}
-                      className="px-3 py-1.5 bg-red-50 text-red-700 text-xs rounded border border-red-300 hover:bg-red-100 transition-colors"
+                      disabled={deleting}
+                      className="px-3 py-1.5 bg-red-50 text-red-700 text-xs rounded border border-red-300 hover:bg-red-100 disabled:opacity-50 transition-colors"
                     >
                       Supprimer
                     </button>
