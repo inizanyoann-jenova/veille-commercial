@@ -161,7 +161,7 @@ def test_test_credential_playwright_success():
 def test_test_credential_playwright_wrong_password():
     import json as _json_mod
     mock_proc = MagicMock()
-    mock_proc.stdout = _json_mod.dumps({'ok': False, 'erreur_page': 'Identifiants incorrects'})
+    mock_proc.stdout = _json_mod.dumps({'ok': False, 'erreur_page': 'Mot de passe erroné'})
     with patch.object(_m, '_subprocess') as mock_sub:
         mock_sub.run.return_value = mock_proc
         mock_sub.TimeoutExpired = TimeoutError
@@ -170,7 +170,7 @@ def test_test_credential_playwright_wrong_password():
     assert resp.status_code == 200
     body = resp.json()
     assert body['ok'] is False
-    assert 'incorrects' in body['message']
+    assert body['message'] == 'Identifiants incorrects : Mot de passe erroné'
 
 
 def test_test_credential_playwright_timeout():
@@ -183,3 +183,39 @@ def test_test_credential_playwright_timeout():
     body = resp.json()
     assert body['ok'] is False
     assert 'expiré' in body['message']
+
+
+def test_test_credential_playwright_missing_selector():
+    import json as _json_mod
+    mock_proc = MagicMock()
+    mock_proc.stdout = _json_mod.dumps({'ok': False, 'champ_manquant': '#login'})
+    with patch.object(_m, '_subprocess') as mock_sub:
+        mock_sub.run.return_value = mock_proc
+        mock_sub.TimeoutExpired = TimeoutError
+        resp = _client.post('/api/credentials/nukema/test',
+                            json={'email': 'u@u.com', 'password': 'p'})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body['ok'] is False
+    assert body['message'] == 'Champ introuvable — sélecteur CSS à mettre à jour'
+
+
+def test_test_credential_playwright_no_redirect():
+    import json as _json_mod
+    mock_proc = MagicMock()
+    mock_proc.stdout = _json_mod.dumps({'ok': False, 'no_redirect': True})
+    with patch.object(_m, '_subprocess') as mock_sub:
+        mock_sub.run.return_value = mock_proc
+        mock_sub.TimeoutExpired = TimeoutError
+        resp = _client.post('/api/credentials/nukema/test',
+                            json={'email': 'u@u.com', 'password': 'p'})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body['ok'] is False
+    assert body['message'] == 'Connexion refusée sans message d\'erreur'
+
+
+def test_test_credential_unknown_site_returns_404():
+    resp = _client.post('/api/credentials/nonexistent_xyz/test',
+                        json={'email': 'u@u.com', 'password': 'p'})
+    assert resp.status_code == 404
