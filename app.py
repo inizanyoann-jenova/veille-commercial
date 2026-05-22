@@ -1596,11 +1596,11 @@ with st.sidebar:
     _api_key_stored = os.getenv("MISTRAL_API_KEY", "")
     _api_key_input = st.text_input(
         "Clé API Mistral",
-        value=_api_key_stored,
+        value="",
         type="password",
         key="mistral_api_key_input",
         label_visibility="collapsed",
-        placeholder="sk-...",
+        placeholder="sk-... (laisser vide pour conserver la clé actuelle)",
     )
     if _api_key_stored:
         st.caption("✅ Clé active")
@@ -1616,7 +1616,7 @@ with st.sidebar:
             except OSError as e:
                 st.error(f"Erreur d'écriture : {e}")
         else:
-            st.error("La clé ne peut pas être vide.")
+            st.info("Clé inchangée — saisir une nouvelle clé pour la modifier.")
     st.markdown("---")
     st.markdown("### ⚡ Collecte")
 
