@@ -1067,6 +1067,8 @@ def delete_credential(site: str):
 
 @app.post("/api/credentials/{site}/test", summary="Tester la connexion Playwright")
 def test_credential(site: str, body: CredentialSave):
+    if site not in _ALL_CREDENTIAL_SITES:
+        raise HTTPException(status_code=404, detail=f"Site inconnu : {site}")
     if site not in _LOGIN_CONFIG:
         return {"ok": True, "message": "Accès public — aucun test disponible"}
     cfg = _LOGIN_CONFIG[site]
@@ -1084,15 +1086,20 @@ def test_credential(site: str, body: CredentialSave):
             text=True,
             timeout=35,
         )
+        if not proc.stdout or not proc.stdout.strip():
+            stderr_hint = (proc.stderr or "").strip()[:200]
+            return {"ok": False, "message": f"Worker sans sortie — {stderr_hint}" if stderr_hint else "Worker sans sortie"}
         result = _json.loads(proc.stdout)
         if result.get("ok"):
             return {"ok": True}
-        msg = (
-            result.get("erreur_page")
-            or result.get("champ_manquant")
-            or result.get("erreur_worker")
-            or "Connexion refusée"
-        )
+        if result.get("erreur_page"):
+            msg = f"Identifiants incorrects : {result['erreur_page']}"
+        elif result.get("champ_manquant"):
+            msg = "Champ introuvable — sélecteur CSS à mettre à jour"
+        elif result.get("no_redirect"):
+            msg = "Connexion refusée sans message d'erreur"
+        else:
+            msg = result.get("erreur_worker") or "Connexion refusée"
         return {"ok": False, "message": msg}
     except _subprocess.TimeoutExpired:
         return {"ok": False, "message": "Test expiré — site trop lent ou inaccessible (>30s)"}
