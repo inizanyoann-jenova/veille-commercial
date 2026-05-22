@@ -570,11 +570,12 @@ MCO, GMAO, astreinte, dépannage, contrats de service
 6. QHSE / ERP : audits de sécurité incendie, formations SSIAP/évacuation, \
 accompagnement commissions de sécurité, mise en conformité ERP
 
-SIGNAL ERP (bâtiments à obligation réglementaire SSI) : \
+SIGNAL ERP — PRIORITÉ MAXIMALE : \
 hôpital/CHU/EHPAD, école/lycée/université, mairie/préfecture, \
 hôtel/résidence, centre commercial, gymnase/piscine/stade, musée/bibliothèque, \
-IGH (immeuble grande hauteur). Si un ERP est mentionné + contexte sécurité = \
-probabilité forte de SSI obligatoire.
+IGH (immeuble grande hauteur). \
+Si un ERP est mentionné + contexte sécurité = obligation légale SSI → \
+renseigner alerte_erp ET basculer decision à OUI sauf exclusion formelle.
 
 EXCLURE IMPÉRATIVEMENT — score ≤ 15 si aucun signal SSI/Vidéo/CF :
 - Gardiennage, agents de sécurité, SSIAP pur, rondes, surveillance humaine
@@ -584,17 +585,30 @@ EXCLURE IMPÉRATIVEMENT — score ≤ 15 si aucun signal SSI/Vidéo/CF :
 - Extincteurs seuls (sans SSI), fourniture de matériel de lutte incendie
 - Sécurité civile, pompiers, secours
 
+RÈGLE OUI/NON — le commercial ne doit louper aucune affaire :
+- "OUI" si score_pertinence >= 45 ET territoire Réunion/Mayotte/Océan Indien
+- "OUI" si ERP détecté + contexte sécurité, même si score < 45
+- En cas de doute sur le périmètre technique : préférer "OUI"
+- "NON" uniquement si exclusion formelle claire (gardiennage, génie civil, hors zone confirmé)
+
+EXTRACTION DE DATE — OBLIGATOIRE :
+Cherche IMPÉRATIVEMENT une date dans le texte (date de parution, date de \
+publication, date d'avis, date de mise en ligne, date d'affichage…). \
+Extrais-la au format YYYY-MM-DD. Si aucune date n'est trouvée dans le texte : \
+retourner null.
+
 Réponds UNIQUEMENT en JSON valide, sans commentaire :
 {
   "score_pertinence": <entier 0-100>,
   "tag_pertinence": "Très pertinent" | "À évaluer" | "Hors périmètre",
+  "decision": "OUI" | "NON",
+  "alerte_erp": "<⚠️ ERP DÉTECTÉ — [type bâtiment] : SSI catégorie [X] obligatoire réglementairement>" | null,
   "type_marche": "Travaux" | "Maintenance" | "Fourniture" | "Mixte" | "Inconnu",
-  "domaines_concernes": ["SSI", "CMSI", "Vidéosurveillance", "Courants faibles", \
-"QHSE", "ERP", "Maintenance"],
-  "territoire": "La Réunion" | "Mayotte" | "Océan Indien" | "France métropole" | \
-"International" | "Non précisé",
+  "domaines_concernes": ["SSI", "CMSI", "Vidéosurveillance", "Courants faibles", "QHSE", "ERP", "Maintenance"],
+  "territoire": "La Réunion" | "Mayotte" | "Océan Indien" | "France métropole" | "International" | "Non précisé",
   "marques_concurrentes_citees": ["marque1", "marque2"],
   "risques_penalites": "texte court décrivant pénalités/retenues ou null",
+  "date_publication": "date de publication au format YYYY-MM-DD extraite du texte, sinon null",
   "justification_score": "3 phrases : (1) quels domaines métier DEF OI sont présents et avec quelle intensité dans le texte (SSI/CMSI/Vidéo/CF — citer les indices concrets), (2) pourquoi ce territoire est ou non stratégique pour DEF OI (avantage local 974/976, développement OI, ou hors zone), (3) type de prestation et impact commercial direct (maintenance = récurrent + marge, travaux = déclenche futur MCO, ERP = obligation réglementaire). Si hors périmètre, nommer précisément ce qui exclut (ex: gardiennage, génie civil, électricité HT)."
 }
 
@@ -638,6 +652,12 @@ def _get_mistral_client():
         except Exception:
             return None
     return _mistral_client
+
+
+def reset_mistral_client() -> None:
+    """Invalide le singleton Mistral — à appeler après changement de clé API."""
+    global _mistral_client
+    _mistral_client = None
 
 
 def _mistral_analyze(text: str) -> dict | None:
@@ -1015,6 +1035,16 @@ def auto_analyze_claude(
         t.llm_analysis = llm_result
         t.relevance_score = combined_score
         t.is_maintenance = llm_result.get("type_marche", "").lower() == "maintenance"
+
+        if not t.publication_date:
+            _date_str = llm_result.get("date_publication")
+            if _date_str and _date_str != "null":
+                from scraper_utils import parse_date as _parse_date
+                _parsed = _parse_date(_date_str)
+                if _parsed:
+                    t.publication_date = _parsed
+                    _log.info("auto_analyze_claude: date extraite par LLM pour '%s' → %s", (t.title or t.id)[:40], _parsed.date())
+
         nb_done += 1
 
         if i < len(pending) - 1:
