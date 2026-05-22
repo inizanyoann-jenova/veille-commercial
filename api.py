@@ -1,6 +1,7 @@
 import logging
-import os
 import tempfile
+
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import Response
@@ -15,9 +16,14 @@ from source_registry import list_sources, add_source, remove_source, toggle_enab
 from export_excel import generate_executive_report
 
 _log = logging.getLogger(__name__)
-init_db()
 
-app = FastAPI(title="DEF OI Veille Commerciale", version="2.0.0")
+
+@asynccontextmanager
+async def lifespan(app):
+    init_db()
+    yield
+
+app = FastAPI(title="DEF OI Veille Commerciale", version="2.0.0", lifespan=lifespan)
 
 
 @app.get("/health")
@@ -88,11 +94,17 @@ def analyze_one(tender_id: str):
         if not t:
             raise HTTPException(status_code=404, detail="Marché introuvable")
         text = f"{t.title or ''} {t.description or ''}"
-        result = analyze_tender(text, source_url=t.source_url)
-        t.llm_analysis = result
-        t.relevance_score = result.get("score_pertinence", t.relevance_score)
-        db.commit()
-        return result
+        try:
+            result = analyze_tender(text, source_url=t.source)
+            t.llm_analysis = result
+            t.relevance_score = result.get("score_pertinence", t.relevance_score)
+            db.commit()
+            return result
+        except HTTPException:
+            raise
+        except Exception:
+            db.rollback()
+            raise
     finally:
         db.close()
 
@@ -115,10 +127,47 @@ def auto_analyze(req: AutoAnalyzeRequest):
 def auto_analyze_local():
     db = SessionLocal()
     try:
-        nb_done = auto_analyze_pending(db)
-        return {"nb_done": nb_done}
+        try:
+            nb_done = auto_analyze_pending(db)
+            return {"nb_done": nb_done}
+        except Exception:
+            db.rollback()
+            raise
     finally:
         db.close()
+
+
+class ScrapeRequest(BaseModel):
+    sources: list[str] = []
+    max_tenders: int = 50
+
+
+@app.post("/scrape")
+def scrape(req: ScrapeRequest):
+    from importlib import import_module
+    db = SessionLocal()
+    try:
+        all_sources = list_sources(db)
+        enabled = [
+            s for s in all_sources
+            if s.enabled and (not req.sources or s.name in req.sources)
+            and s.scraper_module is not None
+        ]
+    finally:
+        db.close()
+
+    results = {}
+    for src in enabled:
+        try:
+            mod = import_module(src.scraper_module)
+            if hasattr(mod, "run"):
+                count = mod.run(max_results=req.max_tenders)
+            else:
+                count = 0
+            results[src.name] = {"ok": True, "count": count}
+        except Exception as exc:
+            results[src.name] = {"ok": False, "error": str(exc)[:200]}
+    return results
 
 
 @app.get("/sources")
