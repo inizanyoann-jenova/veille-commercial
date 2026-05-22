@@ -14,7 +14,7 @@ import plotly.express as px
 import streamlit as st
 from sqlalchemy import func as _func, or_
 
-from database import SessionLocal, init_db, clean_obsolete_data
+from database import SessionLocal, init_db, clean_obsolete_data, delete_old_tenders
 from apscheduler.schedulers.background import BackgroundScheduler as _BgScheduler
 from export_excel import generate_executive_report
 from llm_analyzer import (
@@ -1034,7 +1034,8 @@ def _clear_tender_caches():
     load_kpis_ca.clear()
     load_kpis_priv.clear()
     load_chart_data.clear()
-    _load_urgences_cached.clear()
+    if "_load_urgences_cached" in globals():
+        _load_urgences_cached.clear()
 
 def _apply_filters(
     rows: list[dict],
@@ -1082,13 +1083,19 @@ def load_kpis_public() -> dict:
             .group_by(Tender.status)
             .all()
         )
-        total = sum(counts.values())
+        # NULL status → affiché "À qualifier" dans le tableau, on le compte ici aussi
+        a_qualifier = counts.get("À qualifier", 0) + counts.get(None, 0)
+        en_cours = counts.get("En cours", 0)
+        soumis = counts.get("Soumis", 0)
+        gagnes = counts.get("Gagné", 0)
+        # Total = actifs uniquement (Perdu exclu — ne fait plus partie du pipeline)
+        total = a_qualifier + en_cours + soumis + gagnes
         return {
             "total": total,
-            "a_qualifier": counts.get("À qualifier", 0),
-            "en_cours": counts.get("En cours", 0),
-            "gagnes": counts.get("Gagné", 0),
-            "soumis": counts.get("Soumis", 0),
+            "a_qualifier": a_qualifier,
+            "en_cours": en_cours,
+            "gagnes": gagnes,
+            "soumis": soumis,
         }
     finally:
         db.close()
@@ -1124,7 +1131,7 @@ def load_kpis_priv() -> dict:
             .all()
         )
         devbanks = db.query(_func.count(Tender.id)).filter(
-            Tender.is_blacklisted == False, Tender.type_opportunite == "Banque Dev."
+            *priv, Tender.type_opportunite == "Banque Dev."
         ).scalar() or 0
         qualif_priv = db.query(_func.count(Tender.id)).filter(
             *priv, Tender.status == "À qualifier"
@@ -1226,9 +1233,9 @@ def _collect_all_enabled_sources() -> None:
             go_count = sum(1 for t in _new_tenders if _get_score(t) >= SCORE_GO)
             etude_count = sum(1 for t in _new_tenders if SCORE_ETUDE <= _get_score(t) < SCORE_GO)
             pass_count = sum(1 for t in _new_tenders if _get_score(t) < SCORE_ETUDE)
-            claude_ok = sum(1 for t in _new_tenders if (t.llm_analysis or {}).get("_source") in ("claude", "gemini"))
+            llm_ok = sum(1 for t in _new_tenders if (t.llm_analysis or {}).get("_source") in ("mistral", "claude", "gemini"))
 
-            return go_count, etude_count, pass_count, claude_ok
+            return go_count, etude_count, pass_count, llm_ok
         finally:
             _db_res.close()
 
@@ -1245,14 +1252,14 @@ def _collect_all_enabled_sources() -> None:
         for src in per_source_new:
             st.session_state[f"src_filter_{src}"] = True
 
-    def _display_results(total, go_count, etude_count, pass_count, claude_ok, errors, new_ids):
+    def _display_results(total, go_count, etude_count, pass_count, llm_ok, errors, new_ids):
         if total and new_ids:
             message = (
                 f"✅ {total} nouveau(x) marché(s) importé(s) — "
                 f"🟢 {go_count} GO · 🟡 {etude_count} À étudier · 🔴 {pass_count} Passer"
             )
-            if claude_ok:
-                message += f" · 🤖 {claude_ok} analysé(s) par IA"
+            if llm_ok:
+                message += f" · 🤖 {llm_ok} analysé(s) par Mistral"
             st.success(message)
         elif total:
             st.success(f"✅ {total} nouveau(x) marché(s) importé(s) — analyse automatique effectuée.")
@@ -1283,12 +1290,12 @@ def _collect_all_enabled_sources() -> None:
 
         # Analyse des résultats
         all_new_ids = {tid for ids in per_source_new.values() for tid in ids}
-        go_count, etude_count, pass_count, claude_ok = _analyze_results(all_new_ids)
+        go_count, etude_count, pass_count, llm_ok = _analyze_results(all_new_ids)
         total = sum(len(ids) for ids in per_source_new.values())
 
         # Mise à jour de l'état et affichage
         _update_session_state(per_source_new, per_source_status, all_new_ids)
-        _display_results(total, go_count, etude_count, pass_count, claude_ok, errors, all_new_ids)
+        _display_results(total, go_count, etude_count, pass_count, llm_ok, errors, all_new_ids)
 
     # Analyse automatique post-collecte (locale)
     _run_auto_analysis()
@@ -1495,6 +1502,26 @@ def _render_collection_status_sidebar() -> None:
             c1.metric("✅ Analysés", max(0, llm_status.get("nb_done", 0)))
             c2.metric("❌ Échecs", max(0, llm_status.get("nb_failed", 0)))
 
+
+def _save_api_key_to_env(api_key: str) -> None:
+    """Écrit MISTRAL_API_KEY dans le fichier .env (crée le fichier si absent)."""
+    env_path = os.path.join(os.path.dirname(__file__), ".env")
+    lines = []
+    key_written = False
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("MISTRAL_API_KEY="):
+                    lines.append(f"MISTRAL_API_KEY={api_key}\n")
+                    key_written = True
+                else:
+                    lines.append(line)
+    if not key_written:
+        lines.append(f"MISTRAL_API_KEY={api_key}\n")
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+
+
 with st.sidebar:
     st.markdown("## 🔥 DEF Océan Indien")
     st.markdown("**Veille Marchés Publics**")
@@ -1558,12 +1585,65 @@ with st.sidebar:
         placeholder="Tous les tags",
     )
     st.markdown("---")
+    st.markdown("### 🔑 Mistral API")
+    _api_key_stored = os.getenv("MISTRAL_API_KEY", "")
+    _api_key_input = st.text_input(
+        "Clé API Mistral",
+        value=_api_key_stored,
+        type="password",
+        key="mistral_api_key_input",
+        label_visibility="collapsed",
+        placeholder="sk-...",
+    )
+    if _api_key_stored:
+        st.caption("✅ Clé active")
+    else:
+        st.caption("⚠️ Clé manquante — analyses LLM désactivées")
+    if st.button("💾 Sauvegarder la clé", key="save_api_key", use_container_width=True):
+        if _api_key_input.strip():
+            _save_api_key_to_env(_api_key_input.strip())
+            os.environ["MISTRAL_API_KEY"] = _api_key_input.strip()
+            from llm_analyzer import reset_mistral_client
+            reset_mistral_client()
+            st.success("✓ Clé sauvegardée et active")
+        else:
+            st.error("La clé ne peut pas être vide.")
+    st.markdown("---")
     st.markdown("### ⚡ Collecte")
 
     if st.button("⚡ Lancer la collecte", use_container_width=True, type="primary"):
         _collect_all_enabled_sources()
 
     _render_collection_status_sidebar()
+
+    st.markdown("---")
+    st.markdown("### 🗑️ Nettoyage")
+    if st.button("🗑️ Supprimer articles > 3 mois", use_container_width=True, type="secondary"):
+        if "confirm_delete_old" not in st.session_state:
+            st.session_state["confirm_delete_old"] = True
+        else:
+            st.session_state["confirm_delete_old"] = not st.session_state["confirm_delete_old"]
+    if st.session_state.get("confirm_delete_old"):
+        st.warning("⚠️ Cette action est irréversible. Les marchés Soumis/Gagné/Perdu sont préservés.")
+        col_yes, col_no = st.columns(2)
+        with col_yes:
+            if st.button("✅ Confirmer", use_container_width=True, type="primary"):
+                _db_del = new_db()
+                try:
+                    _nb_deleted = delete_old_tenders(_db_del, months=3)
+                finally:
+                    _db_del.close()
+                st.session_state["confirm_delete_old"] = False
+                st.session_state["_delete_old_result"] = _nb_deleted
+                st.cache_data.clear()
+                st.rerun()
+        with col_no:
+            if st.button("❌ Annuler", use_container_width=True):
+                st.session_state["confirm_delete_old"] = False
+
+    if "_delete_old_result" in st.session_state:
+        _n = st.session_state.pop("_delete_old_result")
+        st.success(f"🗑️ {_n} article(s) supprimé(s).")
 
     _col_results = st.session_state.get("collection_results", {})
     if _col_results:
@@ -1573,35 +1653,6 @@ with st.sidebar:
                 f"{_src_name} ({_nb_new})",
                 key=f"src_filter_{_src_name}",
             )
-
-    if st.button("🤖 Analyser en lot (Claude)", use_container_width=True,
-                 help="Analyse les 10 marchés prioritaires non encore traités par Claude"):
-        _prog_bar = st.progress(0.0)
-        _prog_text = st.empty()
-
-        def _claude_progress(i, n, title):
-            if n > 0:
-                _prog_bar.progress(i / n)
-            _prog_text.text(f"({i}/{n}) {title[:50]}…" if title else "Terminé")
-
-        _db_g = new_db()
-        try:
-            _nb_done, _retry_after = auto_analyze_claude(_db_g, max_per_run=10, progress_cb=_claude_progress)
-        finally:
-            _db_g.close()
-
-        _prog_bar.empty()
-        _prog_text.empty()
-        _clear_tender_caches()
-
-        if _nb_done:
-            st.success(f"✅ {_nb_done} marché(s) analysé(s) via Claude.")
-
-        if _retry_after >= 0:  # quota atteint
-            _mins = max(1, _retry_after // 60)
-            st.warning(f"⚠️ Quota Claude atteint — réessayez dans ~{_mins} min.")
-        elif not _nb_done:
-            st.info("Tous les marchés ont déjà été analysés par Claude.")
 
     st.markdown("---")
     col_nav1, col_nav2, col_nav3 = st.columns(3)
