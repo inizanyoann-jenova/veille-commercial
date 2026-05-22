@@ -79,7 +79,24 @@ function CollectSection() {
               </span>
               <span className="font-medium w-32 truncate">{r.source}</span>
               {r.status === 'ok' && <span className="text-gray-500">+{r.nb_new} nouveaux</span>}
-              {r.status === 'error' && <span className="text-red-500 text-xs">{r.error}</span>}
+              {r.status === 'error' && r.error === 'CREDENTIALS_MISSING' && (
+                <span className="text-amber-600 text-xs">
+                  ⚠ Identifiants manquants —{' '}
+                  <a
+                    href="#credentials"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      document.getElementById('credentials')?.scrollIntoView({ behavior: 'smooth' })
+                    }}
+                    className="underline hover:text-amber-800"
+                  >
+                    configurer ↗
+                  </a>
+                </span>
+              )}
+              {r.status === 'error' && r.error !== 'CREDENTIALS_MISSING' && (
+                <span className="text-red-500 text-xs">{r.error}</span>
+              )}
             </div>
           ))}
         </div>
