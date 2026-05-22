@@ -151,8 +151,8 @@ export const useDetectDuplicates = () => {
 export const useResolveDuplicate = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ pairId, action, keepId, archiveId }) =>
-      resolveDuplicate(pairId, action, keepId, archiveId),
+    mutationFn: ({ pairId, action, archiveId }) =>
+      resolveDuplicate(pairId, action, archiveId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['duplicates'] })
       qc.invalidateQueries({ queryKey: ['tenders'] })
@@ -173,7 +173,9 @@ export const useResetDb = () => {
   return useMutation({
     mutationFn: resetDb,
     onSuccess: () => {
-      qc.invalidateQueries()
+      qc.invalidateQueries({ queryKey: ['tenders'] })
+      qc.invalidateQueries({ queryKey: ['kpis'] })
+      qc.invalidateQueries({ queryKey: ['pipeline'] })
     },
   })
 }
