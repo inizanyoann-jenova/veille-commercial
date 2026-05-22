@@ -21,6 +21,7 @@ from llm_analyzer import (
     analyze_tender,
     auto_analyze_pending,
     auto_analyze_claude,
+    reset_mistral_client,
     _KW_SSI,
     _KW_CMSI,
     _KW_VIDEO,
@@ -1516,10 +1517,16 @@ def _save_api_key_to_env(api_key: str) -> None:
                     key_written = True
                 else:
                     lines.append(line)
+    # Ensure last line ends with newline before appending
+    if not key_written and lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
     if not key_written:
         lines.append(f"MISTRAL_API_KEY={api_key}\n")
-    with open(env_path, "w", encoding="utf-8") as f:
-        f.writelines(lines)
+    try:
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+    except OSError as e:
+        raise OSError(f"Impossible d'écrire dans {env_path} : {e}") from e
 
 
 with st.sidebar:
@@ -1601,11 +1608,13 @@ with st.sidebar:
         st.caption("⚠️ Clé manquante — analyses LLM désactivées")
     if st.button("💾 Sauvegarder la clé", key="save_api_key", use_container_width=True):
         if _api_key_input.strip():
-            _save_api_key_to_env(_api_key_input.strip())
-            os.environ["MISTRAL_API_KEY"] = _api_key_input.strip()
-            from llm_analyzer import reset_mistral_client
-            reset_mistral_client()
-            st.success("✓ Clé sauvegardée et active")
+            try:
+                _save_api_key_to_env(_api_key_input.strip())
+                os.environ["MISTRAL_API_KEY"] = _api_key_input.strip()
+                reset_mistral_client()
+                st.success("✓ Clé sauvegardée et active")
+            except OSError as e:
+                st.error(f"Erreur d'écriture : {e}")
         else:
             st.error("La clé ne peut pas être vide.")
     st.markdown("---")
