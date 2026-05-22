@@ -330,3 +330,27 @@ def test_analyze_tender_routes_to_claude_by_default(monkeypatch):
 
     assert calls["claude"] == 1
     assert calls["mistral"] == 0
+
+
+def test_reset_mistral_client_sets_none():
+    import llm_analyzer
+    llm_analyzer._mistral_client = object()  # simuler un client existant
+    llm_analyzer.reset_mistral_client()
+    assert llm_analyzer._mistral_client is None
+
+
+def test_system_prompt_contains_decision_field():
+    from llm_analyzer import SYSTEM_PROMPT
+    assert '"decision"' in SYSTEM_PROMPT
+    assert '"OUI"' in SYSTEM_PROMPT
+    assert '"NON"' in SYSTEM_PROMPT
+
+
+def test_system_prompt_contains_alerte_erp_field():
+    from llm_analyzer import SYSTEM_PROMPT
+    assert '"alerte_erp"' in SYSTEM_PROMPT
+
+
+def test_system_prompt_enforces_date_extraction():
+    from llm_analyzer import SYSTEM_PROMPT
+    assert "IMPÉRATIVEMENT" in SYSTEM_PROMPT
