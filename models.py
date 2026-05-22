@@ -79,3 +79,21 @@ class ScoreWeight(Base):
     weight_go   = Column(Float, default=0.0)
     weight_nogo = Column(Float, default=0.0)
     updated_at  = Column(DateTime)
+
+
+class Source(Base):
+    __tablename__ = "sources"
+
+    id                  = Column(Integer, primary_key=True, autoincrement=True)
+    name                = Column(String, nullable=False)
+    url                 = Column(String, nullable=False)
+    category            = Column(String, nullable=False)
+    scraper_module      = Column(String, default=None)
+    scraper_func        = Column(String, default=None)
+    is_manual           = Column(Boolean, default=False)
+    enabled             = Column(Boolean, default=True)
+    notes               = Column(String, default=None)
+    display_order       = Column(Integer, default=99)
+    is_validated        = Column(Boolean, default=False)
+    ping_failures_count = Column(Integer, default=0)
+    last_ping_at        = Column(DateTime, default=None)
