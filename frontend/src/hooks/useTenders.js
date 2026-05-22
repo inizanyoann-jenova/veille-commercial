@@ -5,6 +5,7 @@ import {
   collect, analyzePending, updateStatus, updateSaved, updateNotes,
   updateTags, updateAmount, deleteTender, analyzeTender,
   getDuplicates, resolveDuplicate, detectDuplicates, archiveOld, resetDb,
+  getCredentials, saveCredential, deleteCredential, testCredential,
 } from '../services/api'
 
 export const useTenders = (params) =>
@@ -179,3 +180,29 @@ export const useResetDb = () => {
     },
   })
 }
+
+// ── Identifiants ──────────────────────────────────────────────────────────────
+
+export const useCredentials = () =>
+  useQuery({ queryKey: ['credentials'], queryFn: getCredentials, staleTime: 30_000 })
+
+export const useSaveCredential = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ site, email, password }) => saveCredential(site, email, password),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['credentials'] }),
+  })
+}
+
+export const useDeleteCredential = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ site }) => deleteCredential(site),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['credentials'] }),
+  })
+}
+
+export const useTestCredential = () =>
+  useMutation({
+    mutationFn: ({ site, email, password }) => testCredential(site, email, password),
+  })
