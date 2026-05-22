@@ -1,24 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  getTenders,
-  getTender,
-  getKpisPublic,
-  getKpisCa,
-  getKpisPriv,
-  getPipeline,
-  getUrgences,
-  getScraperRuns,
-  getSources,
-  getChartData,
-  collect,
-  analyzePending,
-  updateStatus,
-  updateSaved,
-  updateNotes,
-  updateTags,
-  updateAmount,
-  deleteTender,
-  analyzeTender,
+  getTenders, getTender, getKpisPublic, getKpisCa, getKpisPriv,
+  getPipeline, getUrgences, getScraperRuns, getSources, getChartData,
+  collect, analyzePending, updateStatus, updateSaved, updateNotes,
+  updateTags, updateAmount, deleteTender, analyzeTender,
+  getDuplicates, resolveDuplicate, detectDuplicates, archiveOld, resetDb,
 } from '../services/api'
 
 export const useTenders = (params) =>
@@ -148,5 +134,46 @@ export const useAnalyzePending = () => {
   return useMutation({
     mutationFn: analyzePending,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tenders'] }),
+  })
+}
+
+export const useDuplicates = () =>
+  useQuery({ queryKey: ['duplicates'], queryFn: getDuplicates, staleTime: 30_000 })
+
+export const useDetectDuplicates = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: detectDuplicates,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['duplicates'] }),
+  })
+}
+
+export const useResolveDuplicate = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ pairId, action, keepId, archiveId }) =>
+      resolveDuplicate(pairId, action, keepId, archiveId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['duplicates'] })
+      qc.invalidateQueries({ queryKey: ['tenders'] })
+    },
+  })
+}
+
+export const useArchiveOld = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => archiveOld(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tenders'] }),
+  })
+}
+
+export const useResetDb = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: resetDb,
+    onSuccess: () => {
+      qc.invalidateQueries()
+    },
   })
 }
