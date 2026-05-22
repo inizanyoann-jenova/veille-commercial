@@ -1,25 +1,6 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime
-from models import Base
+from models import Source  # noqa: re-export — `from source_registry import Source` fonctionne toujours
 import requests
-from datetime import datetime as _dt_src
-
-
-class Source(Base):
-    __tablename__ = "sources"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String, nullable=False)
-    url = Column(String, nullable=False)
-    category = Column(String, nullable=False)   # 'Public' | 'Privé' | 'International'
-    scraper_module = Column(String, default=None)
-    scraper_func = Column(String, default=None)
-    is_manual = Column(Boolean, default=False)
-    enabled = Column(Boolean, default=True)
-    notes = Column(String, default=None)
-    display_order = Column(Integer, default=99)
-    is_validated        = Column(Boolean, default=False)
-    ping_failures_count = Column(Integer, default=0)
-    last_ping_at        = Column(DateTime, default=None)
+from datetime import datetime as _dt_src, timezone as _tz_src
 
 
 _DEFAULT_SOURCES = [
@@ -262,7 +243,7 @@ def _ping_source(db, source) -> bool:
         if source.ping_failures_count >= 3:
             source.is_validated = False
 
-    source.last_ping_at = _dt_src.utcnow()
+    source.last_ping_at = _dt_src.now(_tz_src.utc).replace(tzinfo=None)
     db.commit()
     return ok
 
