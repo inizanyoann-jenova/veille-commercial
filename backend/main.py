@@ -280,8 +280,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:5173"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 
@@ -369,7 +369,10 @@ def get_tenders(
                 Tender.publication_date == None,
             ))
 
-    tenders = q.order_by(Tender.deadline).all()
+    tenders = q.order_by(
+        Tender.deadline.asc().nullslast(),
+        Tender.relevance_score.desc(),
+    ).all()
     return [_tender_to_dict(t) for t in tenders]
 
 
