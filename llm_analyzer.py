@@ -620,23 +620,6 @@ BARÈME DE SCORING :
 5-24   : hors périmètre DEF OI ou signaux exclusion dominants\
 """
 
-_anthropic_client = None
-
-
-def _get_anthropic_client():
-    global _anthropic_client
-    api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
-    if not api_key:
-        return None
-    if _anthropic_client is None:
-        try:
-            import anthropic
-            _anthropic_client = anthropic.Anthropic(api_key=api_key)
-        except Exception:
-            return None
-    return _anthropic_client
-
-
 _mistral_client = None
 
 
@@ -712,71 +695,6 @@ def _mistral_analyze(text: str) -> dict | None:
             _log.warning("Clé API Mistral invalide ou permissions insuffisantes")
             return None
         _log.warning("Mistral analyse échouée (erreur inattendue) : %s", str(exc)[:200])
-        return None
-
-
-def _claude_analyze(text: str) -> dict | None:
-    """Tente une analyse via l'API Claude (Anthropic).
-
-    Retourne None si la clé API est absente ou en cas d'erreur inattendue.
-    Lève _LLMQuotaError si le quota API est atteint (429).
-    """
-    client = _get_anthropic_client()
-    if client is None:
-        return None
-    try:
-        import anthropic
-        response = client.messages.create(
-            model="claude-opus-4-7",
-            max_tokens=16000,
-            thinking={"type": "enabled", "budget_tokens": 10000},
-            system=[
-                {
-                    "type": "text",
-                    "text": SYSTEM_PROMPT,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-            messages=[
-                {
-                    "role": "user",
-                    "content": (
-                        "Analyse ce marché :\n\n"
-                        "<MARCHE_CONTENT>\n"
-                        f"{text[:8000]}\n"
-                        "</MARCHE_CONTENT>"
-                    ),
-                }
-            ],
-        )
-        raw = next((block.text for block in response.content if block.type == "text"), None)
-        if raw is None:
-            _log.warning("Claude : aucun bloc texte dans la réponse")
-            return None
-        # Supprimer les éventuels code fences markdown (```json ... ```)
-        raw_clean = raw.strip()
-        raw_clean = re.sub(r"^```(?:json)?\s*", "", raw_clean)
-        raw_clean = re.sub(r"\s*```$", "", raw_clean).strip()
-        try:
-            result = json.loads(raw_clean)
-        except json.JSONDecodeError:
-            _log.warning("Claude : réponse non-JSON — fallback analyse locale")
-            return None
-        result["_source"] = "claude"
-        return result
-    except anthropic.RateLimitError as exc:
-        retry_after = None
-        try:
-            retry_after = int(exc.response.headers.get("retry-after", 0)) or None
-        except Exception:
-            pass
-        raise _LLMQuotaError(retry_after=retry_after)
-    except (anthropic.AuthenticationError, anthropic.PermissionDeniedError):
-        # Ne pas logger str(exc) — peut contenir des fragments de la clé API
-        _log.warning("Clé API Claude invalide ou permissions insuffisantes (AuthenticationError)")
-        return None
-    except Exception as exc:
-        _log.warning("Claude analyse échouée (erreur inattendue) : %s", str(exc)[:200])
         return None
 
 
@@ -997,12 +915,8 @@ def auto_analyze_claude(
         text = f"{t.title or ''} {t.description or ''}"
         local_result = _local_analyze(text)
 
-        provider = os.getenv("LLM_PROVIDER", "mistral").strip().lower()
         try:
-            if provider == "mistral":
-                llm_result = _mistral_analyze(text)
-            else:
-                llm_result = _claude_analyze(text)
+            llm_result = _mistral_analyze(text)
         except _LLMQuotaError as qe:
             # Quota atteint : on sauvegarde ce qui est fait et on arrête immédiatement
             if nb_done > 0:
@@ -1014,8 +928,8 @@ def auto_analyze_claude(
 
         if llm_result is None:
             _log.warning(
-                "auto_analyze_claude: marché '%s' — %s a retourné None (clé absente, JSON invalide ou erreur réseau)",
-                (t.title or t.id)[:60], provider,
+                "auto_analyze_claude: marché '%s' — Mistral a retourné None (clé absente, JSON invalide ou erreur réseau)",
+                (t.title or t.id)[:60],
             )
             if i < len(pending) - 1:
                 time.sleep(delay)
@@ -1074,7 +988,7 @@ def analyze_tender(text: str, source_url: str | None = None) -> dict:
     """
     Analyse un appel d'offre. Si source_url est fourni et accessible publiquement,
     enrichit le texte avec le contenu de la page DCE avant l'analyse.
-    Route vers Claude ou Mistral selon LLM_PROVIDER (.env). Fallback analyse locale.
+    Route vers Mistral. Fallback analyse locale.
     """
     if source_url:
         dce_content = fetch_dce_content(source_url)
@@ -1083,12 +997,8 @@ def analyze_tender(text: str, source_url: str | None = None) -> dict:
 
     local_result = _local_analyze(text)
 
-    provider = os.getenv("LLM_PROVIDER", "mistral").strip().lower()
     try:
-        if provider == "mistral":
-            llm_result = _mistral_analyze(text)
-        else:
-            llm_result = _claude_analyze(text)
+        llm_result = _mistral_analyze(text)
     except _LLMQuotaError:
         llm_result = None
 
