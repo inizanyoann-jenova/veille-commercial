@@ -876,7 +876,7 @@ def auto_analyze_claude(
     delay: float = 1.0,  # 1s entre requêtes — respecte les limites de l'API
     progress_cb=None,
 ) -> tuple[int, int]:
-    """Analyse en masse via Claude (Anthropic) avec débit contrôlé.
+    """Analyse en masse via Mistral avec débit contrôlé.
 
     Cible les marchés analysés localement uniquement (source='local').
     Priorise les scores locaux les plus élevés en premier.
