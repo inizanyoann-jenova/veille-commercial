@@ -10,7 +10,7 @@ const COULEUR_DEF = '#e94560'
 function getWeekLabel(date) {
   const d = new Date(date)
   const start = new Date(d.getFullYear(), 0, 1)
-  const week = Math.ceil(((d - start) / 86400000 + start.getDay() + 1) / 7)
+  const week = String(Math.ceil(((d - start) / 86400000 + start.getDay() + 1) / 7)).padStart(2, '0')
   return `S${week} ${d.getFullYear()}`
 }
 
@@ -106,6 +106,10 @@ export default function Analytics() {
   const caFormatted = caGagne >= 1000
     ? `${Math.round(caGagne / 1000)} k€`
     : `${caGagne} €`
+  const caPipeline = kpisCa?.pipeline ?? 0
+  const pipelineFormatted = caPipeline >= 1000
+    ? `${Math.round(caPipeline / 1000)} k€`
+    : `${caPipeline} €`
 
   return (
     <div className="p-5 space-y-6">
@@ -114,7 +118,7 @@ export default function Analytics() {
         <KpiCard label="Total collecté" value={total} color="bg-blue-50 border-blue-200 text-blue-700" />
         <KpiCard label="Sources actives" value={sources} color="bg-indigo-50 border-indigo-200 text-indigo-700" />
         <KpiCard label="CA gagné" value={caFormatted} color="bg-green-50 border-green-200 text-green-700" />
-        <KpiCard label="CA pipeline" value={`${Math.round((kpisCa?.pipeline ?? 0) / 1000)} k€`} color="bg-amber-50 border-amber-200 text-amber-700" />
+        <KpiCard label="CA pipeline" value={pipelineFormatted} color="bg-amber-50 border-amber-200 text-amber-700" />
       </div>
 
       {/* Graphiques */}
@@ -146,8 +150,8 @@ export default function Analytics() {
                 dataKey="value"
                 nameKey="name"
               >
-                {byTerritoire.map((_, i) => (
-                  <Cell key={i} fill={COLORS_TERRITOIRE[i % COLORS_TERRITOIRE.length]} />
+                {byTerritoire.map(({ name }, i) => (
+                  <Cell key={name} fill={COLORS_TERRITOIRE[i % COLORS_TERRITOIRE.length]} />
                 ))}
               </Pie>
               <Tooltip />
