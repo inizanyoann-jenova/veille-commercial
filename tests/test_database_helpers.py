@@ -99,12 +99,26 @@ def test_load_existing_ids_empty_db(db):
 def test_insert_if_new_adds_tender(db):
     from scraper_utils import load_existing_ids, insert_if_new
     from models import Tender
+    from datetime import datetime, timedelta
     t = Tender(id="X-001", title="Test", source="https://example.com",
+               publication_date=datetime.now() - timedelta(days=5),
                status="À qualifier", relevance_score=0, is_blacklisted=False)
     existing = load_existing_ids(db)
     inserted = insert_if_new(db, t, existing)
     assert inserted is True
     assert "X-001" in existing
+
+
+def test_insert_if_new_rejects_tender_without_date(db):
+    from scraper_utils import insert_if_new
+    from models import Tender
+    t = Tender(id="X-NODATE", title="Sans date", source="https://example.com",
+               publication_date=None, status="À qualifier",
+               relevance_score=0, is_blacklisted=False)
+    existing = set()
+    inserted = insert_if_new(db, t, existing)
+    assert inserted is False
+    assert "X-NODATE" not in existing
 
 
 def test_insert_if_new_skips_duplicate(db):
