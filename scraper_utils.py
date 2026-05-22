@@ -121,13 +121,25 @@ def load_existing_ids(db) -> set[str]:
     return {row[0] for row in db.query(Tender.id).all()}
 
 
+_MAX_ARTICLE_AGE_DAYS = 31  # articles plus vieux que 1 mois ignorés lors de la collecte
+
+
 def insert_if_new(db, tender_obj, seen_ids: set[str]) -> bool:
     """
     Insère tender_obj dans db si son ID n'est pas dans seen_ids.
+    Rejette les articles sans date de publication ou publiés il y a plus de 1 mois.
     Met à jour seen_ids. Retourne True si inséré.
     Ne fait PAS de commit (à faire par l'appelant en batch).
     """
     if tender_obj.id in seen_ids:
+        return False
+    if not tender_obj.publication_date:
+        _log.debug("insert_if_new: article ignoré (date absente) — %s", tender_obj.id)
+        return False
+    from datetime import timedelta
+    cutoff = datetime.now() - timedelta(days=_MAX_ARTICLE_AGE_DAYS)
+    if tender_obj.publication_date.replace(tzinfo=None) < cutoff:
+        _log.debug("insert_if_new: article ignoré (trop ancien) — %s", tender_obj.id)
         return False
     seen_ids.add(tender_obj.id)
     db.add(tender_obj)
