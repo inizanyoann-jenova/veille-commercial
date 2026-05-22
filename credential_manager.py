@@ -33,6 +33,9 @@ _ENV_MAP: dict[str, tuple[str, str]] = {
 def _get_fernet() -> Fernet:
     key = os.getenv("CREDENTIAL_KEY")
     if not key:
+        # Clé auto-générée et persistée dans .env — si .env est supprimé ou si le
+        # conteneur redémarre sans volume persistant, les credentials stockés deviennent
+        # illisibles. Sauvegarder CREDENTIAL_KEY dans les secrets de déploiement.
         key = Fernet.generate_key().decode()
         env_path = os.path.join(os.path.dirname(__file__), ".env")
         set_key(env_path, "CREDENTIAL_KEY", key)
