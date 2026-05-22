@@ -55,7 +55,7 @@ from llm_analyzer import (  # noqa: E402
     auto_analyze_claude,
     auto_analyze_pending,
 )
-from credential_manager import _ENV_MAP as _CRED_ENV_MAP  # noqa: E402
+from credential_manager import CredentialManager as _CredMgr, _ENV_MAP as _CRED_ENV_MAP  # noqa: E402
 
 _log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -1039,3 +1039,23 @@ def list_credentials(db: Session = Depends(get_db)):
             "has_login_url": site in _LOGIN_CONFIG,
         })
     return result
+
+
+# ── POST /api/credentials/{site} ─────────────────────────────────────────────
+
+@app.post("/api/credentials/{site}", summary="Sauvegarder les identifiants d'un site")
+def save_credential(site: str, body: CredentialSave):
+    if site not in _ALL_CREDENTIAL_SITES:
+        raise HTTPException(status_code=404, detail=f"Site inconnu : {site}")
+    _CredMgr.save(site, body.email, body.password)
+    return {"ok": True}
+
+
+# ── DELETE /api/credentials/{site} ───────────────────────────────────────────
+
+@app.delete("/api/credentials/{site}", summary="Supprimer les identifiants d'un site")
+def delete_credential(site: str):
+    if site not in _ALL_CREDENTIAL_SITES:
+        raise HTTPException(status_code=404, detail=f"Site inconnu : {site}")
+    _CredMgr.delete(site)
+    return {"ok": True}
