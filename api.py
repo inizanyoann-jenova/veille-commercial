@@ -20,7 +20,6 @@ _log = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app):
-    import threading
     import os as _os
     from apscheduler.schedulers.background import BackgroundScheduler as _BgScheduler
     from source_registry import _run_weekly_ping as _rwp
