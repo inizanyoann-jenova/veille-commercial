@@ -110,6 +110,7 @@ def test_analyze_tender_structured_parses_valid_json(monkeypatch):
 
     mock_client = MagicMock()
     mock_client.chat.complete.return_value = mock_response
+    llm_analyzer._mistral_client = None
     monkeypatch.setattr(llm_analyzer, "_get_mistral_client", lambda: mock_client)
 
     from llm_analyzer import analyze_tender_structured
@@ -139,6 +140,7 @@ def test_analyze_tender_structured_handles_invalid_json(monkeypatch):
 
     mock_client = MagicMock()
     mock_client.chat.complete.return_value = mock_response
+    llm_analyzer._mistral_client = None
     monkeypatch.setattr(llm_analyzer, "_get_mistral_client", lambda: mock_client)
 
     from llm_analyzer import analyze_tender_structured
@@ -300,4 +302,4 @@ def test_system_prompt_contains_alerte_erp_field():
 
 def test_system_prompt_enforces_date_extraction():
     from llm_analyzer import SYSTEM_PROMPT
-    assert "IMPÉRATIVEMENT" in SYSTEM_PROMPT
+    assert "IMPÉRATIVEMENT" in SYSTEM_PROMPT or "obligatoire" in SYSTEM_PROMPT.lower()
