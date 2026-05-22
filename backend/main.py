@@ -16,6 +16,7 @@ from typing import Optional
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import func as _func, or_
 from sqlalchemy.orm import Session
@@ -37,7 +38,9 @@ from database import (  # noqa: E402
     finish_scraper_run,
 )
 from models import DuplicateCandidate, ScraperRun, Tender  # noqa: E402
-from source_registry import list_sources  # noqa: E402
+from source_registry import list_sources, add_source, remove_source, toggle_enabled  # noqa: E402
+from health_check import run_all_health_checks  # noqa: E402
+from export_excel import generate_executive_report  # noqa: E402
 from fiche_logic import _compute_fiche_data  # noqa: E402
 
 # ── Domaine / territoire (répliqués depuis app.py) ────────────────────────────
@@ -301,6 +304,12 @@ class AmountUpdate(BaseModel):
 
 class SavedUpdate(BaseModel):
     is_saved: bool
+
+class SourceCreate(BaseModel):
+    name: str
+    url: str
+    category: str
+    notes: Optional[str] = None
 
 class CollectRequest(BaseModel):
     source_names: Optional[list[str]] = None  # None = toutes les sources activées
@@ -879,3 +888,57 @@ def admin_reset_db(db: Session = Depends(get_db)):
 def admin_archive_old(days: int = Query(30, ge=1, le=365), db: Session = Depends(get_db)):
     n = clean_obsolete_data(db, days=days)
     return {"archived": n}
+
+
+# ── GET /api/health ───────────────────────────────────────────────────────────
+
+@app.get("/api/health", summary="État des sources externes")
+def health():
+    results = run_all_health_checks()
+    return {
+        "status": "ok",
+        "sources": {
+            name: {"ok": r.ok, "http_status": r.http_status, "error": r.error}
+            for name, r in results.items()
+        },
+    }
+
+
+# ── POST /api/sources ─────────────────────────────────────────────────────────
+
+@app.post("/api/sources", status_code=201, summary="Ajouter une source manuelle")
+def create_source(src: SourceCreate, db: Session = Depends(get_db)):
+    s = add_source(db, name=src.name, url=src.url, category=src.category, notes=src.notes)
+    return {"id": s.id, "name": s.name}
+
+
+# ── DELETE /api/sources/{id} ──────────────────────────────────────────────────
+
+@app.delete("/api/sources/{source_id}", summary="Supprimer une source manuelle")
+def delete_source(source_id: int, db: Session = Depends(get_db)):
+    ok = remove_source(db, source_id)
+    if not ok:
+        raise HTTPException(400, "Source introuvable ou non supprimable (scraper dédié)")
+    return {"ok": True}
+
+
+# ── PATCH /api/sources/{id}/toggle ───────────────────────────────────────────
+
+@app.patch("/api/sources/{source_id}/toggle", summary="Activer / désactiver une source")
+def toggle_source(source_id: int, db: Session = Depends(get_db)):
+    new_state = toggle_enabled(db, source_id)
+    if new_state is None:
+        raise HTTPException(404, "Source introuvable")
+    return {"enabled": new_state}
+
+
+# ── GET /api/export/excel ─────────────────────────────────────────────────────
+
+@app.get("/api/export/excel", summary="Télécharger le rapport Excel")
+def export_excel(db: Session = Depends(get_db)):
+    data = generate_executive_report(db)
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=rapport_def_oi.xlsx"},
+    )
