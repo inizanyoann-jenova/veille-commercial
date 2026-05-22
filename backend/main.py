@@ -55,6 +55,9 @@ from llm_analyzer import (  # noqa: E402
     auto_analyze_claude,
     auto_analyze_pending,
 )
+import json as _json
+import subprocess as _subprocess
+from credential_manager import CredentialManager as _CredMgr, _ENV_MAP as _CRED_ENV_MAP  # noqa: E402
 
 _log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -319,6 +322,77 @@ class CollectResult(BaseModel):
     status: str  # "ok" | "error"
     nb_new: Optional[int] = None
     error: Optional[str] = None
+
+
+class CredentialSave(BaseModel):
+    email: str
+    password: str
+
+
+# ── Credential site registry ──────────────────────────────────────────────────
+
+_LOGIN_CONFIG: dict[str, dict] = {
+    "nukema": {
+        "label": "Nukema",
+        "url": "https://www.actu.nukema.com/connexion",
+        "selectors": {
+            "email": "input[type='email']",
+            "password": "input[type='password']",
+            "submit": "button[type='submit']",
+        },
+    },
+    "marcheonline": {
+        "label": "Marché Online",
+        "url": "https://www.marchesonline.com/connexion",
+        "selectors": {
+            "email": "#email-input",
+            "password": "input[type='password'].modal_connexion_input",
+            "submit": "button.primary-dark-btn",
+        },
+    },
+    "instao": {
+        "label": "Instao",
+        "url": "https://www.instao.fr/connexion",
+        "selectors": {
+            "email": "input[type='email'], input[name='email'], #email",
+            "password": "input[type='password'], input[name='password'], #password",
+            "submit": "button[type='submit'], input[type='submit']",
+        },
+    },
+    "marches_securises": {
+        "label": "Marchés Sécurisés",
+        "url": "https://www.marches-securises.fr/entreprise/?page=connexion",
+        "selectors": {
+            "email": "input[name='login'], input[type='email'], #login",
+            "password": "input[name='pass'], input[type='password'], #password",
+            "submit": "input[type='submit'], button[type='submit']",
+        },
+    },
+    "tendersgo": {
+        "label": "Tenders Go",
+        "url": "https://app.tendersgo.com/login",
+        "selectors": {
+            "email": "input[type='email'], input[name='email'], #email",
+            "password": "input[type='password'], input[name='password'], #password",
+            "submit": "button[type='submit'], input[type='submit']",
+        },
+    },
+}
+
+_SITES_PUBLIC = {
+    "vaao": "VAAO",
+    "dept974": "Marchés Publics 974",
+    "marchespublicsinfo": "Marchés Publics Info",
+}
+
+_ALL_CREDENTIAL_SITES: dict[str, str] = (
+    {site: cfg["label"] for site, cfg in _LOGIN_CONFIG.items()} | _SITES_PUBLIC
+)
+
+_WORKER_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "_test_login_worker.py",
+)
 
 
 # ── GET /api/tenders ──────────────────────────────────────────────────────────
@@ -942,3 +1016,33 @@ def export_excel(db: Session = Depends(get_db)):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=rapport_def_oi.xlsx"},
     )
+
+
+# ── GET /api/credentials ──────────────────────────────────────────────────────
+
+@app.get("/api/credentials", summary="Liste les 8 sites protégés et leur statut d'auth")
+def list_credentials():
+    from models import Credential as _Cred
+    db = SessionLocal()
+    try:
+        db_creds = {c.site: c for c in db.query(_Cred).all()}
+    finally:
+        db.close()
+    result = []
+    for site, label in sorted(_ALL_CREDENTIAL_SITES.items()):
+        email_var, _ = _CRED_ENV_MAP.get(site, (f"{site.upper()}_EMAIL", ""))
+        env_email = os.getenv(email_var)
+        if env_email:
+            status, email = "env_override", env_email
+        elif site in db_creds:
+            status, email = "configured", db_creds[site].email
+        else:
+            status, email = "missing", None
+        result.append({
+            "site": site,
+            "label": label,
+            "status": status,
+            "email": email,
+            "has_login_url": site in _LOGIN_CONFIG,
+        })
+    return result
