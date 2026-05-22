@@ -102,4 +102,18 @@ export const resolveDuplicate = (pairId, action, archiveId) => {
     .then((r) => r.data)
 }
 
+// ── Identifiants ──────────────────────────────────────────────────────────────
+
+export const getCredentials = () =>
+  api.get('/credentials').then((r) => r.data)
+
+export const saveCredential = (site, email, password) =>
+  api.post(`/credentials/${site}`, { email, password }).then((r) => r.data)
+
+export const deleteCredential = (site) =>
+  api.delete(`/credentials/${site}`).then((r) => r.data)
+
+export const testCredential = (site, email, password) =>
+  api.post(`/credentials/${site}/test`, { email, password }).then((r) => r.data)
+
 export default api
