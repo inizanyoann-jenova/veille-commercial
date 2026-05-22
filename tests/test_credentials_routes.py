@@ -133,3 +133,53 @@ def test_delete_credential_known_site():
 def test_delete_credential_unknown_site():
     resp = _client.delete('/api/credentials/nonexistent_xyz')
     assert resp.status_code == 404
+
+
+def test_test_credential_public_site_skips_playwright():
+    """Sites without login URL return ok=True immediately."""
+    resp = _client.post('/api/credentials/vaao/test',
+                        json={'email': 'u@u.com', 'password': 'p'})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body['ok'] is True
+    assert 'message' in body
+
+
+def test_test_credential_playwright_success():
+    import json as _json_mod
+    mock_proc = MagicMock()
+    mock_proc.stdout = _json_mod.dumps({'ok': True, 'url_finale': 'https://nukema.com/dashboard'})
+    with patch.object(_m, '_subprocess') as mock_sub:
+        mock_sub.run.return_value = mock_proc
+        mock_sub.TimeoutExpired = TimeoutError
+        resp = _client.post('/api/credentials/nukema/test',
+                            json={'email': 'u@u.com', 'password': 'correct'})
+    assert resp.status_code == 200
+    assert resp.json()['ok'] is True
+
+
+def test_test_credential_playwright_wrong_password():
+    import json as _json_mod
+    mock_proc = MagicMock()
+    mock_proc.stdout = _json_mod.dumps({'ok': False, 'erreur_page': 'Identifiants incorrects'})
+    with patch.object(_m, '_subprocess') as mock_sub:
+        mock_sub.run.return_value = mock_proc
+        mock_sub.TimeoutExpired = TimeoutError
+        resp = _client.post('/api/credentials/nukema/test',
+                            json={'email': 'u@u.com', 'password': 'wrong'})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body['ok'] is False
+    assert 'incorrects' in body['message']
+
+
+def test_test_credential_playwright_timeout():
+    with patch.object(_m, '_subprocess') as mock_sub:
+        mock_sub.run.side_effect = TimeoutError()
+        mock_sub.TimeoutExpired = TimeoutError
+        resp = _client.post('/api/credentials/nukema/test',
+                            json={'email': 'u@u.com', 'password': 'p'})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body['ok'] is False
+    assert 'expiré' in body['message']
