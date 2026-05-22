@@ -10,6 +10,10 @@ import {
   useResolveDuplicate,
   useArchiveOld,
   useResetDb,
+  useCredentials,
+  useSaveCredential,
+  useDeleteCredential,
+  useTestCredential,
 } from '../hooks/useTenders'
 
 function SectionTitle({ children }) {
@@ -83,6 +87,184 @@ function CollectSection() {
       <div className="mt-4">
         <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-2">Historique des runs</p>
         <ScraperRunsTable />
+      </div>
+    </div>
+  )
+}
+
+function CredentialsSection() {
+  const { data: sites = [], refetch } = useCredentials()
+  const { mutate: save, isPending: saving } = useSaveCredential()
+  const { mutate: remove } = useDeleteCredential()
+  const { mutate: test, isPending: testing } = useTestCredential()
+
+  const [open, setOpen] = useState(null)
+  const [form, setForm] = useState({ email: '', password: '' })
+  const [showPwd, setShowPwd] = useState(false)
+  const [testResult, setTestResult] = useState(null)
+  const [canSave, setCanSave] = useState(false)
+
+  const openSite = (site) => {
+    setOpen(site)
+    const entry = sites.find((s) => s.site === site)
+    setForm({ email: entry?.email ?? '', password: '' })
+    setShowPwd(false)
+    setTestResult(null)
+    setCanSave(false)
+  }
+
+  const closeForm = () => {
+    setOpen(null)
+    setTestResult(null)
+    setCanSave(false)
+  }
+
+  const handleTest = () => {
+    setTestResult(null)
+    setCanSave(false)
+    test(
+      { site: open, email: form.email, password: form.password },
+      {
+        onSuccess: (data) => {
+          setTestResult(data)
+          setCanSave(data.ok)
+        },
+        onError: () => setTestResult({ ok: false, message: 'Erreur réseau' }),
+      }
+    )
+  }
+
+  const handleSave = () => {
+    save(
+      { site: open, email: form.email, password: form.password },
+      { onSuccess: () => { refetch(); closeForm() } }
+    )
+  }
+
+  const handleDelete = (site) => {
+    remove({ site }, { onSuccess: () => refetch() })
+  }
+
+  const statusBadge = (status) => {
+    if (status === 'configured')
+      return <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700">● Configuré</span>
+    if (status === 'env_override')
+      return <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">● Env (lecture seule)</span>
+    return <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700">● Manquant</span>
+  }
+
+  return (
+    <div id="credentials" className="space-y-4">
+      <SectionTitle>🔐 Identifiants des sites protégés</SectionTitle>
+      <p className="text-sm text-gray-600">
+        Certains sites nécessitent une connexion pour accéder aux appels d'offres.
+      </p>
+      <div className="space-y-2">
+        {sites.map((entry) => (
+          <div key={entry.site} className="border border-gray-200 rounded-lg overflow-hidden">
+            <button
+              onClick={() => (open === entry.site ? closeForm() : openSite(entry.site))}
+              className="w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                {statusBadge(entry.status)}
+                <span className="font-medium text-gray-800">{entry.label}</span>
+                {entry.email && (
+                  <span className="text-gray-400 text-xs">{entry.email}</span>
+                )}
+              </div>
+              <span className="text-gray-400 text-xs">{open === entry.site ? '▲' : '▼'}</span>
+            </button>
+
+            {open === entry.site && entry.status !== 'env_override' && (
+              <div className="px-4 pb-4 pt-2 border-t border-gray-100 bg-gray-50 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Email</label>
+                    <input
+                      type="email"
+                      value={form.email}
+                      onChange={(e) => {
+                        setForm((f) => ({ ...f, email: e.target.value }))
+                        setCanSave(false)
+                      }}
+                      className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      placeholder="email@exemple.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Mot de passe</label>
+                    <div className="relative">
+                      <input
+                        type={showPwd ? 'text' : 'password'}
+                        value={form.password}
+                        onChange={(e) => {
+                          setForm((f) => ({ ...f, password: e.target.value }))
+                          setCanSave(false)
+                        }}
+                        className="w-full px-3 py-1.5 pr-8 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        placeholder="••••••••"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPwd((v) => !v)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                      >
+                        {showPwd ? '🙈' : '👁️'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {entry.has_login_url && (
+                    <button
+                      onClick={handleTest}
+                      disabled={testing || !form.email || !form.password}
+                      className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs rounded border border-gray-300 hover:bg-gray-200 disabled:opacity-50 transition-colors"
+                    >
+                      {testing ? 'Test en cours…' : 'Tester la connexion'}
+                    </button>
+                  )}
+                  <button
+                    onClick={handleSave}
+                    disabled={
+                      saving ||
+                      (entry.has_login_url && !canSave) ||
+                      !form.email ||
+                      !form.password
+                    }
+                    className="px-3 py-1.5 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                  >
+                    {saving ? 'Sauvegarde…' : 'Sauvegarder'}
+                  </button>
+                  {entry.status === 'configured' && (
+                    <button
+                      onClick={() => handleDelete(entry.site)}
+                      className="px-3 py-1.5 bg-red-50 text-red-700 text-xs rounded border border-red-300 hover:bg-red-100 transition-colors"
+                    >
+                      Supprimer
+                    </button>
+                  )}
+                </div>
+
+                {testResult && (
+                  <p className={`text-xs ${testResult.ok ? 'text-green-700' : 'text-red-600'}`}>
+                    {testResult.ok ? '✓ Connexion réussie' : `✗ ${testResult.message}`}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {open === entry.site && entry.status === 'env_override' && (
+              <div className="px-4 py-3 border-t border-gray-100 bg-blue-50">
+                <p className="text-xs text-blue-700">
+                  Les identifiants de ce site sont définis via variable d'environnement et ne peuvent pas être modifiés ici.
+                </p>
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -202,6 +384,7 @@ export default function Parametres() {
   return (
     <div className="p-5 space-y-10 max-w-4xl">
       <CollectSection />
+      <CredentialsSection />
       <AnalyseSection />
       <DoublonsSection />
       <MaintenanceSection />
