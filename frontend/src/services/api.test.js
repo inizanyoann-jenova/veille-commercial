@@ -33,4 +33,14 @@ describe('api service', () => {
     const { updateStatus } = await import('./api.js')
     expect(typeof updateStatus).toBe('function')
   })
+
+  it('exports getDuplicates as a function', async () => {
+    const { getDuplicates } = await import('./api.js')
+    expect(typeof getDuplicates).toBe('function')
+  })
+
+  it('exports resolveDuplicate as a function', async () => {
+    const { resolveDuplicate } = await import('./api.js')
+    expect(typeof resolveDuplicate).toBe('function')
+  })
 })
