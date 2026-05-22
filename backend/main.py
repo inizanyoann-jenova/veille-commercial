@@ -56,6 +56,8 @@ from llm_analyzer import (  # noqa: E402
     auto_analyze_pending,
 )
 from credential_manager import CredentialManager as _CredMgr, _ENV_MAP as _CRED_ENV_MAP  # noqa: E402
+import json as _json
+import subprocess as _subprocess
 
 _log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -1059,3 +1061,40 @@ def delete_credential(site: str):
         raise HTTPException(status_code=404, detail=f"Site inconnu : {site}")
     _CredMgr.delete(site)
     return {"ok": True}
+
+
+# ── POST /api/credentials/{site}/test ────────────────────────────────────────
+
+@app.post("/api/credentials/{site}/test", summary="Tester la connexion Playwright")
+def test_credential(site: str, body: CredentialSave):
+    if site not in _LOGIN_CONFIG:
+        return {"ok": True, "message": "Accès public — aucun test disponible"}
+    cfg = _LOGIN_CONFIG[site]
+    payload = {
+        "url": cfg["url"],
+        "selectors": cfg["selectors"],
+        "email": body.email,
+        "password": body.password,
+    }
+    try:
+        proc = _subprocess.run(
+            [sys.executable, _WORKER_PATH],
+            input=_json.dumps(payload),
+            capture_output=True,
+            text=True,
+            timeout=35,
+        )
+        result = _json.loads(proc.stdout)
+        if result.get("ok"):
+            return {"ok": True}
+        msg = (
+            result.get("erreur_page")
+            or result.get("champ_manquant")
+            or result.get("erreur_worker")
+            or "Connexion refusée"
+        )
+        return {"ok": False, "message": msg}
+    except _subprocess.TimeoutExpired:
+        return {"ok": False, "message": "Test expiré — site trop lent ou inaccessible (>30s)"}
+    except Exception as exc:
+        return {"ok": False, "message": str(exc)}
