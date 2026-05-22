@@ -552,6 +552,20 @@ def get_duplicates(db: Session = Depends(get_db)):
     return result
 
 
+class ResolveAction(BaseModel):
+    action: str  # "keep" | "ignore"
+
+
+@app.post("/api/duplicates/{pair_id}/resolve", summary="Marquer une paire de doublons comme résolue")
+def resolve_duplicate(pair_id: int, body: ResolveAction, db: Session = Depends(get_db)):
+    pair = db.query(DuplicateCandidate).filter(DuplicateCandidate.id == pair_id).first()
+    if not pair:
+        raise HTTPException(404, "Paire introuvable")
+    pair.resolved = True
+    db.commit()
+    return {"id": pair_id, "resolved": True}
+
+
 # ── GET /api/scraper-runs ─────────────────────────────────────────────────────
 
 @app.get("/api/scraper-runs", summary="Historique des exécutions de scrapers")
