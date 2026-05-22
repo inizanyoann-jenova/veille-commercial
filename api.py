@@ -76,7 +76,7 @@ def list_tenders(
                     "status": t.status,
                     "amount": t.amount,
                     "publication_date": str(t.publication_date) if t.publication_date else None,
-                    "source_url": t.source_url,
+                    "source_url": t.source,
                     "llm_analysis": t.llm_analysis,
                 }
                 for t in tenders
