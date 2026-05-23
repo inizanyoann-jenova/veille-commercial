@@ -1,15 +1,15 @@
 function DeadlineBadge({ jours_restants }) {
   if (jours_restants === null || jours_restants === undefined) {
-    return <span className="text-xs text-gray-400">Pas de deadline</span>
+    return <span className="font-mono text-xs text-ocean-muted">Pas de deadline</span>
   }
   const color =
     jours_restants < 7
-      ? 'text-red-600'
+      ? 'text-ocean-coral'
       : jours_restants <= 30
-      ? 'text-orange-500'
-      : 'text-gray-500'
+      ? 'text-ocean-gold'
+      : 'text-ocean-muted'
   return (
-    <span className={`text-xs font-medium ${color}`}>
+    <span className={`font-mono text-xs font-medium ${color}`}>
       J-{jours_restants}
     </span>
   )
@@ -19,26 +19,26 @@ export default function KanbanColumn({ title, items = [], actions = [], onStatus
   return (
     <div className="flex flex-col gap-2 min-w-0">
       <div className="flex items-center gap-2 mb-1">
-        <span className="text-sm font-semibold text-gray-700">{title}</span>
-        <span className="bg-gray-200 text-gray-600 text-xs font-bold rounded-full px-2 py-px">
+        <span className="font-sans text-sm font-semibold text-ocean-text">{title}</span>
+        <span className="font-mono bg-ocean-cyan/8 text-ocean-cyan text-xs font-bold rounded-full px-2 py-px">
           {items.length}
         </span>
       </div>
 
       {items.length === 0 && (
-        <p className="text-xs text-gray-400 text-center py-6">Aucun marché</p>
+        <p className="font-sans text-xs text-ocean-muted text-center py-6">Aucun marché</p>
       )}
 
       {items.map((item) => (
         <article
           key={item.id}
-          className="bg-white rounded-lg border border-gray-200 p-3 flex flex-col gap-2 shadow-sm"
+          className="bg-ocean-panel rounded-lg border border-ocean-border p-3 flex flex-col gap-2"
         >
-          <p className="text-sm font-medium text-gray-800 leading-snug">
+          <p className="font-sans text-sm font-medium text-ocean-text leading-snug">
             {item.title.length > 60 ? item.title.slice(0, 60) + '…' : item.title}
           </p>
           <div className="flex items-center justify-between">
-            <span className="text-xs bg-indigo-100 text-indigo-700 font-semibold rounded px-1.5 py-0.5">
+            <span className="font-mono text-xs bg-ocean-cyan/8 text-ocean-cyan font-semibold rounded px-1.5 py-0.5">
               {item.score}
             </span>
             <DeadlineBadge jours_restants={item.jours_restants} />
@@ -49,7 +49,7 @@ export default function KanbanColumn({ title, items = [], actions = [], onStatus
                 <button
                   key={nextStatus}
                   onClick={() => onStatusChange?.(item.id, nextStatus)}
-                  className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 transition-colors"
+                  className="font-sans text-xs px-2 py-1 rounded-lg border border-ocean-border text-ocean-muted hover:text-ocean-text hover:bg-ocean-cyan/4 transition-colors"
                 >
                   {label}
                 </button>
