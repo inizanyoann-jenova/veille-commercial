@@ -60,6 +60,7 @@ const DEFAULT_PROPS = {
 
 describe('TendersTable', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     useAnalyzeTender.mockReturnValue({ mutate: vi.fn() })
   })
 
@@ -205,5 +206,16 @@ describe('TendersTable', () => {
     useTenders.mockReturnValue({ data: [MOCK_TENDERS[1]], isLoading: false, isError: false })
     render(<TendersTable {...DEFAULT_PROPS} />)
     expect(screen.getByRole('button', { name: /Vidéosurveillance Mayotte/i })).toBeInTheDocument()
+  })
+
+  it('affiche la barre de progression pour un tender en cours d\'analyse', async () => {
+    let capturedOnSettled
+    const mutate = vi.fn((_, opts) => { capturedOnSettled = opts?.onSettled })
+    useAnalyzeTender.mockReturnValue({ mutate })
+    useTenders.mockReturnValue({ data: [MOCK_TENDERS[1]], isLoading: false, isError: false })
+    render(<TendersTable {...DEFAULT_PROPS} />)
+    fireEvent.click(screen.getByRole('button', { name: /Vidéosurveillance Mayotte/i }))
+    expect(screen.getByRole('progressbar', { name: /Vidéosurveillance Mayotte/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Vidéosurveillance Mayotte/i })).not.toBeInTheDocument()
   })
 })
