@@ -215,6 +215,10 @@ function CollectSection() {
 
         {showResults && (
           <div className="space-y-2">
+            <p className="text-sm font-semibold text-ocean-cyan font-mono">
+              +{totalNew} nouvelles offres
+            </p>
+
             <div className="space-y-0.5">
               {results.map((r) => (
                 <div key={r.source} className="flex items-center gap-1.5 text-[10px] font-mono">
@@ -233,9 +237,7 @@ function CollectSection() {
               ))}
             </div>
 
-            <div className="space-y-1.5 pt-1.5 border-t border-ocean-border">
-              <StepBar label="Collecte" value={totalNew} total={totalNew} />
-              <StepBar label="Mots-clés" value={totalNew} total={totalNew} />
+            <div className="pt-1.5 border-t border-ocean-border">
               <StepBar
                 label="Analyse IA"
                 value={aiAnalyzed}
