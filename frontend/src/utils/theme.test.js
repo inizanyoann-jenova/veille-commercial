@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { hexToRgbString, applyTheme, loadSavedTheme, DEFAULTS, THEME_KEY } from './theme'
 
 describe('hexToRgbString', () => {
@@ -17,12 +17,28 @@ describe('hexToRgbString', () => {
   it('convertit un hex texte en chaîne RGB', () => {
     expect(hexToRgbString('#ddeeff')).toBe('221 238 255')
   })
+
+  it('retourne null pour un hex invalide (3 chiffres)', () => {
+    expect(hexToRgbString('#fff')).toBeNull()
+  })
+
+  it('retourne null pour une entrée non-string', () => {
+    expect(hexToRgbString(undefined)).toBeNull()
+    expect(hexToRgbString(null)).toBeNull()
+  })
+
+  it('convertit les bornes : #000000 et #ffffff', () => {
+    expect(hexToRgbString('#000000')).toBe('0 0 0')
+    expect(hexToRgbString('#ffffff')).toBe('255 255 255')
+  })
 })
 
 describe('applyTheme', () => {
   beforeEach(() => {
     vi.spyOn(document.documentElement.style, 'setProperty').mockImplementation(() => {})
   })
+
+  afterEach(() => vi.restoreAllMocks())
 
   it('applique les 4 variables CSS sur documentElement', () => {
     const colors = { deep: '4 13 26', cyan: '0 200 255', coral: '255 107 107', text: '221 238 255' }
@@ -32,6 +48,12 @@ describe('applyTheme', () => {
     expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--color-ocean-coral', '255 107 107')
     expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--color-ocean-text', '221 238 255')
   })
+
+  it('ignore les valeurs null dans les couleurs', () => {
+    applyTheme({ deep: null, cyan: '0 200 255' })
+    expect(document.documentElement.style.setProperty).not.toHaveBeenCalledWith('--color-ocean-deep', null)
+    expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--color-ocean-cyan', '0 200 255')
+  })
 })
 
 describe('loadSavedTheme', () => {
@@ -39,6 +61,8 @@ describe('loadSavedTheme', () => {
     localStorage.clear()
     vi.spyOn(document.documentElement.style, 'setProperty').mockImplementation(() => {})
   })
+
+  afterEach(() => vi.restoreAllMocks())
 
   it('applique DEFAULTS si rien en localStorage', () => {
     loadSavedTheme()
@@ -52,5 +76,18 @@ describe('loadSavedTheme', () => {
     loadSavedTheme()
     expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--color-ocean-deep', '10 20 30')
     expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--color-ocean-cyan', '100 150 200')
+  })
+
+  it('fusionne les defaults pour les clés manquantes dans la sauvegarde', () => {
+    localStorage.setItem(THEME_KEY, JSON.stringify({ cyan: '50 100 150' }))
+    loadSavedTheme()
+    expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--color-ocean-deep', DEFAULTS.deep)
+    expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--color-ocean-cyan', '50 100 150')
+  })
+
+  it('utilise les defaults si localStorage contient du JSON invalide', () => {
+    localStorage.setItem(THEME_KEY, 'not-valid-json{{{')
+    loadSavedTheme()
+    expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--color-ocean-deep', DEFAULTS.deep)
   })
 })
