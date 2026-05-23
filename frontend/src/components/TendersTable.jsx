@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { useTenders } from '../hooks/useTenders'
+import { useMemo, useState, useCallback } from 'react'
+import { useTenders, useAnalyzeTender } from '../hooks/useTenders'
 
 const STATUTS = ['Tous', 'À qualifier', 'En cours', 'Soumis', 'Gagné', 'Perdu']
 const SECTEURS = ['Public', 'Privé', 'International']
@@ -25,6 +25,32 @@ function GonogoBadge({ gonogo }) {
   )
 }
 
+function IaBadge({ tender, isAnalyzing, onAnalyze }) {
+  if (isAnalyzing) {
+    return (
+      <div className="w-16 bg-white/6 rounded-full h-2 overflow-hidden">
+        <div className="h-2 bg-gradient-to-r from-ocean-cyan to-ocean-teal rounded-full animate-pulse" style={{ width: '60%' }} />
+      </div>
+    )
+  }
+  if (tender.llm_analysis) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-ocean-teal/10 text-ocean-teal">
+        ✓ Analysé
+      </span>
+    )
+  }
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onAnalyze(tender.id) }}
+      aria-label={`Analyser ${tender.title}`}
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-ocean-coral/10 text-ocean-coral hover:bg-ocean-coral/20 transition-colors"
+    >
+      ▶ Analyser
+    </button>
+  )
+}
+
 function formatDate(iso) {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('fr-FR')
@@ -40,6 +66,8 @@ export default function TendersTable({
   onRowClick,
 }) {
   const { data: tenders = [], isLoading, isError } = useTenders({ status, secteur })
+  const [analyzingIds, setAnalyzingIds] = useState(new Set())
+  const { mutate: triggerAnalysis } = useAnalyzeTender()
 
   const filtered = useMemo(() => {
     if (!searchText) return tenders
@@ -48,6 +76,17 @@ export default function TendersTable({
       `${t.title} ${t.domaine} ${t.territoire}`.toLowerCase().includes(q)
     )
   }, [tenders, searchText])
+
+  const handleAnalyze = useCallback((id) => {
+    setAnalyzingIds((prev) => new Set([...prev, id]))
+    triggerAnalysis({ id }, {
+      onSettled: () => setAnalyzingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      }),
+    })
+  }, [triggerAnalysis])
 
   return (
     <div className="bg-ocean-panel border border-ocean-border rounded-xl overflow-hidden">
@@ -113,6 +152,7 @@ export default function TendersTable({
                 <th className="text-left px-4 py-3 font-medium">GO/NO-GO</th>
                 <th className="text-left px-4 py-3 font-medium">Statut</th>
                 <th className="text-left px-4 py-3 font-medium">Source</th>
+                <th className="text-left px-4 py-3 font-medium">IA</th>
               </tr>
             </thead>
             <tbody>
@@ -149,6 +189,13 @@ export default function TendersTable({
                   </td>
                   <td className="px-4 py-3 font-sans text-xs text-ocean-text/80">{t.status}</td>
                   <td className="px-4 py-3 font-mono text-xs text-ocean-muted">{t.source}</td>
+                  <td className="px-4 py-3">
+                    <IaBadge
+                      tender={t}
+                      isAnalyzing={analyzingIds.has(t.id)}
+                      onAnalyze={handleAnalyze}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
