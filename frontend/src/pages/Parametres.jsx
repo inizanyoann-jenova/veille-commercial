@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import DuplicatePair from '../components/DuplicatePair'
+import { THEME_KEY, DEFAULTS, hexToRgbString, applyTheme } from '../utils/theme'
 import {
   useAnalyzePending,
   useDuplicates,
@@ -394,12 +395,103 @@ function MaintenanceTab() {
   )
 }
 
+// ── Onglet Apparence ──────────────────────────────────────────────────────────
+
+const COLOR_FIELDS = [
+  { key: 'deep',  label: 'Fond',              desc: 'Arrière-plan principal de l\'app', },
+  { key: 'cyan',  label: 'Couleur principale', desc: 'Liens, boutons, éléments actifs',  },
+  { key: 'coral', label: 'Alerte',             desc: 'Erreurs, dangers, badges urgents', },
+  { key: 'text',  label: 'Texte',              desc: 'Couleur du texte principal',       },
+]
+
+function rgbStringToHex(rgb) {
+  return '#' + rgb.split(' ').map((n) => parseInt(n).toString(16).padStart(2, '0')).join('')
+}
+
+function ApparenceTab() {
+  const saved = JSON.parse(localStorage.getItem(THEME_KEY) || 'null') ?? DEFAULTS
+  const [colors, setColors] = useState({
+    deep:  saved.deep,
+    cyan:  saved.cyan,
+    coral: saved.coral,
+    text:  saved.text,
+  })
+
+  const handleChange = (key, hex) => {
+    const rgb = hexToRgbString(hex)
+    if (rgb === null) return
+    setColors((prev) => ({ ...prev, [key]: rgb }))
+    applyTheme({ [key]: rgb })
+  }
+
+  const handleApply = () => {
+    localStorage.setItem(THEME_KEY, JSON.stringify(colors))
+  }
+
+  const handleReset = () => {
+    setColors({ ...DEFAULTS })
+    applyTheme(DEFAULTS)
+    localStorage.removeItem(THEME_KEY)
+  }
+
+  return (
+    <div className="space-y-6">
+      <p className="font-sans text-sm text-ocean-muted">
+        Personnalisez les couleurs de l'interface. Les changements sont appliqués immédiatement.
+      </p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {COLOR_FIELDS.map(({ key, label, desc }) => (
+          <div key={key} className="flex items-center gap-3 p-3 bg-ocean-panel border border-ocean-border rounded-lg">
+            <label
+              className="w-10 h-10 rounded-lg border-2 border-white/15 flex-shrink-0 cursor-pointer overflow-hidden relative"
+              style={{ background: rgbStringToHex(colors[key]) }}
+            >
+              <input
+                type="color"
+                value={rgbStringToHex(colors[key])}
+                onChange={(e) => handleChange(key, e.target.value)}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              />
+            </label>
+            <div className="min-w-0">
+              <div className="font-sans text-sm font-medium text-ocean-text">{label}</div>
+              <div className="font-sans text-xs text-ocean-muted">{desc}</div>
+              <div className="font-mono text-xs text-ocean-muted mt-0.5">{rgbStringToHex(colors[key])}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex gap-3 pt-4 border-t border-ocean-border">
+        <button
+          onClick={handleApply}
+          className="px-4 py-2 bg-ocean-cyan/12 border border-ocean-cyan/20 text-ocean-cyan font-sans text-sm rounded-lg hover:bg-ocean-cyan/18 transition-colors"
+        >
+          💾 Appliquer
+        </button>
+        <button
+          onClick={handleReset}
+          className="px-4 py-2 bg-ocean-panel border border-ocean-border text-ocean-muted font-sans text-sm rounded-lg hover:bg-ocean-cyan/4 transition-colors"
+        >
+          Réinitialiser
+        </button>
+      </div>
+
+      <p className="font-sans text-xs text-ocean-muted italic">
+        Cliquez sur "Appliquer" pour sauvegarder vos choix entre les sessions.
+      </p>
+    </div>
+  )
+}
+
 // ── Page principale ───────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'connexion', label: '🔐 Connexion' },
-  { id: 'analyse', label: '🤖 Analyse' },
+  { id: 'connexion',   label: '🔐 Connexion' },
+  { id: 'analyse',     label: '🤖 Analyse' },
   { id: 'maintenance', label: '🛠️ Maintenance' },
+  { id: 'apparence',   label: '🎨 Apparence' },
 ]
 
 export default function Parametres() {
@@ -431,6 +523,7 @@ export default function Parametres() {
         {activeTab === 'connexion' && <ConnexionTab />}
         {activeTab === 'analyse' && <AnalyseTab />}
         {activeTab === 'maintenance' && <MaintenanceTab />}
+        {activeTab === 'apparence' && <ApparenceTab />}
       </div>
     </div>
   )
