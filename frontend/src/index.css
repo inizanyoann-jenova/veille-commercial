@@ -5,3 +5,10 @@
 * {
   box-sizing: border-box;
 }
+
+:root {
+  --color-ocean-deep:  4 13 26;
+  --color-ocean-cyan:  0 200 255;
+  --color-ocean-coral: 255 107 107;
+  --color-ocean-text:  221 238 255;
+}
