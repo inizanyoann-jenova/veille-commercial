@@ -1,12 +1,12 @@
 function TenderCard({ tender, highlighted }) {
   return (
-    <div className={`flex-1 rounded-lg border p-3 ${highlighted ? 'ring-2 ring-indigo-400 bg-indigo-50' : 'bg-gray-50'}`}>
+    <div className={`flex-1 rounded-xl border p-3 ${highlighted ? 'ring-1 ring-ocean-cyan/40 bg-ocean-cyan/5 border-ocean-cyan/30' : 'bg-ocean-panel border-ocean-border'}`}>
       {highlighted && (
-        <span className="text-xs text-indigo-600 font-semibold mb-1 block">Recommandé ✓</span>
+        <span className="font-mono text-xs text-ocean-cyan font-semibold mb-1 block">Recommandé ✓</span>
       )}
-      <p className="text-sm font-semibold text-gray-800 mb-2">{tender.title}</p>
-      <div className="flex gap-3 text-xs text-gray-500 flex-wrap">
-        <span>Score : <strong>{tender.relevance_score}</strong></span>
+      <p className="font-sans text-sm font-semibold text-ocean-text mb-2">{tender.title}</p>
+      <div className="flex gap-3 font-mono text-xs text-ocean-muted flex-wrap">
+        <span>Score : <strong className="text-ocean-text/80">{tender.relevance_score}</strong></span>
         <span>Source : {tender.source}</span>
         {tender.deadline && (
           <span>Deadline : {new Date(tender.deadline).toLocaleDateString('fr-FR')}</span>
@@ -20,10 +20,10 @@ export default function DuplicatePair({ pair, onResolve }) {
   const aIsHigher = pair.tender_a.relevance_score >= pair.tender_b.relevance_score
 
   return (
-    <div className="border border-gray-200 rounded-lg p-4 bg-white space-y-3">
+    <div className="border border-ocean-border rounded-xl p-4 bg-ocean-panel space-y-3">
       <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-500">Similarité :</span>
-        <span className="text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+        <span className="font-sans text-xs text-ocean-muted">Similarité :</span>
+        <span className="font-mono text-xs font-bold text-ocean-gold bg-ocean-gold/10 px-2 py-0.5 rounded-full">
           {Math.round(pair.similarity_score * 100)}%
         </span>
       </div>
@@ -36,19 +36,19 @@ export default function DuplicatePair({ pair, onResolve }) {
       <div className="flex gap-2 flex-wrap">
         <button
           onClick={() => onResolve({ pairId: pair.id, action: 'keep', archiveId: pair.tender_b.id })}
-          className="text-xs px-3 py-1.5 rounded border border-indigo-300 text-indigo-700 hover:bg-indigo-50 transition-colors"
+          className="font-sans text-xs px-3 py-1.5 rounded-lg border border-ocean-cyan/20 text-ocean-cyan hover:bg-ocean-cyan/8 transition-colors"
         >
           Garder A — archiver B
         </button>
         <button
           onClick={() => onResolve({ pairId: pair.id, action: 'keep', archiveId: pair.tender_a.id })}
-          className="text-xs px-3 py-1.5 rounded border border-indigo-300 text-indigo-700 hover:bg-indigo-50 transition-colors"
+          className="font-sans text-xs px-3 py-1.5 rounded-lg border border-ocean-cyan/20 text-ocean-cyan hover:bg-ocean-cyan/8 transition-colors"
         >
           Garder B — archiver A
         </button>
         <button
           onClick={() => onResolve({ pairId: pair.id, action: 'ignore', archiveId: null })}
-          className="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-100 transition-colors"
+          className="font-sans text-xs px-3 py-1.5 rounded-lg border border-ocean-border text-ocean-muted hover:bg-white/4 transition-colors"
         >
           Ignorer
         </button>
