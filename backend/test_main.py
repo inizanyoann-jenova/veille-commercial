@@ -3,7 +3,8 @@ import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call
+from datetime import datetime, timedelta
 from main import _tender_to_dict
 
 
@@ -240,8 +241,6 @@ def test_collect_returns_500_when_all_sources_fail():
     assert len(detail.get("results", [])) == 1
     assert detail["results"][0]["status"] == "error"
 
-
-from datetime import datetime, timedelta
 
 
 def test_get_kpis_public_includes_new_24h():
