@@ -405,16 +405,19 @@ const COLOR_FIELDS = [
 ]
 
 function rgbStringToHex(rgb) {
+  if (!rgb || typeof rgb !== 'string') return '#000000'
   return '#' + rgb.split(' ').map((n) => parseInt(n).toString(16).padStart(2, '0')).join('')
 }
 
 function ApparenceTab() {
-  const saved = JSON.parse(localStorage.getItem(THEME_KEY) || 'null') ?? DEFAULTS
-  const [colors, setColors] = useState({
-    deep:  saved.deep,
-    cyan:  saved.cyan,
-    coral: saved.coral,
-    text:  saved.text,
+  const [colors, setColors] = useState(() => {
+    const saved = JSON.parse(localStorage.getItem(THEME_KEY) || 'null') ?? DEFAULTS
+    return {
+      deep:  saved.deep  ?? DEFAULTS.deep,
+      cyan:  saved.cyan  ?? DEFAULTS.cyan,
+      coral: saved.coral ?? DEFAULTS.coral,
+      text:  saved.text  ?? DEFAULTS.text,
+    }
   })
 
   const handleChange = (key, hex) => {
