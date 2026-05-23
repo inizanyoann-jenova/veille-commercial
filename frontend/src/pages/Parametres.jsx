@@ -1,9 +1,6 @@
 import { useState } from 'react'
-import ScraperRunsTable from '../components/ScraperRunsTable'
 import DuplicatePair from '../components/DuplicatePair'
 import {
-  useSources,
-  useCollectMutation,
   useAnalyzePending,
   useDuplicates,
   useDetectDuplicates,
@@ -16,101 +13,52 @@ import {
   useTestCredential,
 } from '../hooks/useTenders'
 
-function SectionTitle({ children }) {
+const SITE_LOGOS = {
+  nukema: '🏢',
+  marcheonline: '🛒',
+  instao: '🔑',
+  marches_securises: '🔒',
+  tendersgo: '🌍',
+  vaao: '📋',
+  dept974: '🏝️',
+  marchespublicsinfo: '📢',
+}
+
+const SITE_URLS = {
+  nukema: 'https://www.actu.nukema.com',
+  marcheonline: 'https://www.marchesonline.com',
+  instao: 'https://www.instao.fr',
+  marches_securises: 'https://www.marches-securises.fr',
+  tendersgo: 'https://app.tendersgo.com',
+  vaao: 'https://www.vaao.re',
+  dept974: 'https://marchespublics.la-reunion.fr',
+  marchespublicsinfo: 'https://www.marches-publics.info',
+}
+
+function TabButton({ active, onClick, children, badge }) {
   return (
-    <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wide border-b border-gray-200 pb-2 mb-4">
+    <button
+      onClick={onClick}
+      className={`relative px-4 py-2 font-sans text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+        active
+          ? 'border-ocean-cyan text-ocean-cyan'
+          : 'border-transparent text-ocean-muted hover:text-ocean-text hover:border-ocean-border'
+      }`}
+    >
       {children}
-    </h2>
-  )
-}
-
-function CollectSection() {
-  const { data: sources = [] } = useSources()
-  const { mutate: collect, isPending, data: collectResult } = useCollectMutation()
-  const enabled = sources.filter((s) => s.enabled && !s.is_manual)
-  const [selected, setSelected] = useState(null)
-
-  const toggle = (name) => {
-    setSelected((prev) => {
-      if (prev === null) {
-        const all = enabled.map((s) => s.name).filter((n) => n !== name)
-        return all.length === 0 ? null : all
-      }
-      if (prev.includes(name)) {
-        const next = prev.filter((n) => n !== name)
-        return next.length === 0 ? null : next
-      }
-      const next = [...prev, name]
-      return next.length === enabled.length ? null : next
-    })
-  }
-
-  const isChecked = (name) => selected === null || selected.includes(name)
-
-  return (
-    <div className="space-y-4">
-      <SectionTitle>🔄 Collecte des sources</SectionTitle>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-        {enabled.map((s) => (
-          <label key={s.name} className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={isChecked(s.name)}
-              onChange={() => toggle(s.name)}
-              className="rounded"
-            />
-            <span className="text-gray-700">{s.name}</span>
-          </label>
-        ))}
-      </div>
-      <button
-        onClick={() => collect(selected)}
-        disabled={isPending}
-        className="px-4 py-2 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-      >
-        {isPending ? 'Collecte en cours…' : 'Lancer la collecte'}
-      </button>
-      {collectResult && Array.isArray(collectResult) && (
-        <div className="space-y-1 mt-2">
-          {collectResult.map((r) => (
-            <div key={r.source} className="flex items-center gap-3 text-sm">
-              <span className={r.status === 'ok' ? 'text-green-600' : 'text-red-600'}>
-                {r.status === 'ok' ? '✓' : '✗'}
-              </span>
-              <span className="font-medium w-32 truncate">{r.source}</span>
-              {r.status === 'ok' && <span className="text-gray-500">+{r.nb_new} nouveaux</span>}
-              {r.status === 'error' && r.error === 'CREDENTIALS_MISSING' && (
-                <span className="text-amber-600 text-xs">
-                  ⚠ Identifiants manquants —{' '}
-                  <a
-                    href="#credentials"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      document.getElementById('credentials')?.scrollIntoView({ behavior: 'smooth' })
-                    }}
-                    className="underline hover:text-amber-800"
-                  >
-                    configurer ↗
-                  </a>
-                </span>
-              )}
-              {r.status === 'error' && r.error !== 'CREDENTIALS_MISSING' && (
-                <span className="text-red-500 text-xs">{r.error}</span>
-              )}
-            </div>
-          ))}
-        </div>
+      {badge > 0 && (
+        <span className="ml-1.5 inline-flex items-center justify-center w-4 h-4 font-mono text-xs font-bold rounded-full bg-ocean-coral text-white">
+          {badge}
+        </span>
       )}
-      <div className="mt-4">
-        <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-2">Historique des runs</p>
-        <ScraperRunsTable />
-      </div>
-    </div>
+    </button>
   )
 }
 
-function CredentialsSection() {
-  const { data: sites = [], refetch } = useCredentials()
+// ── Onglet Connexion ──────────────────────────────────────────────────────────
+
+function ConnexionTab() {
+  const { data: sites = [], refetch, isError } = useCredentials()
   const { mutate: save, isPending: saving } = useSaveCredential()
   const { mutate: remove, isPending: deleting } = useDeleteCredential()
   const { mutate: test, isPending: testing } = useTestCredential()
@@ -121,7 +69,11 @@ function CredentialsSection() {
   const [testResult, setTestResult] = useState(null)
   const [canSave, setCanSave] = useState(false)
 
+  const authenticated = sites.filter((s) => s.has_login_url)
+  const publicSites = sites.filter((s) => !s.has_login_url)
+
   const openSite = (site) => {
+    if (open === site) { closeSite(); return }
     setOpen(site)
     const entry = sites.find((s) => s.site === site)
     setForm({ email: entry?.email ?? '', password: '' })
@@ -130,7 +82,7 @@ function CredentialsSection() {
     setCanSave(false)
   }
 
-  const closeForm = () => {
+  const closeSite = () => {
     setOpen(null)
     setTestResult(null)
     setCanSave(false)
@@ -142,10 +94,7 @@ function CredentialsSection() {
     test(
       { site: open, email: form.email, password: form.password },
       {
-        onSuccess: (data) => {
-          setTestResult(data)
-          setCanSave(data.ok)
-        },
+        onSuccess: (data) => { setTestResult(data); setCanSave(data.ok) },
         onError: () => setTestResult({ ok: false, message: 'Erreur réseau' }),
       }
     )
@@ -154,7 +103,7 @@ function CredentialsSection() {
   const handleSave = () => {
     save(
       { site: open, email: form.email, password: form.password },
-      { onSuccess: () => { refetch(); closeForm() } }
+      { onSuccess: () => { refetch(); closeSite() } }
     )
   }
 
@@ -164,248 +113,325 @@ function CredentialsSection() {
 
   const statusBadge = (status) => {
     if (status === 'configured')
-      return <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700">● Configuré</span>
+      return <span className="inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 rounded-full bg-ocean-teal/10 text-ocean-teal font-medium">● Configuré</span>
     if (status === 'env_override')
-      return <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">● Env (lecture seule)</span>
-    return <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700">● Manquant</span>
+      return <span className="inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 rounded-full bg-ocean-cyan/10 text-ocean-cyan font-medium">● Variable d'env</span>
+    return <span className="inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 rounded-full bg-ocean-coral/10 text-ocean-coral font-medium">● Non configuré</span>
+  }
+
+  const SiteRow = ({ entry }) => (
+    <div className="border border-ocean-border rounded-lg overflow-hidden">
+      <button
+        onClick={() => openSite(entry.site)}
+        className="w-full flex items-center justify-between px-4 py-3 font-sans text-sm hover:bg-ocean-cyan/4 transition-colors"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="text-lg flex-shrink-0">{SITE_LOGOS[entry.site] ?? '🌐'}</span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-medium text-ocean-text">{entry.label}</span>
+              {statusBadge(entry.status)}
+            </div>
+            {entry.email && (
+              <p className="font-mono text-xs text-ocean-muted mt-0.5 truncate">{entry.email}</p>
+            )}
+            {SITE_URLS[entry.site] && (
+              <p className="font-mono text-xs text-ocean-muted truncate">{SITE_URLS[entry.site]}</p>
+            )}
+          </div>
+        </div>
+        <span className="text-ocean-muted text-xs flex-shrink-0 ml-2">{open === entry.site ? '▲' : '▼'}</span>
+      </button>
+
+      {open === entry.site && entry.status !== 'env_override' && (
+        <div className="px-4 pb-4 pt-3 border-t border-ocean-border bg-ocean-navy">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            <div>
+              <label className="block font-sans text-xs font-medium text-ocean-muted mb-1">Adresse email / identifiant</label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => { setForm((f) => ({ ...f, email: e.target.value })); setCanSave(false) }}
+                className="w-full px-3 py-2 font-sans text-sm border border-ocean-border rounded-md bg-ocean-deep text-ocean-text placeholder:text-ocean-muted focus:outline-none focus:border-ocean-cyan/30"
+                placeholder="email@exemple.com"
+                autoComplete="username"
+              />
+            </div>
+            <div>
+              <label className="block font-sans text-xs font-medium text-ocean-muted mb-1">Mot de passe</label>
+              <div className="relative">
+                <input
+                  type={showPwd ? 'text' : 'password'}
+                  value={form.password}
+                  onChange={(e) => { setForm((f) => ({ ...f, password: e.target.value })); setCanSave(false) }}
+                  className="w-full px-3 py-2 pr-9 font-sans text-sm border border-ocean-border rounded-md bg-ocean-deep text-ocean-text placeholder:text-ocean-muted focus:outline-none focus:border-ocean-cyan/30"
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPwd((v) => !v)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ocean-muted hover:text-ocean-text"
+                  title={showPwd ? 'Masquer' : 'Afficher'}
+                >
+                  {showPwd ? '🙈' : '👁️'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {entry.has_login_url && (
+              <button
+                onClick={handleTest}
+                disabled={testing || !form.email || !form.password}
+                className="px-3 py-1.5 bg-ocean-cyan/12 text-ocean-cyan font-sans text-xs rounded-md border border-ocean-cyan/20 hover:bg-ocean-cyan/18 disabled:opacity-50 transition-colors"
+              >
+                {testing ? '⏳ Test…' : '🔌 Tester la connexion'}
+              </button>
+            )}
+            <button
+              onClick={handleSave}
+              disabled={saving || (entry.has_login_url && !canSave) || !form.email || !form.password}
+              className="px-3 py-1.5 bg-ocean-cyan/12 text-ocean-cyan font-sans text-xs rounded-md border border-ocean-cyan/20 hover:bg-ocean-cyan/18 disabled:opacity-50 transition-colors"
+            >
+              {saving ? 'Sauvegarde…' : '💾 Sauvegarder'}
+            </button>
+            {entry.status === 'configured' && (
+              <button
+                onClick={() => handleDelete(entry.site)}
+                disabled={deleting}
+                className="px-3 py-1.5 bg-ocean-coral/10 text-ocean-coral font-sans text-xs rounded-md border border-ocean-coral/20 hover:bg-ocean-coral/18 disabled:opacity-50 transition-colors"
+              >
+                Supprimer
+              </button>
+            )}
+          </div>
+
+          {testResult && (
+            <p className={`font-sans text-xs mt-2 font-medium ${testResult.ok ? 'text-ocean-teal' : 'text-ocean-coral'}`}>
+              {testResult.ok ? '✓ Connexion réussie — vous pouvez sauvegarder' : `✗ ${testResult.message}`}
+            </p>
+          )}
+
+          {entry.has_login_url && !testResult && form.email && form.password && (
+            <p className="font-sans text-xs mt-2 text-ocean-muted">Testez la connexion avant de sauvegarder.</p>
+          )}
+          {!entry.has_login_url && (
+            <p className="font-sans text-xs mt-2 text-ocean-muted">Ce site utilise les identifiants pour filtrer les résultats (pas de page de connexion à tester).</p>
+          )}
+        </div>
+      )}
+
+      {open === entry.site && entry.status === 'env_override' && (
+        <div className="px-4 py-3 border-t border-ocean-border bg-ocean-cyan/4">
+          <p className="font-sans text-xs text-ocean-cyan">
+            ℹ️ Les identifiants sont définis via variable d'environnement et ne peuvent pas être modifiés ici.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+
+  if (isError) {
+    return (
+      <div className="p-4 bg-ocean-coral/8 border border-ocean-coral/20 rounded-lg font-sans text-sm text-ocean-coral space-y-2">
+        <p className="font-medium">⚠ Impossible de contacter le backend (<code>/api/credentials</code> — 404)</p>
+        <p>Le serveur ne reconnaît pas encore cette route. Redémarrez le backend :</p>
+        <ol className="list-decimal list-inside space-y-1 text-ocean-coral/80">
+          <li>Fermez la fenêtre <strong>Backend FastAPI</strong></li>
+          <li>Relancez via <code>start.bat</code> ou <code>.\start.ps1</code></li>
+        </ol>
+        <button
+          onClick={() => refetch()}
+          className="mt-2 px-3 py-1.5 bg-ocean-coral/10 text-ocean-coral font-sans text-xs rounded border border-ocean-coral/20 hover:bg-ocean-coral/18"
+        >
+          Réessayer
+        </button>
+      </div>
+    )
   }
 
   return (
-    <div id="credentials" className="space-y-4">
-      <SectionTitle>🔐 Identifiants des sites protégés</SectionTitle>
-      <p className="text-sm text-gray-600">
-        Certains sites nécessitent une connexion pour accéder aux appels d'offres.
+    <div className="space-y-6">
+      <p className="font-sans text-sm text-ocean-muted">
+        Configurez les identifiants pour les sites qui nécessitent une connexion. Ils sont chiffrés et stockés localement.
       </p>
-      <div className="space-y-2">
-        {sites.map((entry) => (
-          <div key={entry.site} className="border border-gray-200 rounded-lg overflow-hidden">
-            <button
-              onClick={() => (open === entry.site ? closeForm() : openSite(entry.site))}
-              className="w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                {statusBadge(entry.status)}
-                <span className="font-medium text-gray-800">{entry.label}</span>
-                {entry.email && (
-                  <span className="text-gray-400 text-xs">{entry.email}</span>
-                )}
-              </div>
-              <span className="text-gray-400 text-xs">{open === entry.site ? '▲' : '▼'}</span>
-            </button>
 
-            {open === entry.site && entry.status !== 'env_override' && (
-              <div className="px-4 pb-4 pt-2 border-t border-gray-100 bg-gray-50 space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Email</label>
-                    <input
-                      type="email"
-                      value={form.email}
-                      onChange={(e) => {
-                        setForm((f) => ({ ...f, email: e.target.value }))
-                        setCanSave(false)
-                      }}
-                      className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                      placeholder="email@exemple.com"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Mot de passe</label>
-                    <div className="relative">
-                      <input
-                        type={showPwd ? 'text' : 'password'}
-                        value={form.password}
-                        onChange={(e) => {
-                          setForm((f) => ({ ...f, password: e.target.value }))
-                          setCanSave(false)
-                        }}
-                        className="w-full px-3 py-1.5 pr-8 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                        placeholder="••••••••"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPwd((v) => !v)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
-                      >
-                        {showPwd ? '🙈' : '👁️'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 flex-wrap">
-                  {entry.has_login_url && (
-                    <button
-                      onClick={handleTest}
-                      disabled={testing || !form.email || !form.password}
-                      className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs rounded border border-gray-300 hover:bg-gray-200 disabled:opacity-50 transition-colors"
-                    >
-                      {testing ? 'Test en cours…' : 'Tester la connexion'}
-                    </button>
-                  )}
-                  <button
-                    onClick={handleSave}
-                    disabled={
-                      saving ||
-                      (entry.has_login_url && !canSave) ||
-                      !form.email ||
-                      !form.password
-                    }
-                    className="px-3 py-1.5 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-                  >
-                    {saving ? 'Sauvegarde…' : 'Sauvegarder'}
-                  </button>
-                  {entry.status === 'configured' && (
-                    <button
-                      onClick={() => handleDelete(entry.site)}
-                      disabled={deleting}
-                      className="px-3 py-1.5 bg-red-50 text-red-700 text-xs rounded border border-red-300 hover:bg-red-100 disabled:opacity-50 transition-colors"
-                    >
-                      Supprimer
-                    </button>
-                  )}
-                </div>
-
-                {testResult && (
-                  <p className={`text-xs ${testResult.ok ? 'text-green-700' : 'text-red-600'}`}>
-                    {testResult.ok ? '✓ Connexion réussie' : `✗ ${testResult.message}`}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {open === entry.site && entry.status === 'env_override' && (
-              <div className="px-4 py-3 border-t border-gray-100 bg-blue-50">
-                <p className="text-xs text-blue-700">
-                  Les identifiants de ce site sont définis via variable d'environnement et ne peuvent pas être modifiés ici.
-                </p>
-              </div>
-            )}
-          </div>
-        ))}
+      <div>
+        <h3 className="font-mono text-xs font-semibold text-ocean-muted uppercase tracking-widest mb-3">
+          🔐 Sites avec authentification
+        </h3>
+        <div className="space-y-2">
+          {authenticated.map((entry) => (
+            <SiteRow key={entry.site} entry={entry} />
+          ))}
+          {authenticated.length === 0 && (
+            <p className="font-sans text-sm text-ocean-muted italic">Chargement…</p>
+          )}
+        </div>
       </div>
+
+      {publicSites.length > 0 && (
+        <div>
+          <h3 className="font-mono text-xs font-semibold text-ocean-muted uppercase tracking-widest mb-3">
+            📂 Sites avec identifiants optionnels
+          </h3>
+          <div className="space-y-2">
+            {publicSites.map((entry) => (
+              <SiteRow key={entry.site} entry={entry} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function AnalyseSection() {
+// ── Onglet Analyse ────────────────────────────────────────────────────────────
+
+function AnalyseTab() {
   const { mutate: analyze, isPending, data } = useAnalyzePending()
   return (
     <div className="space-y-4">
-      <SectionTitle>🤖 Analyse LLM</SectionTitle>
-      <p className="text-sm text-gray-600">
+      <p className="font-sans text-sm text-ocean-muted">
         Lance l'analyse IA sur les marchés qui n'ont pas encore été analysés.
       </p>
       <button
         onClick={() => analyze()}
         disabled={isPending}
-        className="px-4 py-2 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+        className="px-4 py-2 bg-ocean-cyan/12 border border-ocean-cyan/20 text-ocean-cyan font-sans text-sm rounded-lg hover:bg-ocean-cyan/18 disabled:opacity-50 transition-colors"
       >
         {isPending ? 'Analyse en cours…' : 'Analyser les marchés en attente'}
       </button>
       {data && (
-        <p className="text-sm text-green-700">
-          ✓ {data.message ?? 'Analyse lancée en arrière-plan.'}
-        </p>
+        <p className="font-sans text-sm text-ocean-teal">✓ {data.message ?? 'Analyse lancée en arrière-plan.'}</p>
       )}
     </div>
   )
 }
 
-function DoublonsSection() {
+// ── Onglet Maintenance ────────────────────────────────────────────────────────
+
+function MaintenanceTab() {
   const { data: duplicates = [], isLoading } = useDuplicates()
   const { mutate: detect, isPending: detecting, data: detectResult } = useDetectDuplicates()
   const { mutate: resolve } = useResolveDuplicate()
-  return (
-    <div className="space-y-4">
-      <SectionTitle>🔍 Détection des doublons</SectionTitle>
-      <div className="flex items-center gap-4">
-        <button
-          onClick={() => detect()}
-          disabled={detecting}
-          className="px-4 py-2 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-        >
-          {detecting ? 'Détection en cours…' : 'Détecter les doublons'}
-        </button>
-        {detectResult !== undefined && (
-          <p className="text-sm text-gray-700">
-            {detectResult?.new_pairs ?? 0} nouvelle(s) paire(s) détectée(s).
-          </p>
-        )}
-      </div>
-      {isLoading && <p className="text-sm text-gray-400">Chargement…</p>}
-      {!isLoading && duplicates.length === 0 && (
-        <p className="text-sm text-gray-400">Aucun doublon non résolu.</p>
-      )}
-      <div className="space-y-3">
-        {duplicates.map((pair) => (
-          <DuplicatePair key={pair.id} pair={pair} onResolve={resolve} />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function MaintenanceSection() {
   const { mutate: archive, isPending: archiving, data: archiveResult } = useArchiveOld()
   const { mutate: reset, isPending: resetting } = useResetDb()
   const [showConfirm, setShowConfirm] = useState(false)
+
   return (
-    <div className="space-y-4">
-      <SectionTitle>🛠️ Maintenance</SectionTitle>
-      <div className="flex flex-wrap gap-3 items-center">
-        <button
-          onClick={() => archive()}
-          disabled={archiving}
-          className="px-4 py-2 bg-gray-100 text-gray-700 text-sm rounded border border-gray-300 hover:bg-gray-200 disabled:opacity-50 transition-colors"
-        >
-          {archiving ? 'Archivage…' : 'Archiver les marchés > 30 jours'}
-        </button>
-        {archiveResult && (
-          <span className="text-sm text-gray-600">✓ {archiveResult.archived ?? 0} archivé(s)</span>
-        )}
-      </div>
-      <div>
-        {!showConfirm ? (
+    <div className="space-y-8">
+      <div className="space-y-4">
+        <h3 className="font-mono text-xs font-semibold text-ocean-muted uppercase tracking-widest">🔍 Doublons</h3>
+        <div className="flex items-center gap-4">
           <button
-            onClick={() => setShowConfirm(true)}
-            className="px-4 py-2 bg-red-50 text-red-700 text-sm rounded border border-red-300 hover:bg-red-100 transition-colors"
+            onClick={() => detect()}
+            disabled={detecting}
+            className="px-4 py-2 bg-ocean-cyan/12 border border-ocean-cyan/20 text-ocean-cyan font-sans text-sm rounded-lg hover:bg-ocean-cyan/18 disabled:opacity-50 transition-colors"
           >
-            Réinitialiser la base de données
+            {detecting ? 'Détection en cours…' : 'Détecter les doublons'}
           </button>
-        ) : (
-          <div className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-700 font-medium">
-              ⚠️ Cette action est irréversible. Confirmer ?
-            </p>
-            <button
-              onClick={() => { reset(); setShowConfirm(false) }}
-              disabled={resetting}
-              className="px-3 py-1.5 bg-red-600 text-white text-xs rounded hover:bg-red-700 disabled:opacity-50"
-            >
-              Oui, réinitialiser
-            </button>
-            <button
-              onClick={() => setShowConfirm(false)}
-              className="px-3 py-1.5 bg-white text-gray-700 text-xs rounded border border-gray-300 hover:bg-gray-100"
-            >
-              Annuler
-            </button>
-          </div>
+          {detectResult !== undefined && (
+            <p className="font-sans text-sm text-ocean-text/80">{detectResult?.new_pairs ?? 0} nouvelle(s) paire(s) détectée(s).</p>
+          )}
+        </div>
+        {isLoading && <p className="font-sans text-sm text-ocean-muted">Chargement…</p>}
+        {!isLoading && duplicates.length === 0 && (
+          <p className="font-sans text-sm text-ocean-muted">Aucun doublon non résolu.</p>
         )}
+        <div className="space-y-3">
+          {duplicates.map((pair) => (
+            <DuplicatePair key={pair.id} pair={pair} onResolve={resolve} />
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <h3 className="font-mono text-xs font-semibold text-ocean-muted uppercase tracking-widest">🛠️ Base de données</h3>
+        <div className="flex flex-wrap gap-3 items-center">
+          <button
+            onClick={() => archive()}
+            disabled={archiving}
+            className="px-4 py-2 bg-ocean-panel border border-ocean-border text-ocean-text/80 font-sans text-sm rounded-lg hover:bg-ocean-cyan/4 disabled:opacity-50 transition-colors"
+          >
+            {archiving ? 'Archivage…' : 'Archiver les marchés > 30 jours'}
+          </button>
+          {archiveResult && (
+            <span className="font-sans text-sm text-ocean-text/80">✓ {archiveResult.archived ?? 0} archivé(s)</span>
+          )}
+        </div>
+        <div>
+          {!showConfirm ? (
+            <button
+              onClick={() => setShowConfirm(true)}
+              className="px-4 py-2 bg-ocean-coral/10 text-ocean-coral font-sans text-sm rounded-lg border border-ocean-coral/20 hover:bg-ocean-coral/18 transition-colors"
+            >
+              Réinitialiser la base de données
+            </button>
+          ) : (
+            <div className="flex items-center gap-3 p-3 bg-ocean-coral/8 border border-ocean-coral/20 rounded-lg">
+              <p className="font-sans text-sm text-ocean-coral font-medium">⚠️ Action irréversible. Confirmer ?</p>
+              <button
+                onClick={() => { reset(); setShowConfirm(false) }}
+                disabled={resetting}
+                className="px-3 py-1.5 bg-ocean-coral text-white font-sans text-xs rounded-lg hover:bg-ocean-coral/80 disabled:opacity-50"
+              >
+                Oui, réinitialiser
+              </button>
+              <button
+                onClick={() => setShowConfirm(false)}
+                className="px-3 py-1.5 bg-ocean-panel text-ocean-text/80 font-sans text-xs rounded-lg border border-ocean-border hover:bg-ocean-cyan/4"
+              >
+                Annuler
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
 }
 
+// ── Page principale ───────────────────────────────────────────────────────────
+
+const TABS = [
+  { id: 'connexion', label: '🔐 Connexion' },
+  { id: 'analyse', label: '🤖 Analyse' },
+  { id: 'maintenance', label: '🛠️ Maintenance' },
+]
+
 export default function Parametres() {
+  const [activeTab, setActiveTab] = useState('connexion')
+  const { data: creds = [] } = useCredentials()
+  const missingCount = creds.filter((c) => c.status === 'missing').length
+
   return (
-    <div className="p-5 space-y-10 max-w-4xl">
-      <CollectSection />
-      <CredentialsSection />
-      <AnalyseSection />
-      <DoublonsSection />
-      <MaintenanceSection />
+    <div className="p-6 max-w-4xl">
+      <div className="mb-6">
+        <h1 className="font-serif text-lg font-bold text-ocean-text mb-1">Paramètres</h1>
+        <p className="font-sans text-sm text-ocean-muted">Gérez les connexions aux sites et la maintenance.</p>
+      </div>
+
+      <div className="border-b border-ocean-border mb-6 flex gap-0 -mx-1 overflow-x-auto">
+        {TABS.map((tab) => (
+          <TabButton
+            key={tab.id}
+            active={activeTab === tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            badge={tab.id === 'connexion' ? missingCount : 0}
+          >
+            {tab.label}
+          </TabButton>
+        ))}
+      </div>
+
+      <div>
+        {activeTab === 'connexion' && <ConnexionTab />}
+        {activeTab === 'analyse' && <AnalyseTab />}
+        {activeTab === 'maintenance' && <MaintenanceTab />}
+      </div>
     </div>
   )
 }
