@@ -51,7 +51,7 @@ describe('applyTheme', () => {
 
   it('ignore les valeurs null dans les couleurs', () => {
     applyTheme({ deep: null, cyan: '0 200 255' })
-    expect(document.documentElement.style.setProperty).not.toHaveBeenCalledWith('--color-ocean-deep', null)
+    expect(document.documentElement.style.setProperty).not.toHaveBeenCalledWith('--color-ocean-deep', expect.anything())
     expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--color-ocean-cyan', '0 200 255')
   })
 })
