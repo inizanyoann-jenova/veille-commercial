@@ -62,7 +62,11 @@ export const useCollectMutation = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: collect,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['scraper-runs'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['scraper-runs'] })
+      qc.invalidateQueries({ queryKey: ['kpis'] })
+      qc.invalidateQueries({ queryKey: ['tenders'] })
+    },
   })
 }
 
@@ -184,7 +188,7 @@ export const useResetDb = () => {
 // ── Identifiants ──────────────────────────────────────────────────────────────
 
 export const useCredentials = () =>
-  useQuery({ queryKey: ['credentials'], queryFn: getCredentials, staleTime: 30_000 })
+  useQuery({ queryKey: ['credentials'], queryFn: getCredentials, staleTime: 30_000, retry: 1 })
 
 export const useSaveCredential = () => {
   const qc = useQueryClient()
