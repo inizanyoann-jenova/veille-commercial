@@ -17,24 +17,24 @@ function formatAmount(amount) {
 }
 
 function GonogoBadge({ gonogo }) {
-  if (!gonogo) return <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold bg-gray-100 text-gray-500">—</span>
+  if (!gonogo) return <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold bg-white/5 text-ocean-muted">—</span>
   if (gonogo === 'GO')
-    return <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold bg-green-100 text-green-800">🟢 GO</span>
+    return <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold bg-ocean-teal/10 text-ocean-teal">🟢 GO</span>
   if (gonogo === 'Étudier')
-    return <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold bg-yellow-100 text-yellow-800">🟡 Étudier</span>
-  return <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold bg-red-100 text-red-800">🔴 Passer</span>
+    return <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold bg-ocean-gold/10 text-ocean-gold">🟡 Étudier</span>
+  return <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold bg-ocean-coral/10 text-ocean-coral">🔴 Passer</span>
 }
 
 function ScoreBar({ label, value, max }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0
   return (
     <div className="space-y-1">
-      <div className="flex justify-between text-xs text-gray-600">
+      <div className="flex justify-between text-xs text-ocean-muted">
         <span>{label}</span>
-        <span className="tabular-nums font-medium">{value}/{max}</span>
+        <span className="tabular-nums font-medium text-ocean-text/80">{value}/{max}</span>
       </div>
-      <div className="h-2 bg-gray-200 rounded-full">
-        <div className="h-2 bg-indigo-500 rounded-full" style={{ width: `${pct}%` }} />
+      <div className="h-1.5 bg-white/6 rounded-full">
+        <div className="h-1.5 bg-gradient-to-r from-ocean-cyan to-ocean-teal rounded-full" style={{ width: `${pct}%` }} />
       </div>
     </div>
   )
@@ -44,7 +44,7 @@ function LoadingSkeleton() {
   return (
     <div className="p-4 space-y-3">
       {[1, 2, 3].map((i) => (
-        <div key={i} className="h-16 bg-gray-100 rounded animate-pulse" />
+        <div key={i} className="h-16 bg-ocean-panel/50 rounded-xl animate-pulse" />
       ))}
     </div>
   )
@@ -54,28 +54,28 @@ function TenderDetailHeader({ tender }) {
   return (
     <div className="space-y-3">
       <GonogoBadge gonogo={tender.gonogo} />
-      <h2 className="text-base font-semibold text-gray-900 line-clamp-2">{tender.title}</h2>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+      <h2 className="font-serif text-base font-semibold text-ocean-text line-clamp-2">{tender.title}</h2>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ocean-muted">
         <span>
-          Score : <strong className="text-gray-700">{tender.relevance_score ?? 0}</strong>/100
+          Score : <strong className="text-ocean-text/80">{tender.relevance_score ?? 0}</strong>/100
         </span>
         <span>
-          Deadline : <strong className="text-gray-700">{formatDate(tender.deadline)}</strong>
+          Deadline : <strong className="text-ocean-text/80">{formatDate(tender.deadline)}</strong>
           {tender.jours_restants != null && (
             <span className={`ml-1 ${
               tender.jours_restants <= 7
-                ? 'text-red-600 font-bold'
+                ? 'text-ocean-coral font-bold'
                 : tender.jours_restants <= 30
-                ? 'text-orange-500'
+                ? 'text-ocean-gold'
                 : ''
             }`}>
               ({tender.jours_restants} j)
             </span>
           )}
         </span>
-        <span>Montant : <strong className="text-gray-700">{formatAmount(tender.amount)}</strong></span>
-        <span>Secteur : <strong className="text-gray-700">{tender.secteur || '—'}</strong></span>
-        <span>Source : <strong className="text-gray-700">{tender.source || '—'}</strong></span>
+        <span>Montant : <strong className="text-ocean-text/80">{formatAmount(tender.amount)}</strong></span>
+        <span>Secteur : <strong className="text-ocean-text/80">{tender.secteur || '—'}</strong></span>
+        <span>Source : <strong className="text-ocean-text/80">{tender.source || '—'}</strong></span>
       </div>
     </div>
   )
@@ -85,16 +85,16 @@ function TenderDetailActionPlan({ ficheData }) {
   if (!ficheData) return null
   return (
     <div className="space-y-3">
-      <h3 className="font-semibold text-gray-800">{ficheData.label_action}</h3>
+      <h3 className="font-serif font-semibold text-ocean-text">{ficheData.label_action}</h3>
       <ol className="space-y-1.5 pl-5">
         {ficheData.steps.map((step, i) => (
-          <li key={i} className="text-sm text-gray-700 list-decimal">{step}</li>
+          <li key={i} className="font-sans text-sm text-ocean-text/80 list-decimal">{step}</li>
         ))}
       </ol>
       {ficheData.risques.length > 0 && (
         <div className="space-y-1">
           {ficheData.risques.map((r, i) => (
-            <div key={i} className="text-sm px-3 py-2 bg-orange-50 border border-orange-200 rounded text-orange-800">
+            <div key={i} className="font-sans text-sm px-3 py-2 bg-ocean-coral/8 border border-ocean-coral/20 rounded text-ocean-coral">
               {r}
             </div>
           ))}
@@ -103,7 +103,7 @@ function TenderDetailActionPlan({ ficheData }) {
       {ficheData.atouts.length > 0 && (
         <div className="space-y-1">
           {ficheData.atouts.map((a, i) => (
-            <div key={i} className="text-sm px-3 py-2 bg-green-50 border border-green-200 rounded text-green-800">
+            <div key={i} className="font-sans text-sm px-3 py-2 bg-ocean-teal/8 border border-ocean-teal/20 rounded text-ocean-teal">
               {a}
             </div>
           ))}
@@ -117,34 +117,34 @@ function TenderDetailTechnical({ tender }) {
   const [open, setOpen] = useState(false)
   const fd = tender.fiche_data
   return (
-    <div className="border border-gray-200 rounded">
+    <div className="border border-ocean-border rounded-xl">
       <button
-        className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        className="w-full flex items-center justify-between px-4 py-2.5 font-sans text-sm font-medium text-ocean-text/80 hover:text-ocean-text hover:bg-ocean-cyan/4 transition-colors rounded-xl"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
       >
         <span>📊 Détail du score & mots-clés</span>
-        <span className="text-gray-400 text-xs">{open ? '▲' : '▼'}</span>
+        <span className="text-ocean-muted text-xs">{open ? '▲' : '▼'}</span>
       </button>
       {open && fd && (
-        <div className="px-4 pb-4 space-y-3 border-t border-gray-100">
-          <p className="text-xs font-semibold text-gray-500 uppercase pt-3">Décomposition du score</p>
+        <div className="px-4 pb-4 space-y-3 border-t border-ocean-border">
+          <p className="font-mono text-xs font-semibold text-ocean-muted uppercase pt-3">Décomposition du score</p>
           <ScoreBar label="Pertinence métier" value={fd.sm} max={45} />
           <ScoreBar label="Proximité géographique" value={fd.sg} max={30} />
           <ScoreBar label="Mots-clés dans le titre" value={fd.sk} max={15} />
           <ScoreBar label="Maintenance / Récurrence" value={fd.smaint} max={10} />
-          <div className="pt-2 space-y-1 text-xs text-gray-600 border-t border-gray-100">
-            <div><span className="font-medium">Type : </span>{tender.type_marche || tender.type_opportunite || '—'}</div>
-            <div><span className="font-medium">Territoire : </span>{tender.territoire || '—'}</div>
-            <div><span className="font-medium">Domaine : </span>{tender.domaine || '—'}</div>
+          <div className="pt-2 space-y-1 font-mono text-xs text-ocean-text/80 border-t border-ocean-border">
+            <div><span className="text-ocean-muted">Type : </span>{tender.type_marche || tender.type_opportunite || '—'}</div>
+            <div><span className="text-ocean-muted">Territoire : </span>{tender.territoire || '—'}</div>
+            <div><span className="text-ocean-muted">Domaine : </span>{tender.domaine || '—'}</div>
             {tender.concurrents && (
-              <div><span className="font-medium">Concurrents : </span>{tender.concurrents}</div>
+              <div><span className="text-ocean-muted">Concurrents : </span>{tender.concurrents}</div>
             )}
           </div>
           {tender.description && (
-            <div className="pt-2 border-t border-gray-100">
-              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Description</p>
-              <p className="text-xs text-gray-600 whitespace-pre-wrap line-clamp-6">{tender.description}</p>
+            <div className="pt-2 border-t border-ocean-border">
+              <p className="font-mono text-xs text-ocean-muted uppercase mb-1">Description</p>
+              <p className="font-sans text-xs text-ocean-text/80 whitespace-pre-wrap line-clamp-6">{tender.description}</p>
             </div>
           )}
         </div>
@@ -157,33 +157,33 @@ function TenderDetailAI({ llmStructured }) {
   const s = llmStructured
   const recoBadge =
     s.recommandation === 'GO' ? (
-      <span className="text-green-700 font-semibold">✅ GO</span>
+      <span className="text-ocean-teal font-semibold">✅ GO</span>
     ) : s.recommandation === 'NON' ? (
-      <span className="text-red-700 font-semibold">🔴 NON</span>
+      <span className="text-ocean-coral font-semibold">🔴 NON</span>
     ) : (
       <span>—</span>
     )
   return (
-    <div className="border border-gray-200 rounded px-4 py-3 space-y-2">
-      <p className="text-xs font-semibold text-gray-500 uppercase">🤖 Analyse IA</p>
-      <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs text-gray-700">
-        <div><span className="font-medium">Budget estimé</span><br />{s.budget_estime || '—'}</div>
-        <div><span className="font-medium">Type de travaux</span><br />{s.type_travaux || '—'}</div>
-        <div><span className="font-medium">Acheteur</span><br />{s.acheteur_type || '—'}</div>
-        <div><span className="font-medium">Concurrence</span><br />{s.niveau_concurrence || '—'}</div>
+    <div className="border border-ocean-border rounded-xl px-4 py-3 space-y-2">
+      <p className="font-mono text-xs text-ocean-muted uppercase">🤖 Analyse IA</p>
+      <div className="grid grid-cols-2 gap-x-6 gap-y-2 font-sans text-xs text-ocean-text/80">
+        <div><span className="text-ocean-muted">Budget estimé</span><br />{s.budget_estime || '—'}</div>
+        <div><span className="text-ocean-muted">Type de travaux</span><br />{s.type_travaux || '—'}</div>
+        <div><span className="text-ocean-muted">Acheteur</span><br />{s.acheteur_type || '—'}</div>
+        <div><span className="text-ocean-muted">Concurrence</span><br />{s.niveau_concurrence || '—'}</div>
         <div>
-          <span className="font-medium">Confiance IA</span><br />
+          <span className="text-ocean-muted">Confiance IA</span><br />
           {s.score_confiance != null ? `${s.score_confiance} %` : '—'}
         </div>
-        <div><span className="font-medium">Recommandation</span><br />{recoBadge}</div>
+        <div><span className="text-ocean-muted">Recommandation</span><br />{recoBadge}</div>
       </div>
       {s.lots && s.lots.length > 0 && (
-        <p className="text-xs text-gray-600">
-          <span className="font-medium">Lots : </span>{s.lots.join(' · ')}
+        <p className="font-sans text-xs text-ocean-text/80">
+          <span className="text-ocean-muted">Lots : </span>{s.lots.join(' · ')}
         </p>
       )}
       {s.justification && (
-        <p className="text-xs text-gray-500 italic">{s.justification}</p>
+        <p className="font-sans text-xs text-ocean-muted italic">{s.justification}</p>
       )}
     </div>
   )
@@ -193,13 +193,13 @@ function TenderDetailActions({ tender }) {
   const updateStatus = useUpdateStatus()
   const updateSaved = useUpdateSaved()
   return (
-    <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
+    <div className="flex items-center gap-3 pt-2 border-t border-ocean-border">
       <select
         value={tender.status}
         onChange={(e) => updateStatus.mutate({ id: tender.id, status: e.target.value })}
         disabled={updateStatus.isPending}
         aria-label="Qualifier le marché"
-        className="text-sm border border-gray-300 rounded px-2 py-1.5 bg-white flex-1"
+        className="font-sans text-sm border border-ocean-border rounded-lg px-2 py-1.5 bg-ocean-navy text-ocean-text flex-1 focus:border-ocean-cyan/20 focus:outline-none"
       >
         {STATUTS.map((s) => <option key={s}>{s}</option>)}
       </select>
@@ -209,8 +209,8 @@ function TenderDetailActions({ tender }) {
         aria-label={tender.is_saved ? 'Retirer des favoris' : 'Sauvegarder'}
         className={`text-xl px-2 py-1 rounded transition-colors ${
           tender.is_saved
-            ? 'text-yellow-500 hover:text-yellow-600'
-            : 'text-gray-300 hover:text-yellow-400'
+            ? 'text-ocean-gold hover:text-ocean-gold/80'
+            : 'text-ocean-muted hover:text-ocean-gold'
         }`}
       >
         {tender.is_saved ? '⭐' : '☆'}
@@ -234,21 +234,21 @@ export default function TenderDetail({ tenderId, onClose }) {
   return (
     <>
       <div
-        className="fixed inset-0 z-40 bg-black/40"
+        className="fixed inset-0 z-40 bg-black/60"
         onClick={onClose}
         aria-hidden="true"
       />
       <div
         role="dialog"
         aria-label="Fiche marché"
-        className="fixed right-0 top-0 bottom-0 w-[480px] z-50 bg-white overflow-y-auto shadow-xl flex flex-col"
+        className="fixed right-0 top-0 bottom-0 w-[480px] z-50 bg-ocean-panel border-l border-ocean-border overflow-y-auto shadow-xl flex flex-col"
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 shrink-0">
-          <span className="text-sm font-medium text-gray-500">Fiche marché</span>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-ocean-border shrink-0 bg-ocean-navy">
+          <span className="font-sans text-sm font-medium text-ocean-muted">Fiche marché</span>
           <button
             onClick={onClose}
             aria-label="Fermer"
-            className="text-gray-400 hover:text-gray-600 text-lg leading-none"
+            className="text-ocean-muted hover:text-ocean-text transition-colors text-lg leading-none"
           >
             ✕
           </button>
@@ -256,12 +256,12 @@ export default function TenderDetail({ tenderId, onClose }) {
 
         {isLoading && <LoadingSkeleton />}
         {isError && (
-          <p className="p-6 text-red-600 text-sm">Impossible de charger ce marché.</p>
+          <p className="p-6 text-ocean-coral text-sm">Impossible de charger ce marché.</p>
         )}
         {tender && (
           <div className="p-4 space-y-5">
             <TenderDetailHeader tender={tender} />
-            <hr className="border-gray-100" />
+            <hr className="border-ocean-border" />
             <TenderDetailActionPlan ficheData={tender.fiche_data} />
             <TenderDetailTechnical tender={tender} />
             {tender.llm_structured && (
