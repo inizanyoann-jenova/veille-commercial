@@ -1,13 +1,14 @@
 // frontend/src/components/TendersTable.test.jsx
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import TendersTable from './TendersTable'
 
 vi.mock('../hooks/useTenders', () => ({
   useTenders: vi.fn(),
+  useAnalyzeTender: vi.fn(),
 }))
 
-import { useTenders } from '../hooks/useTenders'
+import { useTenders, useAnalyzeTender } from '../hooks/useTenders'
 
 const MOCK_TENDERS = [
   {
@@ -20,6 +21,7 @@ const MOCK_TENDERS = [
     gonogo: 'GO',
     status: 'En cours',
     source: 'DECP',
+    llm_analysis: { score_pertinence: 75 },
   },
   {
     id: '2',
@@ -31,6 +33,7 @@ const MOCK_TENDERS = [
     gonogo: 'Étudier',
     status: 'À qualifier',
     source: 'AFD',
+    llm_analysis: null,
   },
   {
     id: '3',
@@ -42,6 +45,7 @@ const MOCK_TENDERS = [
     gonogo: 'Passer',
     status: 'À qualifier',
     source: 'DECP',
+    llm_analysis: null,
   },
 ]
 
@@ -55,6 +59,10 @@ const DEFAULT_PROPS = {
 }
 
 describe('TendersTable', () => {
+  beforeEach(() => {
+    useAnalyzeTender.mockReturnValue({ mutate: vi.fn() })
+  })
+
   it('affiche le filtre statut avec aria-label', () => {
     useTenders.mockReturnValue({ data: [], isLoading: false, isError: false })
     render(<TendersTable {...DEFAULT_PROPS} />)
@@ -169,5 +177,33 @@ describe('TendersTable', () => {
     const firstRow = screen.getAllByRole('button')[0]
     fireEvent.keyDown(firstRow, { key: 'Enter' })
     expect(onRowClick).toHaveBeenCalledWith('1')
+  })
+
+  it('affiche le badge ✓ Analysé pour un tender avec llm_analysis', () => {
+    useTenders.mockReturnValue({ data: MOCK_TENDERS, isLoading: false, isError: false })
+    render(<TendersTable {...DEFAULT_PROPS} />)
+    expect(screen.getByText(/✓ Analysé/)).toBeInTheDocument()
+  })
+
+  it('affiche le bouton ▶ Analyser pour un tender sans llm_analysis', () => {
+    useTenders.mockReturnValue({ data: MOCK_TENDERS, isLoading: false, isError: false })
+    render(<TendersTable {...DEFAULT_PROPS} />)
+    const buttons = screen.getAllByText(/▶ Analyser/)
+    expect(buttons.length).toBe(2)
+  })
+
+  it('le clic sur ▶ Analyser ne déclenche pas onRowClick', () => {
+    useTenders.mockReturnValue({ data: MOCK_TENDERS, isLoading: false, isError: false })
+    const onRowClick = vi.fn()
+    render(<TendersTable {...DEFAULT_PROPS} onRowClick={onRowClick} />)
+    const analyzeBtn = screen.getAllByText(/▶ Analyser/)[0]
+    fireEvent.click(analyzeBtn)
+    expect(onRowClick).not.toHaveBeenCalled()
+  })
+
+  it('le bouton ▶ Analyser a un aria-label contenant le titre', () => {
+    useTenders.mockReturnValue({ data: [MOCK_TENDERS[1]], isLoading: false, isError: false })
+    render(<TendersTable {...DEFAULT_PROPS} />)
+    expect(screen.getByRole('button', { name: /Vidéosurveillance Mayotte/i })).toBeInTheDocument()
   })
 })
