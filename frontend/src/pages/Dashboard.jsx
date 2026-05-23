@@ -10,7 +10,7 @@ export default function Dashboard() {
   const [selectedId, setSelectedId] = useState(null)
 
   return (
-    <div className="p-5 space-y-5">
+    <div className="p-6 space-y-5">
       <KpiGrid />
       <TendersTable
         status={status}
