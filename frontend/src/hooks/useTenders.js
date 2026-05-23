@@ -130,7 +130,10 @@ export const useAnalyzeTender = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id }) => analyzeTender(id),
-    onSuccess: (_, { id }) => qc.invalidateQueries({ queryKey: ['tender', id] }),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ['tenders'] })
+      qc.invalidateQueries({ queryKey: ['tender', id] })
+    },
   })
 }
 
