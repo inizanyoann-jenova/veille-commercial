@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import Parametres from './Parametres'
+import { applyTheme } from '../utils/theme'
 
 vi.mock('../hooks/useTenders', () => ({
   useCredentials: () => ({ data: [], refetch: vi.fn(), isError: false }),
@@ -86,5 +87,6 @@ describe('Parametres — onglet Apparence', () => {
     fireEvent.click(screen.getByText(/Apparence/i))
     fireEvent.click(screen.getByRole('button', { name: /réinitialiser/i }))
     expect(localStorage.getItem('theme-colors')).toBeNull()
+    expect(applyTheme).toHaveBeenCalledWith({ deep: '4 13 26', cyan: '0 200 255', coral: '255 107 107', text: '221 238 255' })
   })
 })
