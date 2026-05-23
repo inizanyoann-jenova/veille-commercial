@@ -389,6 +389,17 @@ _ALL_CREDENTIAL_SITES: dict[str, str] = (
     {site: cfg["label"] for site, cfg in _LOGIN_CONFIG.items()} | _SITES_PUBLIC
 )
 
+_SCRAPER_TO_CRED_SITE: dict[str, str] = {
+    "scraper_nukema":             "nukema",
+    "scraper_marcheonline":       "marcheonline",
+    "scraper_instao":             "instao",
+    "scraper_marchessecurises":   "marches_securises",
+    "scraper_tendersgo":          "tendersgo",
+    "scraper_vaao":               "vaao",
+    "scraper_dept974":            "dept974",
+    "scraper_marchespublicsinfo": "marchespublicsinfo",
+}
+
 _WORKER_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "_test_login_worker.py",
@@ -494,12 +505,20 @@ def get_kpis_public(db: Session = Depends(get_db)):
     soumis = counts.get("Soumis", 0)
     gagnes = counts.get("Gagné", 0)
     total = a_qualifier + en_cours + soumis + gagnes
+
+    now = datetime.utcnow()
+    new_24h = db.query(_func.count(Tender.id)).filter(
+        Tender.is_blacklisted == False,
+        Tender.date_extraction >= now - timedelta(hours=24),
+    ).scalar() or 0
+
     return {
         "total": total,
         "a_qualifier": a_qualifier,
         "en_cours": en_cours,
         "gagnes": gagnes,
         "soumis": soumis,
+        "new_24h": new_24h,
     }
 
 
@@ -700,6 +719,7 @@ def get_sources(db: Session = Depends(get_db)):
             "display_order": s.display_order,
             "last_ping_at": _ser_dt(s.last_ping_at),
             "ping_failures_count": s.ping_failures_count,
+            "credential_site": _SCRAPER_TO_CRED_SITE.get(s.scraper_module),
         }
         for s in sources
     ]

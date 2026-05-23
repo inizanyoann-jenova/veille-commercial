@@ -239,3 +239,35 @@ def test_collect_returns_500_when_all_sources_fail():
     assert "Toutes les sources ont échoué" in detail.get("message", "")
     assert len(detail.get("results", [])) == 1
     assert detail["results"][0]["status"] == "error"
+
+
+from datetime import datetime, timedelta
+
+
+def test_get_kpis_public_includes_new_24h():
+    """get_kpis_public doit retourner new_24h dans sa réponse."""
+    from fastapi.testclient import TestClient
+    from main import app
+
+    with patch('main.get_db') as mock_get_db:
+        mock_db = MagicMock()
+        # group_by query pour les statuts
+        mock_db.query.return_value.filter.return_value.group_by.return_value.all.return_value = [
+            ('À qualifier', 5), ('En cours', 3),
+        ]
+        # scalar queries pour new_24h
+        mock_db.query.return_value.filter.return_value.scalar.return_value = 7
+
+        def override_get_db():
+            yield mock_db
+
+        from main import get_db
+        app.dependency_overrides[get_db] = override_get_db
+        client = TestClient(app)
+        response = client.get('/api/kpis/public')
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    data = response.json()
+    assert 'new_24h' in data, f"'new_24h' absent de la réponse : {data}"
+    assert isinstance(data['new_24h'], int)
