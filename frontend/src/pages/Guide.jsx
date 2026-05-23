@@ -1,7 +1,7 @@
 function Section({ title, children }) {
   return (
     <section>
-      <h2 className="text-base font-bold text-gray-800 mb-3">{title}</h2>
+      <h2 className="font-serif text-base font-bold text-ocean-text mb-3">{title}</h2>
       {children}
     </section>
   )
@@ -10,11 +10,11 @@ function Section({ title, children }) {
 function Table({ headers, rows }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
-        <thead className="bg-gray-50">
+      <table className="w-full text-sm border border-ocean-border rounded-lg overflow-hidden">
+        <thead className="bg-ocean-panel/50">
           <tr>
             {headers.map((h) => (
-              <th key={h} className="text-left px-4 py-2 text-xs font-semibold text-gray-600 uppercase tracking-wide border-b border-gray-200">
+              <th key={h} className="text-left px-4 py-2 font-mono text-xs text-ocean-muted uppercase tracking-widest border-b border-ocean-border">
                 {h}
               </th>
             ))}
@@ -22,9 +22,9 @@ function Table({ headers, rows }) {
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
+            <tr key={i} className="border-b border-ocean-cyan/4 hover:bg-ocean-cyan/2">
               {row.map((cell, j) => (
-                <td key={j} className="px-4 py-2.5 text-gray-700">{cell}</td>
+                <td key={j} className="px-4 py-2.5 font-sans text-sm text-ocean-text/80">{cell}</td>
               ))}
             </tr>
           ))}
@@ -36,7 +36,7 @@ function Table({ headers, rows }) {
 
 export default function Guide() {
   return (
-    <div className="p-5 max-w-3xl space-y-8">
+    <div className="p-6 max-w-3xl space-y-8">
       <Section title="📋 Workflow — Comment utiliser l'app">
         <ol className="space-y-3">
           {[
@@ -46,8 +46,8 @@ export default function Guide() {
             ['4 — Clôture', 'Marquez le marché Gagné ou Perdu depuis le kanban. Les marchés Gagnés alimentent le CA pipeline.'],
           ].map(([step, desc]) => (
             <li key={step} className="flex gap-3">
-              <span className="font-semibold text-gray-800 w-32 flex-shrink-0">{step}</span>
-              <span className="text-gray-600">{desc}</span>
+              <span className="font-sans font-semibold text-ocean-text w-32 flex-shrink-0">{step}</span>
+              <span className="font-sans text-ocean-text/80">{desc}</span>
             </li>
           ))}
         </ol>
@@ -86,11 +86,11 @@ export default function Guide() {
             { cat: '🏝️ Sources locales OI', sources: ['Département 974', 'SEMADER', 'NUKEMA', 'Presse locale'] },
             { cat: '🏗️ Signaux privés', sources: ['Permis de construire', 'Presse économique', 'Instao'] },
           ].map(({ cat, sources }) => (
-            <div key={cat} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-              <p className="text-xs font-semibold text-gray-700 mb-2">{cat}</p>
+            <div key={cat} className="bg-ocean-panel border border-ocean-border rounded-lg p-3">
+              <p className="font-sans text-xs font-semibold text-ocean-text mb-2">{cat}</p>
               <ul className="space-y-1">
                 {sources.map((s) => (
-                  <li key={s} className="text-sm text-gray-600">• {s}</li>
+                  <li key={s} className="font-sans text-sm text-ocean-muted">• {s}</li>
                 ))}
               </ul>
             </div>
