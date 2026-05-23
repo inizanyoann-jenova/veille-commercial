@@ -9,7 +9,7 @@ function DeadlineBadge({ jours_restants }) {
       ? 'text-ocean-gold'
       : 'text-ocean-muted'
   return (
-    <span className={`font-mono text-xs font-medium ${color}`}>
+    <span className={`font-mono text-xs ${color}`}>
       J-{jours_restants}
     </span>
   )
