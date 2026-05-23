@@ -2,125 +2,131 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Repository Overview
+## Project Overview
 
-This is a best practices repository for Claude Code configuration, demonstrating patterns for skills, subagents, hooks, and commands. It serves as a reference implementation rather than an application codebase.
+**DEF Océan Indien — Outil de Veille Marchés Publics**
+Commercial intelligence tool for public procurement markets in La Réunion (974) and Mayotte (976). Covers SSI, CMSI, fire detection, smoke extraction, CCTV, and courants faibles sectors.
 
-## Key Components
+## Commands
 
-### Weather System (Example Workflow)
-A demonstration of two distinct skill patterns via the **Command → Agent → Skill** architecture:
-- `/weather-orchestrator` command (`.claude/commands/weather-orchestrator.md`): Entry point — asks user for C/F, invokes agent, then invokes SVG skill
-- `weather-agent` agent (`.claude/agents/weather-agent.md`): Fetches temperature using its preloaded `weather-fetcher` skill (agent skill pattern)
-- `weather-fetcher` skill (`.claude/skills/weather-fetcher/SKILL.md`): Preloaded into agent — instructions for fetching temperature from Open-Meteo
-- `weather-svg-creator` skill (`.claude/skills/weather-svg-creator/SKILL.md`): Skill — creates SVG weather card, writes `orchestration-workflow/weather.svg` and `orchestration-workflow/output.md`
-
-Two skill patterns: agent skills (preloaded via `skills:` field) vs skills (invoked via `Skill` tool). See `orchestration-workflow/orchestration-workflow.md` for the complete flow diagram.
-
-### Skill Definition Structure
-Skills in `.claude/skills/<name>/SKILL.md` use YAML frontmatter:
-- `name`: Display name and `/slash-command` (defaults to directory name)
-- `description`: When to invoke (recommended for auto-discovery)
-- `argument-hint`: Autocomplete hint (e.g., `[issue-number]`)
-- `disable-model-invocation`: Set `true` to prevent automatic invocation
-- `user-invocable`: Set `false` to hide from `/` menu (background knowledge only)
-- `allowed-tools`: Tools allowed without permission prompts when skill is active
-- `model`: Model to use when skill is active
-- `context`: Set to `fork` to run in isolated subagent context
-- `agent`: Subagent type for `context: fork` (default: `general-purpose`)
-- `hooks`: Lifecycle hooks scoped to this skill
-
-### Presentation System
-See `.claude/rules/presentation.md` — presentation work is delegated per-presentation to `presentation-vibe-coding` (for `presentation/vibe-coding-to-agentic-engineering/`) or `presentation-claude-gemini` (for `presentation/2026-04-25-gdg-kolachi-cli-claude-code-gemini/`).
-
-### Hooks System
-Cross-platform sound notification system in `.claude/hooks/`:
-- `scripts/hooks.py`: Main handler for Claude Code hook events
-- `config/hooks-config.json`: Shared team configuration
-- `config/hooks-config.local.json`: Personal overrides (git-ignored)
-- `sounds/`: Audio files organized by hook event (generated via ElevenLabs TTS)
-
-Hook events configured in `.claude/settings.json`: PreToolUse, PostToolUse, UserPromptSubmit, Notification, Stop, SubagentStart, SubagentStop, PreCompact, SessionStart, SessionEnd, Setup, PermissionRequest, TeammateIdle, TaskCompleted, ConfigChange.
-
-Special handling: git commits trigger `pretooluse-git-committing` sound.
-
-## Critical Patterns
-
-### Subagent Orchestration
-Subagents **cannot** invoke other subagents via bash commands. Use the Agent tool (renamed from Task in v2.1.63; `Task(...)` still works as an alias):
-```
-Agent(subagent_type="agent-name", description="...", prompt="...", model="haiku")
+### Launch (full stack)
+```powershell
+.\start.ps1          # Démarre backend (port 8000) + frontend Vite (port 5173)
+.\start.bat          # Alternative batch
 ```
 
-Be explicit about tool usage in subagent definitions. Avoid vague terms like "launch" that could be misinterpreted as bash commands.
+### Backend only
+```powershell
+cd backend
+python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+API docs available at `http://localhost:8000/docs`.
 
-### Subagent Definition Structure
-Subagents in `.claude/agents/*.md` use YAML frontmatter:
-- `name`: Subagent identifier
-- `description`: When to invoke (use "PROACTIVELY" for auto-invocation)
-- `tools`: Comma-separated allowlist of tools (inherits all if omitted). Supports `Agent(agent_type)` syntax
-- `disallowedTools`: Tools to deny, removed from inherited or specified list
-- `model`: Model alias: `haiku`, `sonnet`, `opus`, or `inherit` (default: `inherit`)
-- `permissionMode`: Permission mode (e.g., `"acceptEdits"`, `"plan"`, `"bypassPermissions"`)
-- `maxTurns`: Maximum agentic turns before the subagent stops
-- `skills`: List of skill names to preload into agent context
-- `mcpServers`: MCP servers for this subagent (server names or inline configs)
-- `hooks`: Lifecycle hooks scoped to this subagent (all hook events are supported; `PreToolUse`, `PostToolUse`, and `Stop` are the most common)
-- `memory`: Persistent memory scope — `user`, `project`, or `local` (see `reports/claude-agent-memory.md`)
-- `background`: Set to `true` to always run as a background task
-- `effort`: Effort level override: `low`, `medium`, `high`, `max` (default: inherits from session)
-- `isolation`: Set to `"worktree"` to run in a temporary git worktree
-- `color`: CLI output color for visual distinction
+### Frontend
+```powershell
+cd frontend
+npm install          # First time
+npm run dev          # Dev server — port 5173
+npm run build
+npm run lint
+npm test             # Vitest (run once)
+npm run test:watch
+```
 
-### Configuration Hierarchy
-1. **Managed** (`managed-settings.json` / MDM plist / Registry): Organization-enforced, cannot be overridden
-2. Command line arguments: Single-session overrides
-3. `.claude/settings.local.json`: Personal project settings (git-ignored)
-4. `.claude/settings.json`: Team-shared settings
-5. `~/.claude/settings.json`: Global personal defaults
-6. `hooks-config.local.json` overrides `hooks-config.json`
+### Python tests
+```powershell
+pytest               # All tests
+pytest tests/test_database_helpers.py          # Single file
+pytest tests/test_filters.py::test_name        # Single test
+pytest -x            # Stop on first failure
+```
 
-### Disable Hooks
-Set `"disableAllHooks": true` in `.claude/settings.local.json`, or disable individual hooks in `hooks-config.json`.
+### Install
+```powershell
+pip install -r requirements.txt
+playwright install chromium   # Required for Playwright scrapers
+```
 
-## Answering Best Practice Questions
+## Architecture
 
-When the user asks a Claude Code best practice question, **always search this repo first** (`best-practice/`, `reports/`, `tips/`, `implementation/`, and `README.md`) before relying on training knowledge or external sources. This repo is the authoritative source — only fall back to external docs or web search if the answer is not found here.
+### Dual-backend situation
+There are **two FastAPI backends** in the repo:
+- `api.py` (root) — legacy, mostly superseded
+- `backend/main.py` — **active backend** started by `start.ps1`; it `sys.path.insert`s the root directory to import shared modules
 
-## Workflow Best Practices
+All scrapers, models, and business logic live at the **root level** and are shared. The `backend/` folder only contains `main.py` and `test_main.py`.
 
-From experience with this repository:
+### Data flow
+```
+Scrapers (scraper_*.py)
+   → scraper_utils.retry_get/post() — shared HTTP retry with backoff
+   → playwright_base.login() — for authenticated sites
+   → Tender records (SQLite via SQLAlchemy)
+        → filters.py — keyword inclusion/exclusion scoring
+        → llm_analyzer.py — Mistral AI deep analysis
+        → score_adaptive.py — ML-like adaptive scoring from past decisions
+        → export_excel.py / email_digest.py — outputs
+```
 
-- Keep CLAUDE.md under 200 lines per file for reliable adherence
-- `.claude/rules/*.md` with `paths:` YAML frontmatter are lazy-loaded only when Claude touches matching files; without frontmatter they load into every session like CLAUDE.md
-- Use commands for workflows instead of standalone agents
-- Create feature-specific subagents with skills (progressive disclosure) rather than general-purpose agents
-- Perform manual `/compact` at ~50% context usage
-- Start with plan mode for complex tasks
-- Use human-gated task list workflow for multi-step tasks
-- Break subtasks small enough to complete in under 50% context
+### Key modules
 
-### Debugging Tips
+| Module | Role |
+|---|---|
+| `models.py` | SQLAlchemy ORM: `Tender` (id, title, description, url, source, deadline, relevance_score, secteur, amount, llm_analysis, llm_structured, adaptive_score…), `Source`, `Credential`, `ScraperRun`, `DuplicateCandidate`, `ScoreWeight` |
+| `database.py` | Engine, session, whitelist migrations, helper queries (`load_urgences`, `load_pipeline_data`, `detect_duplicates`, `clean_obsolete_data`) |
+| `source_registry.py` | Source catalog (20+ sources), CRUD, weekly ping, `init_sources()` |
+| `filters.py` | Keyword lists (`INCLUSION_KEYWORDS`, `EXCLUSION_KEYWORDS`) for relevance scoring |
+| `llm_analyzer.py` | Mistral AI tender analysis; `analyze_tender()`, `auto_analyze_pending()` |
+| `score_adaptive.py` | Adaptive scoring trained on GO/NOGO decisions via `ScoreWeight` table |
+| `playwright_base.py` | Generic `login()` helper used by authenticated scrapers |
+| `credential_manager.py` | Fernet-encrypted credentials for authenticated scrapers |
+| `fiche_logic.py` | "Fiche marché" business logic (detailed view data) |
+| `health_check.py` | HTTP reachability checks for all sources |
 
-- Use `/doctor` for diagnostics
-- Run long-running terminal commands as background tasks for better log visibility
-- Use browser automation MCPs (Claude in Chrome, Playwright, Chrome DevTools) for Claude to inspect console logs
-- Provide screenshots when reporting visual issues
+### Scraper conventions
+Each `scraper_*.py` exposes a single `fetch()` function (no db parameter) registered in `source_registry._DEFAULT_SOURCES`. It returns `list[dict]` with keys: `name`, `url`, `source`, `date_found`, plus domain-specific fields. Scrapers using Playwright call `playwright_base.login()` with selectors and credentials from `credential_manager`. All HTTP calls go through `scraper_utils.retry_get()` / `retry_post()`.
 
-## Git Commit Rules
+> **Known bug:** `backend/main.py:collect()` calls `func()` (the scraper's `fetch()`) but discards the return value — scraped results are never persisted to DB. The `Tender.url` field (added via migration) will be NULL until this bridge is implemented.
 
-When committing changes, **create separate commits per file**. Do NOT bundle multiple file changes into a single commit. Each file gets its own commit with a descriptive message specific to that file's changes.
+### Database / migrations
+SQLite file: `def_oi_veille.db`. No Alembic — migrations are a **whitelist** in `database._MIGRATIONS` (list of `(table, col_name, col_def)` tuples). To add a column, append to that list. Schema is initialized by `init_db()` on startup.
 
-For example, if `README.md`, `best-practice/claude-subagents.md`, and a skill file all changed:
-- Commit 1: `git add README.md` → commit with README-specific message
-- Commit 2: `git add best-practice/claude-subagents.md` → commit with subagents-doc-specific message
-- Commit 3: `git add .claude/skills/weather-fetcher/SKILL.md` → commit with skill-specific message
+Tender status lifecycle: `À qualifier` → `Archivé` (auto after 30 days) or manually → `Soumis` → `Gagné` / `Perdu`.
 
-This makes the git history cleaner and easier to review, revert, or cherry-pick individual changes.
+### Frontend
+React 19 + Vite + Tailwind + TanStack Query + Recharts.
+- `frontend/src/services/api.js` — Axios client, base URL `http://localhost:8000`
+- `frontend/src/hooks/useTenders.js` — TanStack Query hooks
+- `frontend/src/components/` — TendersTable, KpiGrid, Sidebar, KanbanColumn, TenderDetail, UrgenceCard, etc.
+- `frontend/src/pages/` — Dashboard, Analytics, Pipeline, Direction, Parametres, Urgences, Guide
+- `frontend/src/components/UrgenceCard.jsx` — Carte urgence : badge J-X (couleur par délai), score, description/résumé LLM, secteur, montant, lien annonce externe
 
-## Documentation
+### Testing conventions
+- **Backend**: pytest with `tests/conftest.py` providing `db` (in-memory SQLite with per-test rollback) and `make_tender` factory fixtures. No mocking of the database.
+- **Frontend**: Vitest + Testing Library; test files colocated in `frontend/src/components/`.
 
-See `.claude/rules/markdown-docs.md` for documentation standards. Key docs:
-- `best-practice/claude-subagents.md`: Subagent frontmatter, hooks, and repository agents
-- `best-practice/claude-commands.md`: Slash command patterns and built-in command reference
-- `orchestration-workflow/orchestration-workflow.md`: Weather system flow diagram
+## Environment variables (`.env`)
+```
+MISTRAL_API_KEY=...       # LLM analysis (Mistral, not OpenAI)
+DIGEST_SMTP_HOST=...
+DIGEST_SMTP_PORT=587
+DIGEST_SMTP_USER=...
+DIGEST_SMTP_PASSWORD=...
+DIGEST_TO=...
+DIGEST_HOUR=7             # Daily digest hour (default 7)
+```
+Copy `.env.example` to `.env`.
+
+## Git commit rules
+Create **one commit per file** — do not bundle multiple file changes into a single commit.
+
+## Urgences — champs attendus par le frontend
+
+`GET /api/urgences` doit retourner pour chaque item :
+
+```text
+id, title, relevance_score, jours_restants, source, url,
+description, secteur, amount, llm_resume
+```
+
+`load_urgences()` dans `database.py` est la source de vérité. Le frontend (`Urgences.jsx` + `UrgenceCard.jsx`) attend exactement ces noms.
