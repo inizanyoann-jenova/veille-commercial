@@ -27,12 +27,12 @@ export default function Direction() {
 
   if (isLoading) {
     return (
-      <div className="p-5 grid grid-cols-3 gap-4">
+      <div className="p-6 grid grid-cols-3 gap-4">
         {Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="space-y-2">
-            <div className="h-6 w-24 bg-gray-200 rounded animate-pulse" />
+            <div className="h-6 w-24 bg-ocean-panel/50 rounded animate-pulse" />
             {Array.from({ length: 3 }).map((_, j) => (
-              <div key={j} className="h-24 bg-gray-100 rounded-lg animate-pulse" />
+              <div key={j} className="h-24 bg-ocean-panel/50 rounded-lg animate-pulse" />
             ))}
           </div>
         ))}
@@ -41,7 +41,7 @@ export default function Direction() {
   }
 
   if (isError) {
-    return <p className="p-5 text-red-600 text-sm">Impossible de charger le pipeline.</p>
+    return <p className="p-6 text-ocean-coral text-sm">Impossible de charger le pipeline.</p>
   }
 
   const goItems = enrichWithJours(
@@ -59,8 +59,8 @@ export default function Direction() {
   ])
 
   return (
-    <div className="p-5 space-y-4">
-      <p className="text-xs text-gray-500">Marchés publics — score ≥ {GO_SCORE}</p>
+    <div className="p-6 space-y-4">
+      <p className="font-mono text-xs text-ocean-muted">Marchés publics — score ≥ {GO_SCORE}</p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
         <KanbanColumn
           title="✅ GO"
