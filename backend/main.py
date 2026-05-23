@@ -506,7 +506,7 @@ def get_kpis_public(db: Session = Depends(get_db)):
     gagnes = counts.get("Gagné", 0)
     total = a_qualifier + en_cours + soumis + gagnes
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     new_24h = db.query(_func.count(Tender.id)).filter(
         Tender.is_blacklisted == False,
         Tender.date_extraction >= now - timedelta(hours=24),
