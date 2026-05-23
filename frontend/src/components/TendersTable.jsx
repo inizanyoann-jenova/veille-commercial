@@ -28,7 +28,7 @@ function GonogoBadge({ gonogo }) {
 function IaBadge({ tender, isAnalyzing, onAnalyze }) {
   if (isAnalyzing) {
     return (
-      <div className="w-16 bg-white/6 rounded-full h-2 overflow-hidden">
+      <div role="progressbar" aria-label={`Analyse de ${tender.title} en cours`} className="w-16 bg-white/6 rounded-full h-2 overflow-hidden">
         <div className="h-2 bg-gradient-to-r from-ocean-cyan to-ocean-teal rounded-full animate-pulse" style={{ width: '60%' }} />
       </div>
     )
