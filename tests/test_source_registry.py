@@ -1,4 +1,6 @@
-import sys, os
+import sys
+import os
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import pytest
@@ -11,7 +13,7 @@ from models import Base
 def db():
     engine = create_engine("sqlite:///:memory:")
     # Import Source après Base pour enregistrer le modèle
-    from source_registry import Source
+
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     session = Session()
@@ -21,6 +23,7 @@ def db():
 
 def test_init_sources_populates_table(db):
     from source_registry import init_sources, list_sources, _DEFAULT_SOURCES
+
     init_sources(db)
     sources = list_sources(db)
     assert len(sources) == len(_DEFAULT_SOURCES)
@@ -28,6 +31,7 @@ def test_init_sources_populates_table(db):
 
 def test_init_sources_is_idempotent(db):
     from source_registry import init_sources, list_sources, _DEFAULT_SOURCES
+
     init_sources(db)
     count_after_first = len(list_sources(db))
     init_sources(db)  # deuxième appel ne doit pas dupliquer
@@ -37,6 +41,7 @@ def test_init_sources_is_idempotent(db):
 
 def test_list_sources_by_category(db):
     from source_registry import init_sources, list_sources
+
     init_sources(db)
     public = list_sources(db, category="Public")
     assert all(s.category == "Public" for s in public)
@@ -45,6 +50,7 @@ def test_list_sources_by_category(db):
 
 def test_add_source(db):
     from source_registry import init_sources, add_source, list_sources
+
     init_sources(db)
     before = len(list_sources(db))
     add_source(db, name="Test Source", url="https://example.com", category="Public")
@@ -54,6 +60,7 @@ def test_add_source(db):
 
 def test_remove_manual_source(db):
     from source_registry import init_sources, add_source, remove_source, list_sources
+
     init_sources(db)
     s = add_source(db, name="À supprimer", url="https://example.com", category="Privé")
     result = remove_source(db, s.id)
@@ -63,6 +70,7 @@ def test_remove_manual_source(db):
 
 def test_remove_auto_source_is_blocked(db):
     from source_registry import init_sources, list_sources, remove_source
+
     init_sources(db)
     auto_sources = [s for s in list_sources(db) if s.scraper_module is not None]
     assert len(auto_sources) > 0
@@ -72,6 +80,7 @@ def test_remove_auto_source_is_blocked(db):
 
 def test_toggle_enabled(db):
     from source_registry import init_sources, list_sources, toggle_enabled
+
     init_sources(db)
     source = list_sources(db)[0]
     original = source.enabled
@@ -84,7 +93,8 @@ def test_new_sources_present():
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
     from models import Base
-    from source_registry import Source, init_sources, list_sources
+    from source_registry import init_sources, list_sources
+
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
@@ -100,7 +110,8 @@ def test_defunct_urls_not_in_sources():
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
     from models import Base
-    from source_registry import Source, init_sources, list_sources
+    from source_registry import init_sources, list_sources
+
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
@@ -114,6 +125,7 @@ def test_defunct_urls_not_in_sources():
 
 def test_sources_default_not_validated(db):
     from source_registry import init_sources, list_sources
+
     init_sources(db)
     sources = list_sources(db)
     # Les sources manuelles démarrent non-validées ; les automatiques démarrent validées
@@ -123,6 +135,7 @@ def test_sources_default_not_validated(db):
 
 def test_validate_source(db):
     from source_registry import init_sources, list_sources, validate_source
+
     init_sources(db)
     # Utilise une source manuelle (démarre non-validée)
     source = next(s for s in list_sources(db) if s.is_manual)
@@ -134,11 +147,18 @@ def test_validate_source(db):
 
 def test_validate_source_unknown_id_noop(db):
     from source_registry import validate_source
+
     validate_source(db, 99999)  # ne doit pas lever d'exception
 
 
 def test_invalidate_source(db):
-    from source_registry import init_sources, list_sources, validate_source, invalidate_source
+    from source_registry import (
+        init_sources,
+        list_sources,
+        validate_source,
+        invalidate_source,
+    )
+
     init_sources(db)
     source = list_sources(db)[0]
     validate_source(db, source.id)
@@ -151,6 +171,7 @@ def test_invalidate_source(db):
 
 def test_invalidate_source_unknown_id_noop(db):
     from source_registry import invalidate_source
+
     invalidate_source(db, 99999)  # ne doit pas lever d'exception
 
 
@@ -159,6 +180,7 @@ def test_nouvelles_sources_oi_presentes():
     from sqlalchemy.orm import sessionmaker
     from models import Base
     from source_registry import init_sources, list_sources
+
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
@@ -188,6 +210,7 @@ def test_sources_batch2_presentes():
     from sqlalchemy.orm import sessionmaker
     from models import Base
     from source_registry import init_sources, list_sources
+
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
