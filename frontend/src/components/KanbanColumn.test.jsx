@@ -25,19 +25,19 @@ describe('KanbanColumn', () => {
     expect(screen.getByText(longTitle.slice(0, 60) + '…')).toBeInTheDocument()
   })
 
-  it('colorie en rouge si jours_restants < 7', () => {
+  it('colorie en ocean-coral si jours_restants < 7', () => {
     const { container } = render(<KanbanColumn title="GO" items={[ITEMS[0]]} />)
-    expect(container.querySelector('.text-red-600')).toBeInTheDocument()
+    expect(container.querySelector('.text-ocean-coral')).toBeInTheDocument()
   })
 
-  it('colorie en orange si jours_restants entre 7 et 30', () => {
+  it('colorie en ocean-gold si jours_restants entre 7 et 30', () => {
     const { container } = render(<KanbanColumn title="GO" items={[ITEMS[1]]} />)
-    expect(container.querySelector('.text-orange-500')).toBeInTheDocument()
+    expect(container.querySelector('.text-ocean-gold')).toBeInTheDocument()
   })
 
-  it('affiche gris si jours_restants est null', () => {
+  it('affiche ocean-muted si jours_restants est null', () => {
     const { container } = render(<KanbanColumn title="GO" items={[ITEMS[2]]} />)
-    expect(container.querySelector('.text-gray-400')).toBeInTheDocument()
+    expect(container.querySelector('.text-ocean-muted')).toBeInTheDocument()
   })
 
   it('appelle onStatusChange avec le bon statut au clic bouton', () => {
