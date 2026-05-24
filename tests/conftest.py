@@ -12,8 +12,7 @@ from models import Base, Tender
 
 @pytest.fixture(scope="session")
 def engine():
-    import source_registry  # noqa: registers Source model
-    from models import ScraperRun  # noqa: registers ScraperRun model
+
     e = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(e)
     return e
