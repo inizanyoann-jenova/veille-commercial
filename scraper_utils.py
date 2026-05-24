@@ -102,6 +102,11 @@ def insert_if_new(db, tender, existing_ids: set) -> bool:
     from datetime import datetime as _dt, timedelta as _td
 
     if tender.publication_date is None:
+        _log.warning(
+            "insert_if_new: rejeté (date manquante) — id=%s titre=%s",
+            tender.id,
+            (tender.title or "")[:60],
+        )
         return False
 
     pub = tender.publication_date
