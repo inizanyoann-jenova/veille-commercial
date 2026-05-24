@@ -1,14 +1,17 @@
 from datetime import datetime, timedelta
-import pytest
 from database import clean_obsolete_data
 from models import Tender
 
 
 def _make_tender(db, tid, pub_date, status="À qualifier", blacklisted=False):
     t = Tender(
-        id=tid, title=f"Tender {tid}", source="http://x.com",
-        publication_date=pub_date, status=status,
-        relevance_score=0, is_maintenance=False,
+        id=tid,
+        title=f"Tender {tid}",
+        source="http://x.com",
+        publication_date=pub_date,
+        status=status,
+        relevance_score=0,
+        is_maintenance=False,
         is_blacklisted=blacklisted,
     )
     db.add(t)
