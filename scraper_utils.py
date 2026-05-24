@@ -81,7 +81,8 @@ def retry_post(
 
 # ── Helpers DB partagés par les scrapers ──────────────────────────────────────
 
-_INSERT_MAX_AGE_DAYS = 30
+import os as _os
+_INSERT_MAX_AGE_DAYS = int(_os.getenv("SCRAPER_WINDOW_DAYS", "30"))
 
 
 def load_existing_ids(db) -> set:
