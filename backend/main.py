@@ -1033,7 +1033,7 @@ def _dict_to_tender(item: dict) -> Tender:
         description=item.get("description"),
         publication_date=_parse(pub_raw),
         deadline=_parse(item.get("deadline")),
-        date_extraction=_parse(item.get("date_found")),
+        date_extraction=_ddt.now(),
         relevance_score=score,
         status="À qualifier",
         is_blacklisted=False,
