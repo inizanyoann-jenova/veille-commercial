@@ -26,16 +26,16 @@ describe('ScraperRunsTable', () => {
     expect(screen.getByText('DECP')).toBeInTheDocument()
   })
 
-  it('affiche le statut ok en vert', () => {
+  it('affiche le statut ok en ocean-teal', () => {
     useScraperRuns.mockReturnValue({ data: [MOCK_RUNS[0]], isLoading: false })
     const { container } = render(<ScraperRunsTable />)
-    expect(container.querySelector('.text-green-700')).toBeInTheDocument()
+    expect(container.querySelector('.text-ocean-teal')).toBeInTheDocument()
   })
 
-  it('affiche le statut error en rouge', () => {
+  it('affiche le statut error en ocean-coral', () => {
     useScraperRuns.mockReturnValue({ data: [MOCK_RUNS[1]], isLoading: false })
     const { container } = render(<ScraperRunsTable />)
-    expect(container.querySelector('.text-red-700')).toBeInTheDocument()
+    expect(container.querySelector('.text-ocean-coral')).toBeInTheDocument()
   })
 
   it('affiche les skeletons en chargement', () => {
