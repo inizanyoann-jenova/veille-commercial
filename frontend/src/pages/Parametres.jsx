@@ -12,6 +12,7 @@ import {
   useSaveCredential,
   useDeleteCredential,
   useTestCredential,
+  useSaveMistralKey,
 } from '../hooks/useTenders'
 
 const SITE_LOGOS = {
@@ -488,13 +489,79 @@ function ApparenceTab() {
   )
 }
 
+// ── Onglet Intégrations ───────────────────────────────────────────────────────
+
+function IntegrationsTab() {
+  const [apiKey, setApiKey] = useState('')
+  const [showKey, setShowKey] = useState(false)
+  const { mutate: save, isPending, isSuccess, isError, error, reset } = useSaveMistralKey()
+
+  const handleSave = () => {
+    save(apiKey.trim(), {
+      onSuccess: () => setApiKey(''),
+    })
+  }
+
+  return (
+    <div className="space-y-6">
+      <p className="font-sans text-sm text-ocean-muted">
+        Configurez la clé API Mistral pour activer l'analyse IA des marchés.
+      </p>
+
+      <div className="space-y-3">
+        <h3 className="font-mono text-xs font-semibold text-ocean-muted uppercase tracking-widest">
+          🤖 Mistral AI
+        </h3>
+        <div className="p-4 bg-ocean-panel border border-ocean-border rounded-lg space-y-3">
+          <label className="block font-sans text-xs font-medium text-ocean-muted">
+            Clé API Mistral
+          </label>
+          <div className="relative">
+            <input
+              type={showKey ? 'text' : 'password'}
+              value={apiKey}
+              onChange={(e) => { setApiKey(e.target.value); reset() }}
+              placeholder="sk-..."
+              className="w-full px-3 py-2 pr-9 font-mono text-sm border border-ocean-border rounded-md bg-ocean-deep text-ocean-text placeholder:text-ocean-muted focus:outline-none focus:border-ocean-cyan/30"
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey((v) => !v)}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ocean-muted hover:text-ocean-text"
+              title={showKey ? 'Masquer' : 'Afficher'}
+            >
+              {showKey ? '🙈' : '👁️'}
+            </button>
+          </div>
+
+          <button
+            onClick={handleSave}
+            disabled={isPending || !apiKey.trim()}
+            className="px-4 py-2 bg-ocean-cyan/12 border border-ocean-cyan/20 text-ocean-cyan font-sans text-sm rounded-lg hover:bg-ocean-cyan/18 disabled:opacity-50 transition-colors"
+          >
+            {isPending ? 'Sauvegarde…' : '💾 Sauvegarder la clé'}
+          </button>
+
+          {isSuccess && (
+            <p className="font-mono text-xs text-ocean-teal">✅ Clé Mistral sauvegardée et activée</p>
+          )}
+          {isError && (
+            <p className="font-mono text-xs text-ocean-coral">✗ {error?.response?.data?.detail ?? 'Erreur lors de la sauvegarde'}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Page principale ───────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'connexion',   label: '🔐 Connexion' },
-  { id: 'analyse',     label: '🤖 Analyse' },
-  { id: 'maintenance', label: '🛠️ Maintenance' },
-  { id: 'apparence',   label: '🎨 Apparence' },
+  { id: 'connexion',     label: '🔐 Connexion' },
+  { id: 'analyse',       label: '🤖 Analyse' },
+  { id: 'maintenance',   label: '🛠️ Maintenance' },
+  { id: 'intégrations',  label: '🔑 Intégrations' },
+  { id: 'apparence',     label: '🎨 Apparence' },
 ]
 
 export default function Parametres() {
@@ -526,6 +593,7 @@ export default function Parametres() {
         {activeTab === 'connexion' && <ConnexionTab />}
         {activeTab === 'analyse' && <AnalyseTab />}
         {activeTab === 'maintenance' && <MaintenanceTab />}
+        {activeTab === 'intégrations' && <IntegrationsTab />}
         {activeTab === 'apparence' && <ApparenceTab />}
       </div>
     </div>
