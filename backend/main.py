@@ -17,7 +17,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import func as _func, or_
 from sqlalchemy.orm import Session
 
@@ -54,6 +54,7 @@ from llm_analyzer import (  # noqa: E402
     analyze_tender,
     auto_analyze_claude,
     auto_analyze_pending,
+    reset_mistral_client,
 )
 from credential_manager import CredentialManager as _CredMgr, _ENV_MAP as _CRED_ENV_MAP  # noqa: E402
 import hashlib
@@ -1210,6 +1211,49 @@ def admin_reset_db(db: Session = Depends(get_db)):
         "deleted_tenders": n,
         "message": "Base vidée (sources et credentials préservés)",
     }
+
+
+# ── POST /api/settings/mistral-key ───────────────────────────────────────────
+
+
+def _save_api_key_to_env(api_key: str) -> None:
+    """Écrit MISTRAL_API_KEY dans le .env (crée si absent, met à jour si existant)."""
+    env_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"
+    )
+    lines = []
+    key_written = False
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("MISTRAL_API_KEY="):
+                    lines.append(f"MISTRAL_API_KEY={api_key}\n")
+                    key_written = True
+                else:
+                    lines.append(line)
+    if not key_written:
+        lines.append(f"MISTRAL_API_KEY={api_key}\n")
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+
+
+class MistralKeyBody(BaseModel):
+    api_key: str
+
+    @field_validator("api_key")
+    @classmethod
+    def non_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("api_key ne peut pas être vide")
+        return v.strip()
+
+
+@app.post("/api/settings/mistral-key", summary="Sauvegarder la clé API Mistral")
+def save_mistral_key(body: MistralKeyBody):
+    _save_api_key_to_env(body.api_key)
+    os.environ["MISTRAL_API_KEY"] = body.api_key
+    reset_mistral_client()
+    return {"ok": True, "message": "Clé Mistral sauvegardée et activée"}
 
 
 # ── POST /api/admin/archive-old ───────────────────────────────────────────────
