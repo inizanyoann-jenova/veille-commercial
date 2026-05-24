@@ -1,19 +1,23 @@
-import hashlib
-import logging
+"""
+BOAMP (Bulletin Officiel des Annonces des Marchés Publics) — appels d'offres
+ciblés La Réunion (974) et Mayotte (976) : SSI, incendie, construction, ERP.
+Method: REST API (OpenData BOAMP v2.1)
+"""
+
 import os
-from datetime import datetime, timedelta
+import requests
+from datetime import datetime, timedelta, timezone
 
-from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
-from filters import classify_relevance
-from models import Tender
-from scraper_utils import parse_date, retry_get, load_existing_ids, insert_if_new, now_utc
-
-_log = logging.getLogger(__name__)
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; research-bot/1.0)",
+}
 
 BOAMP_API_URL = (
     "https://boamp-datadila.opendatasoft.com/api/explore/v2.1"
     "/catalog/datasets/boamp/records"
 )
+
+DEPARTMENTS = ["974", "976"]
 
 _KEYWORD_FILTER = (
     "objet like '%SSI%'"
@@ -28,6 +32,7 @@ _KEYWORD_FILTER = (
     " OR objet like '%CCTV%'"
     " OR objet like '%courants faibles%'"
 )
+
 _CONSTRUCTION_FILTER = (
     "objet like '%construction%'"
     " OR objet like '%chantier%'"
@@ -41,6 +46,7 @@ _CONSTRUCTION_FILTER = (
     " OR objet like '%aménagement%'"
     " OR objet like '%amenagement%'"
 )
+
 _ERP_FILTER = (
     "objet like '%hôpital%'"
     " OR objet like '%hopital%'"
@@ -65,110 +71,102 @@ _ERP_FILTER = (
     " OR objet like '%aeroport%'"
     " OR objet like '%gare%'"
 )
-_PUBLIC_SEARCH_FILTER = f"({_KEYWORD_FILTER}) OR ({_CONSTRUCTION_FILTER})"
+
+_SEARCH_FILTER = f"({_KEYWORD_FILTER}) OR ({_CONSTRUCTION_FILTER}) OR ({_ERP_FILTER})"
 
 
-def fetch_boamp_tenders(departments: list[str] | None = None, years_back: int | None = None) -> int:
-    if departments is None:
-        departments = ["974", "976"]
+def fetch() -> list[dict]:
+    """
+    Returns BOAMP tenders for La Réunion (974) and Mayotte (976).
+    Each item: name, url, source, date_found + domain-specific fields.
+    """
+    results = []
+    days_back = int(os.getenv("SCRAPER_WINDOW_DAYS", "90"))
+    date_min = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime(
+        "%Y-%m-%d"
+    )
 
-    # years_back conservé pour compatibilité ; sinon fenêtre glissante via env
-    if years_back is not None:
-        days_back = years_back * 365
-    else:
-        days_back = int(os.getenv("SCRAPER_WINDOW_DAYS", "90"))
+    for dept in DEPARTMENTS:
+        offset = 0
+        limit = 100
 
-    date_min = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+        while True:
+            params = {
+                "where": (
+                    f"code_departement='{dept}'"
+                    f" AND ({_SEARCH_FILTER})"
+                    f" AND dateparution >= '{date_min}'"
+                ),
+                "limit": limit,
+                "offset": offset,
+                "order_by": "dateparution DESC",
+            }
 
-    init_db()
-    db = SessionLocal()
-    inserted = 0
-    nb_found  = 0
-    _run_id = start_scraper_run(db, "BOAMP — Journal Officiel")
+            try:
+                resp = requests.get(
+                    BOAMP_API_URL, headers=HEADERS, params=params, timeout=15
+                )
+            except requests.RequestException:
+                break
 
+            if resp.status_code != 200:
+                break
+
+            records = resp.json().get("results", [])
+            if not records:
+                break
+
+            for rec in records:
+                results.append(_normalise(rec, dept))
+
+            if len(records) < limit:
+                break
+            offset += limit
+
+    return results
+
+
+def _normalise(raw: dict, dept: str = "") -> dict:
+    """Convert raw BOAMP API record to standard schema."""
+    idweb = raw.get("idweb") or ""
+    url = raw.get("url_avis") or (
+        f"https://www.boamp.fr/aides-a-la-recherche/detail/{idweb}"
+        if idweb
+        else "https://www.boamp.fr"
+    )
+
+    descripteurs = raw.get("descripteur_libelle") or []
+    description = (
+        " ".join(descripteurs) if isinstance(descripteurs, list) else str(descripteurs)
+    )
+
+    # publication_date en ISO pour lecture IA
+    raw_date = raw.get("dateparution") or ""
     try:
-        existing_ids = load_existing_ids(db)
+        publication_date = (
+            datetime.fromisoformat(raw_date[:10]).date().isoformat() if raw_date else ""
+        )
+    except ValueError:
+        publication_date = raw_date
 
-        for dept in departments:
-            offset = 0
-            limit  = 100
+    raw_deadline = raw.get("datelimitereponse") or ""
+    try:
+        deadline = (
+            datetime.fromisoformat(raw_deadline[:10]).date().isoformat()
+            if raw_deadline
+            else ""
+        )
+    except ValueError:
+        deadline = raw_deadline
 
-            while True:
-                params = {
-                    "where": (
-                        f"code_departement='{dept}'"
-                        f" AND ({_PUBLIC_SEARCH_FILTER})"
-                        f" AND dateparution >= '{date_min}'"
-                    ),
-                    "limit":    limit,
-                    "offset":   offset,
-                    "order_by": "dateparution DESC",
-                }
-
-                response = retry_get(BOAMP_API_URL, params=params, rate_delay=1.0)
-                data    = response.json()
-                records = data.get("results", [])
-                if not records:
-                    break
-
-                nb_found += len(records)
-
-                for record in records:
-                    title        = record.get("objet") or ""
-                    descripteurs = record.get("descripteur_libelle") or []
-                    description  = " ".join(descripteurs) if isinstance(descripteurs, list) else str(descripteurs)
-                    full_text    = f"{title} {description}"
-
-                    relevant, extra_tags = classify_relevance(full_text)
-                    if not relevant:
-                        continue
-
-                    raw_id    = (record.get("id_lot") or record.get("idweb")
-                                 or "BOAMP-" + hashlib.md5(full_text.encode()).hexdigest())
-                    tender_id = str(raw_id)
-
-                    _idweb       = record.get("idweb") or ""
-                    _fallback_url = (
-                        f"https://www.boamp.fr/aides-a-la-recherche/detail/{_idweb}"
-                        if _idweb else "https://www.boamp.fr"
-                    )
-                    t = Tender(
-                        id=tender_id,
-                        title=title,
-                        description=description,
-                        source=record.get("url_avis") or _fallback_url,
-                        publication_date=parse_date(record.get("dateparution")),
-                        date_extraction=now_utc(),
-                        deadline=parse_date(record.get("datelimitereponse")),
-                        status="À qualifier",
-                        relevance_score=0,
-                        is_maintenance=False,
-                        llm_analysis=None,
-                        tags=extra_tags,
-                    )
-                    if insert_if_new(db, t, existing_ids):
-                        inserted += 1
-
-                if len(records) < limit:
-                    break
-                offset += limit
-
-        if inserted:
-            db.commit()
-        finish_scraper_run(db, _run_id, nb_found=nb_found, nb_new=inserted)
-        _log.info("BOAMP : %d trouvés, %d insérés", nb_found, inserted)
-    except Exception as exc:
-        _log.exception("BOAMP : erreur collecte")
-        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
-        raise
-    finally:
-        db.close()
-
-    return inserted
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    _log.info("Lancement collecte BOAMP — départements 974 et 976")
-    count = fetch_boamp_tenders()
-    _log.info("Collecte terminée — %d marché(s) inséré(s)", count)
+    return {
+        "name": raw.get("objet") or f"Marché BOAMP {idweb}",
+        "url": url,
+        "source": "BOAMP",
+        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "publication_date": publication_date,
+        "deadline": deadline,
+        "departement": dept,
+        "description": description,
+        "boamp_id": idweb,
+    }
