@@ -125,9 +125,6 @@ def _parse_date(entry) -> str:
     return ""
 
 
-_NOMS_INSTITUTIONS = {nom for _, nom, _ in FLUX_INSTITUTIONS}
-
-
 def _collect_feed(territoire: str, nom: str, feed_url: str, type_opp: str) -> list[dict]:
     """Parse one RSS feed and return relevant items."""
     try:
