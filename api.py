@@ -1,5 +1,4 @@
 import logging
-import tempfile
 
 from contextlib import asynccontextmanager
 
@@ -34,9 +33,11 @@ async def lifespan(app):
 
     _digest_hour = int(_os.getenv("DIGEST_HOUR", "7"))
     if _os.getenv("DIGEST_SMTP_HOST") and _os.getenv("DIGEST_TO"):
+
         def _send_daily_digest():
             try:
                 from email_digest import send_digest as _sd
+
                 _cfg = {
                     "host": _os.getenv("DIGEST_SMTP_HOST"),
                     "port": int(_os.getenv("DIGEST_SMTP_PORT", "587")),
@@ -48,7 +49,9 @@ async def lifespan(app):
             except Exception:
                 _log.exception("Échec envoi digest email")
 
-        scheduler.add_job(_send_daily_digest, "cron", hour=_digest_hour, minute=0, id="daily_digest")
+        scheduler.add_job(
+            _send_daily_digest, "cron", hour=_digest_hour, minute=0, id="daily_digest"
+        )
 
     scheduler.start()
     _log.info("Scheduler APScheduler démarré")
@@ -57,6 +60,7 @@ async def lifespan(app):
 
     scheduler.shutdown(wait=False)
     _log.info("Scheduler APScheduler arrêté")
+
 
 app = FastAPI(title="DEF OI Veille Commerciale", version="2.0.0", lifespan=lifespan)
 
@@ -84,13 +88,14 @@ def list_tenders(
     db = SessionLocal()
     try:
         query = db.query(Tender).filter(
-            Tender.is_blacklisted == False,
+            Tender.is_blacklisted.is_(False),
             Tender.relevance_score >= score_min,
         )
         if status:
             query = query.filter(Tender.status == status)
         if q:
             from sqlalchemy import or_
+
             query = query.filter(
                 or_(Tender.title.ilike(f"%{q}%"), Tender.description.ilike(f"%{q}%"))
             )
@@ -110,7 +115,9 @@ def list_tenders(
                     "score": t.relevance_score,
                     "status": t.status,
                     "amount": t.amount,
-                    "publication_date": str(t.publication_date) if t.publication_date else None,
+                    "publication_date": str(t.publication_date)
+                    if t.publication_date
+                    else None,
                     "source_url": t.source,
                     "llm_analysis": t.llm_analysis,
                 }
@@ -180,12 +187,15 @@ class ScrapeRequest(BaseModel):
 @app.post("/scrape")
 def scrape(req: ScrapeRequest):
     from importlib import import_module
+
     db = SessionLocal()
     try:
         all_sources = list_sources(db)
         enabled = [
-            s for s in all_sources
-            if s.enabled and (not req.sources or s.name in req.sources)
+            s
+            for s in all_sources
+            if s.enabled
+            and (not req.sources or s.name in req.sources)
             and s.scraper_module is not None
         ]
     finally:
@@ -237,7 +247,9 @@ class SourceCreate(BaseModel):
 def create_source(src: SourceCreate):
     db = SessionLocal()
     try:
-        s = add_source(db, name=src.name, url=src.url, category=src.category, notes=src.notes)
+        s = add_source(
+            db, name=src.name, url=src.url, category=src.category, notes=src.notes
+        )
         return {"id": s.id, "name": s.name}
     finally:
         db.close()
@@ -249,7 +261,10 @@ def delete_source(source_id: int):
     try:
         ok = remove_source(db, source_id)
         if not ok:
-            raise HTTPException(status_code=400, detail="Source introuvable ou non supprimable (scraper dédié)")
+            raise HTTPException(
+                status_code=400,
+                detail="Source introuvable ou non supprimable (scraper dédié)",
+            )
         return {"ok": True}
     finally:
         db.close()
