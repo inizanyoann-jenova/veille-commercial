@@ -33,3 +33,16 @@ export function loadSavedTheme() {
   const colors = saved && typeof saved === 'object' ? { ...DEFAULTS, ...saved } : DEFAULTS
   applyTheme(colors)
 }
+
+export const BRIGHTNESS_KEY = 'app-brightness'
+export const DEFAULT_BRIGHTNESS = 1.0
+
+export function applyBrightness(value) {
+  document.documentElement.style.setProperty('--app-brightness', String(value))
+}
+
+export function loadSavedBrightness() {
+  const saved = parseFloat(localStorage.getItem(BRIGHTNESS_KEY))
+  const value = isNaN(saved) ? DEFAULT_BRIGHTNESS : Math.min(2.0, Math.max(0.5, saved))
+  applyBrightness(value)
+}
