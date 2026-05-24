@@ -1,4 +1,6 @@
-import sys, os
+import sys
+import os
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from scraper_marcheonline import _parse_detail_html
@@ -42,7 +44,9 @@ def test_strips_nested_html_tags():
 
 
 def test_description_lot_class():
-    html = '<div class="description-lot">Vidéosurveillance campus universitaire 974</div>'
+    html = (
+        '<div class="description-lot">Vidéosurveillance campus universitaire 974</div>'
+    )
     result = _parse_detail_html(html)
     assert "Vidéosurveillance" in result
 
