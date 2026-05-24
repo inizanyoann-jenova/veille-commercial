@@ -1,21 +1,24 @@
-import hashlib
-import logging
+"""
+DECP (Données Essentielles de la Commande Publique) — marchés notifiés
+La Réunion (974) et Mayotte (976) : SSI, CPV sécurité, construction, ERP.
+Method: REST API (data.economie.gouv.fr v2.1)
+"""
+
 import os
-from datetime import datetime, timedelta
+import requests
+from datetime import datetime, timedelta, timezone
 
-from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
-from filters import classify_relevance
-from models import Tender
-from scraper_utils import parse_date, retry_get, load_existing_ids, insert_if_new, now_utc
-
-_log = logging.getLogger(__name__)
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; research-bot/1.0)",
+}
 
 DECP_API = (
     "https://data.economie.gouv.fr/api/explore/v2.1"
     "/catalog/datasets/decp_augmente/records"
 )
 
-_DEPT_FILTER    = 'codedepartementexecution in ("974", "976")'
+_DEPT_FILTER = 'codedepartementexecution in ("974", "976")'
+
 _KEYWORD_FILTER = (
     'search(objetmarche, "SSI")'
     ' OR search(objetmarche, "CMSI")'
@@ -26,10 +29,8 @@ _KEYWORD_FILTER = (
     ' OR search(objetmarche, "CCTV")'
     ' OR search(objetmarche, "courants faibles")'
 )
-# Codes CPV SSI dans le dataset DECP Augmenté (champ "codecpv")
-# search() est utilisé car le champ peut contenir un libellé (ex: "45312100 - Alarme incendie") ;
-# si trop de faux positifs, basculer sur une égalité directe : codecpv = "45312100" OR ...
-# Si l'API retourne un 400, vérifier le nom du champ : GET .../records?limit=1&select=codecpv
+
+# Codes CPV SSI — si trop de faux positifs, basculer sur égalité directe : codecpv = "45312100"
 _CPV_FILTER = (
     'search(codecpv, "45312100")'
     ' OR search(codecpv, "35111300")'
@@ -38,6 +39,7 @@ _CPV_FILTER = (
     ' OR search(codecpv, "42961000")'
     ' OR search(codecpv, "35111000")'
 )
+
 _CONSTRUCTION_FILTER = (
     'search(objetmarche, "construction")'
     ' OR search(objetmarche, "chantier")'
@@ -51,13 +53,12 @@ _CONSTRUCTION_FILTER = (
     ' OR search(objetmarche, "aménagement")'
     ' OR search(objetmarche, "amenagement")'
 )
+
 _ERP_FILTER = (
     'search(objetmarche, "hôpital")'
     ' OR search(objetmarche, "hopital")'
     ' OR search(objetmarche, "clinique")'
     ' OR search(objetmarche, "ehpad")'
-    ' OR search(objetmarche, "hôtel")'
-    ' OR search(objetmarche, "hotel")'
     ' OR search(objetmarche, "école")'
     ' OR search(objetmarche, "ecole")'
     ' OR search(objetmarche, "lycée")'
@@ -75,83 +76,86 @@ _ERP_FILTER = (
     ' OR search(objetmarche, "aeroport")'
     ' OR search(objetmarche, "gare")'
 )
-_PUBLIC_SEARCH_FILTER = (
-    f"({_KEYWORD_FILTER}) OR ({_CPV_FILTER}) OR ({_CONSTRUCTION_FILTER})"
-)
+
+_SEARCH_FILTER = f"({_KEYWORD_FILTER}) OR ({_CPV_FILTER}) OR ({_CONSTRUCTION_FILTER}) OR ({_ERP_FILTER})"
 
 
-def fetch_decp_tenders(days_back: int | None = None) -> int:
-    if days_back is None:
-        # DECP a des données plus anciennes, on utilise 3 ans par défaut
-        days_back = int(os.getenv("DECP_WINDOW_DAYS", "1095"))  # 3 ans
-    date_min = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
-    where    = f"({_DEPT_FILTER}) AND ({_PUBLIC_SEARCH_FILTER}) AND (datenotification >= \"{date_min}\")"
+def fetch() -> list[dict]:
+    """
+    Returns DECP tenders for La Réunion (974) and Mayotte (976).
+    Each item: name, url, source, date_found + domain-specific fields.
+    """
+    results = []
+    days_back = int(os.getenv("DECP_WINDOW_DAYS", "30"))
+    date_min = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime(
+        "%Y-%m-%d"
+    )
+    where = (
+        f"({_DEPT_FILTER})"
+        f" AND ({_SEARCH_FILTER})"
+        f' AND (datenotification >= "{date_min}")'
+    )
 
-    init_db()
-    db       = SessionLocal()
-    inserted = 0
-    _run_id  = start_scraper_run(db, "DECP / PLACE")
+    offset = 0
+    limit = 100
 
+    while True:
+        params = {
+            "where": where,
+            "limit": limit,
+            "offset": offset,
+            "order_by": "datenotification DESC",
+        }
+
+        try:
+            resp = requests.get(DECP_API, headers=HEADERS, params=params, timeout=15)
+        except requests.RequestException:
+            break
+
+        if resp.status_code != 200:
+            break
+
+        records = resp.json().get("results", [])
+        if not records:
+            break
+
+        for rec in records:
+            results.append(_normalise(rec))
+
+        if len(records) < limit:
+            break
+        offset += limit
+
+    return results
+
+
+def _normalise(raw: dict) -> dict:
+    """Convert raw DECP API record to standard schema."""
+    uid = raw.get("id") or ""
+    objet = raw.get("objetmarche") or f"Marché DECP {uid}"
+    acheteur = raw.get("nomacheteur") or ""
+    dept = raw.get("codedepartementexecution") or ""
+    cpv = raw.get("codecpv") or ""
+
+    raw_date = raw.get("datenotification") or ""
     try:
-        existing_ids = load_existing_ids(db)
-        offset   = 0
-        limit    = 100
-        nb_found = 0
+        publication_date = (
+            datetime.fromisoformat(raw_date[:10]).date().isoformat() if raw_date else ""
+        )
+    except ValueError:
+        publication_date = raw_date
 
-        while True:
-            params   = {"where": where, "limit": limit, "offset": offset, "order_by": "datenotification DESC"}
-            response = retry_get(DECP_API, params=params, rate_delay=1.0)
-            records  = response.json().get("results", [])
-            if not records:
-                break
-
-            nb_found += len(records)
-
-            for record in records:
-                acheteur_nom = record.get("nomacheteur") or ""
-                objet        = record.get("objetmarche") or ""
-                full_text    = f"{objet} {acheteur_nom}"
-
-                relevant, extra_tags = classify_relevance(full_text)
-                if not relevant:
-                    continue
-
-                uid       = record.get("id") or hashlib.md5(full_text.encode()).hexdigest()
-                tender_id = f"DECP-{uid}"
-
-                t = Tender(
-                    id=tender_id, title=objet,
-                    description=f"Acheteur : {acheteur_nom}",
-                    source="https://data.economie.gouv.fr",
-                    publication_date=parse_date(record.get("datenotification")),
-                    date_extraction=now_utc(),
-                    deadline=None, status="À qualifier",
-                    relevance_score=0, is_maintenance=False, llm_analysis=None,
-                    secteur="Public", type_opportunite="Marché Public",
-                    tags=extra_tags,
-                )
-                if insert_if_new(db, t, existing_ids):
-                    inserted += 1
-
-            if len(records) < limit:
-                break
-            offset += limit
-
-        if inserted:
-            db.commit()
-        finish_scraper_run(db, _run_id, nb_found=nb_found, nb_new=inserted)
-        _log.info("DECP : %d trouvés, %d inséré(s)", nb_found, inserted)
-    except Exception as exc:
-        _log.exception("DECP : erreur collecte")
-        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
-        raise
-    finally:
-        db.close()
-
-    return inserted
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    count = fetch_decp_tenders()
-    _log.info("DECP terminé — %d marché(s)", count)
+    return {
+        "name": objet,
+        "url": f"https://data.economie.gouv.fr/explore/dataset/decp_augmente/table/?q={uid}"
+        if uid
+        else "https://data.economie.gouv.fr",
+        "source": "DECP",
+        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "publication_date": publication_date,
+        "deadline": "",
+        "acheteur": acheteur,
+        "departement": dept,
+        "cpv": cpv,
+        "decp_id": uid,
+    }
