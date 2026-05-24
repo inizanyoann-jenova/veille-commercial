@@ -1259,6 +1259,12 @@ def save_mistral_key(body: MistralKeyBody):
     return {"ok": True, "message": "Clé Mistral sauvegardée et activée"}
 
 
+@app.get("/api/settings/mistral-status", summary="Statut de la clé API Mistral")
+def mistral_status():
+    configured = bool(os.environ.get("MISTRAL_API_KEY"))
+    return {"configured": configured}
+
+
 # ── POST /api/admin/archive-old ───────────────────────────────────────────────
 
 
