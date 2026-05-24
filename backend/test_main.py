@@ -339,3 +339,32 @@ def test_mistral_key_endpoint_rejects_empty_key():
     client = TestClient(m.app)
     resp = client.post("/api/settings/mistral-key", json={"api_key": ""})
     assert resp.status_code == 422
+
+
+def test_mistral_status_configured_when_key_set():
+    """GET /api/settings/mistral-status retourne configured=True si la clé est définie."""
+    import main as m
+    from fastapi.testclient import TestClient
+
+    with patch.dict("os.environ", {"MISTRAL_API_KEY": "sk-test-key"}):
+        client = TestClient(m.app)
+        resp = client.get("/api/settings/mistral-status")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["configured"] is True
+
+
+def test_mistral_status_not_configured_when_key_absent():
+    """GET /api/settings/mistral-status retourne configured=False si la clé est absente."""
+    import main as m
+    from fastapi.testclient import TestClient
+
+    env_without_key = {k: v for k, v in os.environ.items() if k != "MISTRAL_API_KEY"}
+    with patch.dict("os.environ", env_without_key, clear=True):
+        client = TestClient(m.app)
+        resp = client.get("/api/settings/mistral-status")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["configured"] is False
