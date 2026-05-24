@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import DuplicatePair from '../components/DuplicatePair'
-import { THEME_KEY, DEFAULTS, hexToRgbString, applyTheme } from '../utils/theme'
+import { THEME_KEY, DEFAULTS, hexToRgbString, applyTheme, BRIGHTNESS_KEY, DEFAULT_BRIGHTNESS, applyBrightness } from '../utils/theme'
 import {
   useAnalyzePending,
   useDuplicates,
@@ -422,6 +422,11 @@ function ApparenceTab() {
     }
   })
 
+  const [brightness, setBrightness] = useState(() => {
+    const saved = parseFloat(localStorage.getItem(BRIGHTNESS_KEY))
+    return isNaN(saved) ? DEFAULT_BRIGHTNESS : Math.min(2.0, Math.max(0.5, saved))
+  })
+
   const handleChange = (key, hex) => {
     const rgb = hexToRgbString(hex)
     if (rgb === null) return
@@ -429,14 +434,24 @@ function ApparenceTab() {
     applyTheme({ [key]: rgb })
   }
 
+  const handleBrightnessChange = (e) => {
+    const value = parseFloat(e.target.value)
+    setBrightness(value)
+    applyBrightness(value)
+  }
+
   const handleApply = () => {
     localStorage.setItem(THEME_KEY, JSON.stringify(colors))
+    localStorage.setItem(BRIGHTNESS_KEY, String(brightness))
   }
 
   const handleReset = () => {
     setColors({ ...DEFAULTS })
     applyTheme(DEFAULTS)
     localStorage.removeItem(THEME_KEY)
+    setBrightness(DEFAULT_BRIGHTNESS)
+    applyBrightness(DEFAULT_BRIGHTNESS)
+    localStorage.removeItem(BRIGHTNESS_KEY)
   }
 
   return (
@@ -466,6 +481,31 @@ function ApparenceTab() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="p-3 bg-ocean-panel border border-ocean-border rounded-lg space-y-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="font-sans text-sm font-medium text-ocean-text">Luminosité</div>
+            <div className="font-sans text-xs text-ocean-muted">Ajustez l'éclat global de l'interface</div>
+          </div>
+          <span className="font-mono text-sm text-ocean-cyan">{`${Math.round(brightness * 100)}%`}</span>
+        </div>
+        <input
+          type="range"
+          min="0.5"
+          max="2.0"
+          step="0.05"
+          value={brightness}
+          onChange={handleBrightnessChange}
+          aria-label="Luminosité"
+          className="w-full accent-ocean-cyan"
+        />
+        <div className="flex justify-between font-mono text-xs text-ocean-muted">
+          <span>50%</span>
+          <span>Normal</span>
+          <span>200%</span>
+        </div>
       </div>
 
       <div className="flex gap-3 pt-4 border-t border-ocean-border">
