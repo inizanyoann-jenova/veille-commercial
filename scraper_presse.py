@@ -1,162 +1,176 @@
 """
-Scraper RSS — Presse locale et institutions de l'Océan Indien.
+Presse locale et institutions de l'Océan Indien — flux RSS.
 Filtre les articles mentionnant des projets de construction/bâtiment
-susceptibles de nécessiter du SSI/CMSI/Vidéosurveillance.
+susceptibles de nécessiter du SSI/CMSI/vidéosurveillance.
+Method: RSS feed parsing via feedparser.
 """
-import hashlib
-import logging
-from datetime import datetime
-from email.utils import parsedate_to_datetime
 
 import feedparser
-
-from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
-from filters import is_prive_relevant
-from models import Tender
-from scraper_utils import load_existing_ids, insert_if_new, now_utc
-
-_log = logging.getLogger(__name__)
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 
 FLUX_PRESSE = [
-    ("La Réunion", "Le JIR",             "https://www.lejir.com/feed/"),
-    ("La Réunion", "Le Quotidien",        "https://www.lequotidiendelarunion.fr/feed/"),
-    ("La Réunion", "Zinfos974",           "https://www.zinfos974.com/feed/"),
-    ("La Réunion", "Imaz Press",          "https://www.imazpresss.re/feed/"),
-    ("La Réunion", "Réunion la 1ère",     "https://la1ere.francetvinfo.fr/reunion/rss.xml"),
-    ("La Réunion", "Clicanoo",            "https://www.clicanoo.re/rss"),
-    ("La Réunion", "Batiactu DOM",        "https://www.batiactu.com/rss/rss_actualites.xml"),
-    ("Mayotte",    "Mayotte Hebdo",       "https://www.mayottehebdo.com/feed/"),
-    ("Mayotte",    "Journal de Mayotte",  "https://lejournaldemayotte.yt/feed/"),
-    ("Mayotte",    "Kwezi",               "https://kwezi.fr/feed/"),
-    ("Mayotte",    "Mayotte la 1ère",     "https://la1ere.francetvinfo.fr/mayotte/rss.xml"),
-    ("Maurice",    "L'Express Maurice",   "https://lexpress.mu/rss"),
-    ("Maurice",    "Le Défi",             "https://www.defimedia.info/feed/"),
-    ("Maurice",    "Business Magazine",   "https://businessmag.mu/feed/"),
-    ("Madagascar", "La Tribune Mada",     "https://www.latribune.mg/feed/"),
-    ("Madagascar", "L'Express Mada",      "https://lexpress.mg/feed/"),
-    ("Madagascar", "Midi Madagasikara",   "https://www.midi-madagasikara.mg/feed/"),
-    ("Comores",    "Alwatwan",            "https://alwatwan.net/feed/"),
-    ("Comores",    "HZK-Presse",          "https://www.hzk-presse.com/feed/"),
-    ("Comores",    "La Gazette Comores",  "https://www.lagazettedescomores.com/feed/"),
-    ("OI",         "L'Éco Austral",        "https://www.ecoaustral.com/feed/"),
+    ("La Réunion", "Le JIR", "https://www.lejir.com/feed/"),
+    ("La Réunion", "Le Quotidien", "https://www.lequotidiendelarunion.fr/feed/"),
+    ("La Réunion", "Zinfos974", "https://www.zinfos974.com/feed/"),
+    ("La Réunion", "Imaz Press", "https://www.imazpresss.re/feed/"),
+    ("La Réunion", "Réunion la 1ère", "https://la1ere.francetvinfo.fr/reunion/rss.xml"),
+    ("La Réunion", "Clicanoo", "https://www.clicanoo.re/rss"),
+    ("La Réunion", "Batiactu DOM", "https://www.batiactu.com/rss/rss_actualites.xml"),
+    ("Mayotte", "Mayotte Hebdo", "https://www.mayottehebdo.com/feed/"),
+    ("Mayotte", "Journal de Mayotte", "https://lejournaldemayotte.yt/feed/"),
+    ("Mayotte", "Kwezi", "https://kwezi.fr/feed/"),
+    ("Mayotte", "Mayotte la 1ère", "https://la1ere.francetvinfo.fr/mayotte/rss.xml"),
+    ("Maurice", "L'Express Maurice", "https://lexpress.mu/rss"),
+    ("Maurice", "Le Défi", "https://www.defimedia.info/feed/"),
+    ("Maurice", "Business Magazine", "https://businessmag.mu/feed/"),
+    ("Madagascar", "La Tribune Mada", "https://www.latribune.mg/feed/"),
+    ("Madagascar", "L'Express Mada", "https://lexpress.mg/feed/"),
+    ("Madagascar", "Midi Madagasikara", "https://www.midi-madagasikara.mg/feed/"),
+    ("Comores", "Alwatwan", "https://alwatwan.net/feed/"),
+    ("Comores", "HZK-Presse", "https://www.hzk-presse.com/feed/"),
+    ("Comores", "La Gazette Comores", "https://www.lagazettedescomores.com/feed/"),
+    ("OI", "L'Éco Austral", "https://www.ecoaustral.com/feed/"),
 ]
 
 FLUX_INSTITUTIONS = [
-    ("La Réunion", "Région Réunion",      "https://regionreunion.com/feed/"),
-    ("La Réunion", "CD 974",              "https://www.cg974.re/feed/"),
-    ("La Réunion", "CCI Réunion",         "https://www.reunion.cci.fr/feed/"),
-    ("La Réunion", "CINOR",               "https://www.cinor.re/feed/"),
-    ("La Réunion", "CIVIS",               "https://www.civis.re/feed/"),
-    ("La Réunion", "CIREST",              "https://www.cirest.fr/feed/"),
-    ("La Réunion", "CASUD",               "https://www.casud.re/feed/"),
-    ("La Réunion", "TCO",                 "https://www.tco.re/feed/"),
-    ("La Réunion", "SPL Horizon",         "https://www.spl-horizon.re/feed/"),
-    ("La Réunion", "SHLMR",               "https://www.shlmr.re/feed/"),
-    ("La Réunion", "Erilia Réunion",      "https://www.erilia.fr/feed/"),
-    ("La Réunion", "SODIAC",              "https://www.sodiac.re/feed/"),
-    ("Mayotte",    "CD 976",              "https://www.cg976.re/feed/"),
-    ("Mayotte",    "CCI Mayotte",         "https://www.mayotte.cci.fr/feed/"),
-    ("Mayotte",    "SIM Mayotte",         "https://www.sim976.re/feed/"),
+    ("La Réunion", "Région Réunion", "https://regionreunion.com/feed/"),
+    ("La Réunion", "CD 974", "https://www.cg974.re/feed/"),
+    ("La Réunion", "CCI Réunion", "https://www.reunion.cci.fr/feed/"),
+    ("La Réunion", "CINOR", "https://www.cinor.re/feed/"),
+    ("La Réunion", "CIVIS", "https://www.civis.re/feed/"),
+    ("La Réunion", "CIREST", "https://www.cirest.fr/feed/"),
+    ("La Réunion", "CASUD", "https://www.casud.re/feed/"),
+    ("La Réunion", "TCO", "https://www.tco.re/feed/"),
+    ("La Réunion", "SPL Horizon", "https://www.spl-horizon.re/feed/"),
+    ("La Réunion", "SHLMR", "https://www.shlmr.re/feed/"),
+    ("La Réunion", "Erilia Réunion", "https://www.erilia.fr/feed/"),
+    ("La Réunion", "SODIAC", "https://www.sodiac.re/feed/"),
+    ("Mayotte", "CD 976", "https://www.cg976.re/feed/"),
+    ("Mayotte", "CCI Mayotte", "https://www.mayotte.cci.fr/feed/"),
+    ("Mayotte", "SIM Mayotte", "https://www.sim976.re/feed/"),
+]
+
+# Articles mentionnant des projets de construction/bâtiment → opportunité SSI/CMSI/vidéo
+MOTS_CLES_PERTINENTS = [
+    "construction",
+    "chantier",
+    "travaux",
+    "bâtiment",
+    "batiment",
+    "réhabilitation",
+    "rehabilitation",
+    "rénovation",
+    "renovation",
+    "extension",
+    "aménagement",
+    "amenagement",
+    "infrastructure",
+    "hôpital",
+    "hopital",
+    "clinique",
+    "école",
+    "ecole",
+    "lycée",
+    "lycee",
+    "collège",
+    "college",
+    "université",
+    "universite",
+    "mairie",
+    "centre commercial",
+    "hôtel",
+    "hotel",
+    "résidence",
+    "residence",
+    "immeuble",
+    "logement",
+    "erp",
+    "établissement",
+    "ssi",
+    "cmsi",
+    "incendie",
+    "désenfumage",
+    "desenfumage",
+    "vidéosurveillance",
+    "videosurveillance",
+    "sécurité",
+    "securite",
+    "appel d'offres",
+    "appel offres",
+    "marché public",
+    "consultation",
 ]
 
 
-def _parse_date(entry) -> datetime | None:
+def _is_relevant(title: str, summary: str) -> bool:
+    text = f"{title} {summary}".lower()
+    return any(mot in text for mot in MOTS_CLES_PERTINENTS)
+
+
+def _parse_date(entry) -> str:
+    """Extract and return publication date as ISO string."""
     for attr in ("published", "updated"):
         val = getattr(entry, attr, None)
         if val:
             try:
-                return parsedate_to_datetime(val).replace(tzinfo=None)
+                return parsedate_to_datetime(val).date().isoformat()
             except Exception:
                 try:
                     parsed = entry.get(f"{attr}_parsed")
                     if parsed:
-                        return datetime(*parsed[:6])
+                        return datetime(*parsed[:6]).date().isoformat()
                 except Exception:
                     pass
-    return None
+    return ""
 
 
-def _dedup_id(url: str) -> str:
-    return "RSS-" + hashlib.md5(url.encode()).hexdigest()[:14]
-
-
-def _fetch_feed(territoire: str, nom: str, url: str, db, type_opp: str, filter_fn, existing_ids: set) -> tuple[int, int]:
-    inserted = 0
+def _collect_feed(territoire: str, nom: str, feed_url: str) -> list[dict]:
+    """Parse one RSS feed and return relevant items."""
     try:
-        feed = feedparser.parse(url)
-    except Exception as exc:
-        _log.warning("Feed RSS '%s' inaccessible : %s", nom, type(exc).__name__)
-        return 0, 0
+        feed = feedparser.parse(feed_url)
+    except Exception:
+        return []
 
-    if not feed.entries:
-        _log.debug("Feed '%s' : aucune entrée", nom)
-        return 0, 0
-
-    nb_found = len(feed.entries)
-
+    results = []
     for entry in feed.entries:
         title = entry.get("title") or ""
         summary = entry.get("summary") or entry.get("description") or ""
 
-        if not filter_fn(f"{title} {summary}"):
+        if not _is_relevant(title, summary):
             continue
 
-        link = entry.get("link") or url
-        tender_id = _dedup_id(link)
+        results.append(_normalise(entry, territoire, nom, feed_url))
 
-        t = Tender(
-            id=tender_id,
-            title=f"[{nom}] {title[:200]}",
-            description=f"{territoire} — {nom}\n{summary[:500]}",
-            source=link,
-            publication_date=_parse_date(entry),
-            date_extraction=now_utc(),
-            deadline=None,
-            status="À qualifier",
-            relevance_score=0,
-            is_maintenance=False,
-            llm_analysis=None,
-            secteur="Privé",
-            type_opportunite=type_opp,
-        )
-        if insert_if_new(db, t, existing_ids):
-            inserted += 1
-
-    return nb_found, inserted
+    return results
 
 
-def fetch_presse_io() -> int:
-    init_db()
-    db = SessionLocal()
-    nb_found = 0
-    inserted = 0
-    _run_id = start_scraper_run(db, "Presse & Institutions IO")
-    try:
-        existing_ids = load_existing_ids(db)
+def fetch() -> list[dict]:
+    """
+    Returns relevant articles from Indian Ocean press and institution RSS feeds.
+    Each item: name, url, source, date_found + domain-specific fields.
+    """
+    results = []
 
-        for territoire, nom, url in FLUX_PRESSE:
-            f, i = _fetch_feed(territoire, nom, url, db, "Presse", is_prive_relevant, existing_ids)
-            nb_found += f
-            inserted += i
-        for territoire, nom, url in FLUX_INSTITUTIONS:
-            f, i = _fetch_feed(territoire, nom, url, db, "Institution", is_prive_relevant, existing_ids)
-            nb_found += f
-            inserted += i
+    for territoire, nom, url in FLUX_PRESSE + FLUX_INSTITUTIONS:
+        results.extend(_collect_feed(territoire, nom, url))
 
-        if inserted:
-            db.commit()
-        finish_scraper_run(db, _run_id, nb_found=nb_found, nb_new=inserted)
-        _log.info("Presse & Institutions IO : %d trouvés, %d inséré(s)", nb_found, inserted)
-    except Exception as exc:
-        _log.exception("Presse IO : erreur collecte")
-        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
-        raise
-    finally:
-        db.close()
-    return inserted
+    return results
 
 
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    count = fetch_presse_io()
-    _log.info("Presse IO terminé — %d inséré(s)", count)
+def _normalise(entry, territoire: str, nom: str, feed_url: str) -> dict:
+    """Convert raw RSS entry to standard schema."""
+    title = entry.get("title") or ""
+    summary = entry.get("summary") or entry.get("description") or ""
+    link = entry.get("link") or feed_url
+
+    return {
+        "name": f"[{nom}] {title[:200]}",
+        "url": link,
+        "source": nom,
+        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "publication_date": _parse_date(entry),
+        "deadline": "",
+        "territoire": territoire,
+        "description": summary[:500],
+    }
