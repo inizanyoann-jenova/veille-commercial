@@ -1,114 +1,146 @@
-import hashlib
-import logging
+"""
+Nukema — marchés publics La Réunion (974) et Mayotte (976).
+Method: JS-rendered scraping via Playwright.
+Credentials optionnels: NUKEMA_EMAIL et NUKEMA_PASSWORD.
+Note: login sur actu.nukema.com, consultation sur marches-publics.nukema.com
+      (cookies non partagés cross-subdomain — auth peut échouer silencieusement).
+"""
+
+import os
+from datetime import datetime, timezone
 
 from playwright.sync_api import sync_playwright
-
-from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
-from filters import classify_relevance
-from models import Tender
-from playwright_base import extract_cards, login, paginate
-from credential_manager import CredentialManager
-from scraper_utils import parse_date, load_existing_ids, insert_if_new, now_utc
-
-_log = logging.getLogger(__name__)
 
 _URLS = [
     "https://marches-publics.nukema.com/seo/consultation/departement?departement=974",
     "https://marches-publics.nukema.com/seo/consultation/departement?departement=976",
 ]
 _LOGIN_URL = "https://www.actu.nukema.com/connexion"
+_BASE = "https://marches-publics.nukema.com"
+_CARD = ".consultation-card, .card, article.consultation, li.consultation"
+_NEXT = "a[aria-label='Next'], .pagination-next a, a.next"
+_MAX_PAGES = 5
+
 _LOGIN_SELECTORS = {
     "email": "input[type='email']",
     "password": "input[type='password']",
     "submit": "button[type='submit']",
 }
-_CARD = ".consultation-card, .card, article.consultation, li.consultation"
-_FIELDS = {
-    "title": "h3, h2, .card-title, .consultation-title",
-    "description": ".card-text, .description, .organisme",
-    "url": "a@href",
-    "date": ".date, .card-date, time",
-}
-_NEXT = "a[aria-label='Next'], .pagination-next a, a.next"
 
 
-def fetch_nukema_tenders() -> int:
-    init_db()
-    db       = SessionLocal()
-    inserted = 0
-    creds    = CredentialManager.get("nukema")
-    _run_id  = start_scraper_run(db, "Nukema")
+def _login(page, email: str, password: str) -> bool:
     try:
-        existing_ids = load_existing_ids(db)
-        nb_found     = 0
+        page.goto(_LOGIN_URL, timeout=30_000)
+        page.wait_for_load_state("networkidle", timeout=30_000)
+        page.fill(_LOGIN_SELECTORS["email"], email)
+        page.fill(_LOGIN_SELECTORS["password"], password)
+        page.click(_LOGIN_SELECTORS["submit"])
+        page.wait_for_load_state("networkidle", timeout=20_000)
+        return _LOGIN_URL not in page.url
+    except Exception:
+        return False
 
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True)
+
+def fetch() -> list[dict]:
+    """
+    Returns Nukema tenders for La Réunion (974) and Mayotte (976).
+    Credentials optional. If cross-subdomain auth fails, collection continues unauthenticated.
+    Each item: name, url, source, date_found + domain-specific fields.
+    """
+    email = os.getenv("NUKEMA_EMAIL", "")
+    password = os.getenv("NUKEMA_PASSWORD", "")
+    results = []
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
             try:
-                page = browser.new_page()
-                try:
-                    if creds:
-                        login(page, _LOGIN_URL, creds[0], creds[1], _LOGIN_SELECTORS)
-                    for base_url in _URLS:
-                        page.goto(base_url, timeout=30000)
-                        page.wait_for_load_state("networkidle", timeout=30000)
-                        # Détection auth cross-subdomain : actu.nukema.com → marches-publics.nukema.com
-                        if any(k in page.url for k in ("connexion", "login", "authentification")):
-                            _log.warning(
-                                "Nukema : session non maintenue après navigation (URL=%s) — "
-                                "cookies cross-subdomain non partagés entre actu. et marches-publics.",
-                                page.url,
-                            )
-                            finish_scraper_run(db, _run_id, nb_found=0, nb_new=0,
-                                               error="Auth cross-subdomain échouée")
-                            return 0
-                        page_count = 0
-                        while page_count < 5:
-                            cards = extract_cards(page, _CARD, _FIELDS)
-                            nb_found += len(cards)
-                            for card in cards:
-                                title = card.get("title", "").strip()
-                                desc  = card.get("description", "").strip()
-                                relevant, extra_tags = classify_relevance(f"{title} {desc}")
-                                if not relevant:
-                                    continue
-                                url = card.get("url", "") or base_url
-                                if url and not url.startswith("http"):
-                                    url = f"https://marches-publics.nukema.com{url}"
-                                tid = f"NUKEMA-{hashlib.md5(f'{title}{url}'.encode()).hexdigest()}"
-                                t = Tender(
-                                    id=tid, title=title, description=desc, source=url,
-                                    publication_date=parse_date(card.get("date")),
-                                    date_extraction=now_utc(),
-                                    deadline=None, status="À qualifier",
-                                    relevance_score=0, is_maintenance=False,
-                                    llm_analysis=None, secteur="Public",
-                                    type_opportunite="Marché Public",
-                                    tags=extra_tags,
-                                )
-                                if insert_if_new(db, t, existing_ids):
-                                    inserted += 1
-                            if not paginate(page, _NEXT):
-                                break
-                            page_count += 1
-                finally:
-                    page.close()
+                if email and password:
+                    _login(page, email, password)
+
+                for base_url in _URLS:
+                    try:
+                        page.goto(base_url, timeout=30_000)
+                        page.wait_for_load_state("networkidle", timeout=30_000)
+                    except Exception:
+                        continue
+
+                    # Détection auth cross-subdomain : actu.nukema.com → marches-publics.nukema.com
+                    # Les cookies ne sont pas partagés entre sous-domaines — on continue sans auth
+                    if any(
+                        k in page.url
+                        for k in ("connexion", "login", "authentification")
+                    ):
+                        continue
+
+                    for _ in range(_MAX_PAGES):
+                        cards = page.query_selector_all(_CARD)
+                        for card in cards:
+                            raw = _extract_card(card, base_url)
+                            if raw.get("name"):
+                                results.append(_normalise(raw))
+
+                        next_btn = page.query_selector(_NEXT)
+                        if not next_btn:
+                            break
+                        next_btn.click()
+                        try:
+                            page.wait_for_load_state("networkidle", timeout=15_000)
+                        except Exception:
+                            break
+
             finally:
-                browser.close()
+                page.close()
+        finally:
+            browser.close()
 
-        if inserted:
-            db.commit()
-        finish_scraper_run(db, _run_id, nb_found=nb_found, nb_new=inserted)
-        _log.info("Nukema : %d trouvés, %d inséré(s)", nb_found, inserted)
-    except Exception as exc:
-        _log.exception("Nukema : erreur collecte")
-        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
-        raise
-    finally:
-        db.close()
-    return inserted
+    return results
 
 
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    _log.info("Nukema : %d AO insérés", fetch_nukema_tenders())
+def _extract_card(card, base_url: str = "") -> dict:
+    """Extract raw fields from a Playwright element handle."""
+
+    def text(selector):
+        el = card.query_selector(selector)
+        return el.inner_text().strip() if el else ""
+
+    def href(selector):
+        el = card.query_selector(selector)
+        return el.get_attribute("href") or "" if el else ""
+
+    title = text("h3, h2, .card-title, .consultation-title")
+    description = text(".card-text, .description, .organisme")
+    url = href("a")
+    date = text(".date, .card-date, time")
+
+    if url and not url.startswith("http"):
+        url = f"{_BASE}{url}"
+
+    return {
+        "name": title,
+        "description": description,
+        "url": url or base_url,
+        "raw_date": date,
+    }
+
+
+def _normalise(raw: dict) -> dict:
+    """Convert extracted card data to standard schema."""
+    raw_date = raw.get("raw_date") or ""
+    try:
+        publication_date = (
+            datetime.fromisoformat(raw_date[:10]).date().isoformat() if raw_date else ""
+        )
+    except ValueError:
+        publication_date = raw_date
+
+    return {
+        "name": raw.get("name", ""),
+        "url": raw.get("url", _BASE),
+        "source": "Nukema",
+        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "publication_date": publication_date,
+        "deadline": "",
+        "description": raw.get("description", ""),
+    }
