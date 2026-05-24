@@ -5,8 +5,9 @@ Method: REST API (OpenData BOAMP v2.1)
 """
 
 import os
-import requests
 from datetime import datetime, timedelta, timezone
+
+from scraper_utils import retry_get
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; research-bot/1.0)",
@@ -103,10 +104,10 @@ def fetch() -> list[dict]:
             }
 
             try:
-                resp = requests.get(
+                resp = retry_get(
                     BOAMP_API_URL, headers=HEADERS, params=params, timeout=15
                 )
-            except requests.RequestException:
+            except Exception:
                 break
 
             if resp.status_code != 200:
