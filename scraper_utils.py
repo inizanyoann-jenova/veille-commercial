@@ -19,6 +19,7 @@ def retry_get(
     url: str,
     *,
     params: dict | None = None,
+    headers: dict | None = None,
     timeout: int = 30,
     rate_delay: float = _DEFAULT_RATE_DELAY,
     retries: int = _MAX_RETRIES,
@@ -33,7 +34,7 @@ def retry_get(
             delay = _BASE_BACKOFF * (2 ** (attempt - 1))
             time.sleep(delay)
         try:
-            resp = requests.get(url, params=params, timeout=timeout)
+            resp = requests.get(url, params=params, headers=headers, timeout=timeout)
             if resp.status_code == 429:
                 retry_after = int(resp.headers.get("retry-after", _BASE_BACKOFF * 2))
                 time.sleep(retry_after)
