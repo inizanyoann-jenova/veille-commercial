@@ -125,7 +125,10 @@ def _parse_date(entry) -> str:
     return ""
 
 
-def _collect_feed(territoire: str, nom: str, feed_url: str) -> list[dict]:
+_NOMS_INSTITUTIONS = {nom for _, nom, _ in FLUX_INSTITUTIONS}
+
+
+def _collect_feed(territoire: str, nom: str, feed_url: str, type_opp: str) -> list[dict]:
     """Parse one RSS feed and return relevant items."""
     try:
         feed = feedparser.parse(feed_url)
@@ -140,7 +143,7 @@ def _collect_feed(territoire: str, nom: str, feed_url: str) -> list[dict]:
         if not _is_relevant(title, summary):
             continue
 
-        results.append(_normalise(entry, territoire, nom, feed_url))
+        results.append(_normalise(entry, territoire, nom, feed_url, type_opp))
 
     return results
 
@@ -152,13 +155,15 @@ def fetch() -> list[dict]:
     """
     results = []
 
-    for territoire, nom, url in FLUX_PRESSE + FLUX_INSTITUTIONS:
-        results.extend(_collect_feed(territoire, nom, url))
+    for territoire, nom, url in FLUX_PRESSE:
+        results.extend(_collect_feed(territoire, nom, url, "Presse"))
+    for territoire, nom, url in FLUX_INSTITUTIONS:
+        results.extend(_collect_feed(territoire, nom, url, "Institution"))
 
     return results
 
 
-def _normalise(entry, territoire: str, nom: str, feed_url: str) -> dict:
+def _normalise(entry, territoire: str, nom: str, feed_url: str, type_opp: str) -> dict:
     """Convert raw RSS entry to standard schema."""
     title = entry.get("title") or ""
     summary = entry.get("summary") or entry.get("description") or ""
@@ -173,4 +178,5 @@ def _normalise(entry, territoire: str, nom: str, feed_url: str) -> dict:
         "deadline": "",
         "territoire": territoire,
         "description": summary[:500],
+        "type_opportunite": type_opp,
     }
