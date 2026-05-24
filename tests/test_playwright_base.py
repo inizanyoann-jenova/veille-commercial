@@ -33,7 +33,7 @@ def test_paginate_no_next_button():
 
     page = MagicMock()
     page.query_selector.return_value = None
-    result = paginate(page, ".next", max_pages=5)
+    result = paginate(page, ".next")
     assert result is False
 
 
@@ -44,7 +44,7 @@ def test_paginate_clicks_next():
     btn = MagicMock()
     btn.is_enabled.return_value = True
     page.query_selector.side_effect = [btn, None]
-    paginate(page, ".next", max_pages=3)
+    paginate(page, ".next")
     btn.click.assert_called_once()
 
 
@@ -52,6 +52,7 @@ def test_login_returns_true_on_success():
     from playwright_base import login
 
     page = MagicMock()
+    page.query_selector.return_value = None  # no error elements → login succeeded
     selectors = {"email": "#email", "password": "#pwd", "submit": "button[type=submit]"}
     result = login(page, "https://example.com/login", "u@u.com", "pass", selectors)
     assert result is True
