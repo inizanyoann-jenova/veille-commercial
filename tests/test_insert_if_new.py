@@ -53,7 +53,7 @@ def test_insert_if_new_no_log_when_too_old(db, caplog):
     with caplog.at_level(logging.WARNING, logger="scraper_utils"):
         result = insert_if_new(db, t, known)
     assert result is False
-    assert not any("date" in r.message.lower() and "T-002" in r.message for r in caplog.records)
+    assert len(caplog.records) == 0
 
 
 def test_insert_if_new_inserts_valid_tender(db):
@@ -71,3 +71,12 @@ def test_insert_if_new_rejects_duplicate(db):
     known: set = {"T-004"}
     result = insert_if_new(db, t, known)
     assert result is False
+
+
+def test_insert_if_new_rejects_invalid_date_string(db):
+    """Publication_date est une chaîne ISO invalide : tender rejeté sans exception."""
+    t = _make_tender(id="T-005", publication_date="not-a-date")
+    known: set = set()
+    result = insert_if_new(db, t, known)
+    assert result is False
+    assert "T-005" not in known
