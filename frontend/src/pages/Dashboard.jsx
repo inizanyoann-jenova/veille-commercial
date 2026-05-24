@@ -7,6 +7,7 @@ export default function Dashboard() {
   const [status, setStatus] = useState('Tous')
   const [secteur, setSecteur] = useState('Public')
   const [searchText, setSearchText] = useState('')
+  const [gonogo, setGonogo] = useState('Tous')
   const [selectedId, setSelectedId] = useState(null)
 
   return (
@@ -16,9 +17,11 @@ export default function Dashboard() {
         status={status}
         secteur={secteur}
         searchText={searchText}
+        gonogo={gonogo}
         onStatusChange={setStatus}
         onSecteurChange={setSecteur}
         onSearchChange={setSearchText}
+        onGonogoChange={setGonogo}
         onRowClick={setSelectedId}
       />
       <TenderDetail tenderId={selectedId} onClose={() => setSelectedId(null)} />
