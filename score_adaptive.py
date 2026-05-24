@@ -6,10 +6,44 @@ from database import SessionLocal
 from models import ScoreWeight, Tender
 
 _STOP_WORDS = {
-    "le", "la", "les", "de", "du", "des", "un", "une", "et", "en", "au", "aux",
-    "sur", "pour", "par", "dans", "avec", "qui", "que", "ne", "pas", "plus",
-    "marché", "travaux", "fourniture", "service", "services", "accord", "cadre",
-    "lot", "prestation", "mise", "place", "aux", "son", "ses", "leur", "leurs",
+    "le",
+    "la",
+    "les",
+    "de",
+    "du",
+    "des",
+    "un",
+    "une",
+    "et",
+    "en",
+    "au",
+    "aux",
+    "sur",
+    "pour",
+    "par",
+    "dans",
+    "avec",
+    "qui",
+    "que",
+    "ne",
+    "pas",
+    "plus",
+    "marché",
+    "travaux",
+    "fourniture",
+    "service",
+    "services",
+    "accord",
+    "cadre",
+    "lot",
+    "prestation",
+    "mise",
+    "place",
+    "aux",
+    "son",
+    "ses",
+    "leur",
+    "leurs",
 }
 
 _POSITIVE_STATUSES = {"Soumis", "Gagné"}
@@ -33,16 +67,24 @@ def recompute_adaptive_scores(db=None) -> int:
     if db is None:
         db = SessionLocal()
     try:
-        pos_tenders = db.query(Tender).filter(
-            Tender.status.in_(_POSITIVE_STATUSES),
-            Tender.is_blacklisted == False,
-            Tender.title != None,
-        ).all()
-        neg_tenders = db.query(Tender).filter(
-            Tender.status.in_(_NEGATIVE_STATUSES),
-            Tender.is_blacklisted == False,
-            Tender.title != None,
-        ).all()
+        pos_tenders = (
+            db.query(Tender)
+            .filter(
+                Tender.status.in_(_POSITIVE_STATUSES),
+                Tender.is_blacklisted.is_(False),
+                Tender.title.is_not(None),
+            )
+            .all()
+        )
+        neg_tenders = (
+            db.query(Tender)
+            .filter(
+                Tender.status.in_(_NEGATIVE_STATUSES),
+                Tender.is_blacklisted.is_(False),
+                Tender.title.is_not(None),
+            )
+            .all()
+        )
 
         if len(pos_tenders) + len(neg_tenders) < _MIN_DECISIONS:
             return 0
@@ -74,23 +116,35 @@ def recompute_adaptive_scores(db=None) -> int:
                 sw.weight_nogo = wnogo
                 sw.updated_at = now
             else:
-                db.add(ScoreWeight(keyword=token, weight_go=wgo, weight_nogo=wnogo, updated_at=now))
+                db.add(
+                    ScoreWeight(
+                        keyword=token, weight_go=wgo, weight_nogo=wnogo, updated_at=now
+                    )
+                )
         db.commit()
 
         # Scorer les tenders non décidés
-        undecided = db.query(Tender).filter(
-            Tender.status.notin_(list(_POSITIVE_STATUSES | _NEGATIVE_STATUSES)),
-            Tender.is_blacklisted == False,
-        ).all()
+        undecided = (
+            db.query(Tender)
+            .filter(
+                Tender.status.notin_(list(_POSITIVE_STATUSES | _NEGATIVE_STATUSES)),
+                Tender.is_blacklisted.is_(False),
+            )
+            .all()
+        )
 
         updated = 0
         for t in undecided:
             tokens = _tokenize((t.title or "") + " " + (t.description or ""))
             if not tokens:
                 continue
-            raw = sum(weights[tok][0] - weights[tok][1] for tok in tokens if tok in weights)
+            raw = sum(
+                weights[tok][0] - weights[tok][1] for tok in tokens if tok in weights
+            )
             # Normalisation sigmoïde-like vers 0–100
-            normalized = int(50 + 50 * max(-1.0, min(1.0, raw / max(len(tokens) * 0.05, 1))))
+            normalized = int(
+                50 + 50 * max(-1.0, min(1.0, raw / max(len(tokens) * 0.05, 1)))
+            )
             t.adaptive_score = normalized
             updated += 1
 
