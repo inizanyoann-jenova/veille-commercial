@@ -1,4 +1,6 @@
-import sys, os
+import sys
+import os
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import pytest
@@ -11,16 +13,20 @@ from models import Base
 @pytest.fixture
 def db():
     from source_registry import Source  # noqa
-    from models import ScraperRun       # noqa
+    from models import ScraperRun  # noqa
+
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     session = Session()
-    from source_registry import Source
+
     s = Source(
-        name="Test Source", url="https://example.com",
-        category="Public", is_validated=True,
-        ping_failures_count=0, last_ping_at=None,
+        name="Test Source",
+        url="https://example.com",
+        category="Public",
+        is_validated=True,
+        ping_failures_count=0,
+        last_ping_at=None,
     )
     session.add(s)
     session.commit()
@@ -30,6 +36,7 @@ def db():
 
 def test_ping_success_resets_failures(db):
     from source_registry import _ping_source, Source
+
     source = db.query(Source).filter(Source.name == "Test Source").first()
     source.ping_failures_count = 2
 
@@ -46,6 +53,7 @@ def test_ping_success_resets_failures(db):
 
 def test_ping_failure_increments_counter(db):
     from source_registry import _ping_source, Source
+
     source = db.query(Source).filter(Source.name == "Test Source").first()
     source.ping_failures_count = 1
 
@@ -59,6 +67,7 @@ def test_ping_failure_increments_counter(db):
 
 def test_ping_3_failures_invalidates_source(db):
     from source_registry import _ping_source, Source
+
     source = db.query(Source).filter(Source.name == "Test Source").first()
     source.ping_failures_count = 2
 
@@ -72,6 +81,7 @@ def test_ping_3_failures_invalidates_source(db):
 
 def test_ping_http_4xx_increments_failures(db):
     from source_registry import _ping_source, Source
+
     source = db.query(Source).filter(Source.name == "Test Source").first()
     source.ping_failures_count = 0
 
