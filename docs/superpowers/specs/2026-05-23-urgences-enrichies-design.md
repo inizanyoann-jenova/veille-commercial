@@ -57,7 +57,7 @@ Remplacer le dict retourné par :
 }
 ```
 
-**Note :** les scrapers peuplent déjà `url` dans leur dict de résultat (ex: `scraper_devbanks.py`, `scraper_isdb.py`). Il faut vérifier comment ces dicts sont convertis en objets `Tender` pour s'assurer que `url` est bien propagé.
+**Note importante :** les scrapers retournent bien `url` dans leur dict (ex: `scraper_boamp.py:164`, `scraper_decp.py:150`), mais le endpoint `/api/collect` dans `backend/main.py:1047` appelle `func()` sans capturer ni persister le résultat — c'est un bug pré-existant hors scope. Conséquence : la colonne `url` sera `NULL` pour les tenders actuels et nouvellement collectés. Le lien externe ne s'affichera que si le champ est renseigné (conditionnellement). La correction du mécanisme de collecte est un travail séparé.
 
 ---
 
