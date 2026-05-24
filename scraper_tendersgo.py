@@ -1,112 +1,133 @@
-import hashlib
-import logging
+"""
+TendersGo — appels d'offres SSI/incendie/CMSI/vidéosurveillance France (La Réunion + Mayotte).
+Method: JS-rendered scraping via Playwright avec authentification.
+Credentials: TENDERSGO_EMAIL et TENDERSGO_PASSWORD.
+"""
+
+import os
+from datetime import datetime, timezone
 
 from playwright.sync_api import sync_playwright
 
-from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
-from filters import classify_relevance
-from models import Tender
-from playwright_base import extract_cards, login, paginate
-from credential_manager import CredentialManager
-from scraper_utils import parse_date, load_existing_ids, insert_if_new, now_utc
-
-_log = logging.getLogger(__name__)
-
 _LOGIN_URL = "https://app.tendersgo.com/login"
 _SEARCH_URL = "https://app.tendersgo.com/tenders?country=FR&keywords=SSI+incendie+videosurveillance+CCTV+CMSI"
+_BASE = "https://app.tendersgo.com"
+_CARD = ".tender-card, .tender-item, article.tender, li.tender, tr.tender-row"
+_NEXT = "a[aria-label='Next page'], .pagination-next a, button.next-page"
+_MAX_PAGES = 5
+
 _LOGIN_SELECTORS = {
     "email": "input[type='email'], input[name='email'], #email",
     "password": "input[type='password'], input[name='password'], #password",
     "submit": "button[type='submit'], input[type='submit']",
 }
-_CARD = ".tender-card, .tender-item, article.tender, li.tender, tr.tender-row"
-_FIELDS = {
-    "title": "h3, h2, .tender-title, .title",
-    "description": ".tender-description, .description, .country",
-    "url": "a@href",
-    "date": ".tender-date, .date, time",
-}
-_NEXT = "a[aria-label='Next page'], .pagination-next a, button.next-page"
 
 
-def fetch_tendersgo_tenders() -> int:
-    creds = CredentialManager.get("tendersgo")
-    if not creds:
-        _log.warning("Tenders Go : aucun identifiant configuré — scraper ignoré")
-        init_db()
-        db = SessionLocal()
-        try:
-            _run_id = start_scraper_run(db, "Tenders Go")
-            finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error="CREDENTIALS_MISSING")
-        finally:
-            db.close()
-        return 0
-    init_db()
-    db = SessionLocal()
-    inserted = 0
-    _run_id = start_scraper_run(db, "Tenders Go")
+def _login(page, email: str, password: str) -> bool:
     try:
-        existing_ids = load_existing_ids(db)
-        nb_found     = 0
+        page.goto(_LOGIN_URL, timeout=30_000)
+        page.wait_for_load_state("networkidle", timeout=30_000)
+        page.fill(_LOGIN_SELECTORS["email"], email)
+        page.fill(_LOGIN_SELECTORS["password"], password)
+        page.click(_LOGIN_SELECTORS["submit"])
+        page.wait_for_load_state("networkidle", timeout=20_000)
+        return _LOGIN_URL not in page.url
+    except Exception:
+        return False
 
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True)
+
+def fetch() -> list[dict]:
+    """
+    Returns TendersGo tenders for France (La Réunion + Mayotte) filtered on SSI/incendie keywords.
+    Requires TENDERSGO_EMAIL and TENDERSGO_PASSWORD environment variables.
+    Each item: name, url, source, date_found + domain-specific fields.
+    """
+    email = os.getenv("TENDERSGO_EMAIL", "")
+    password = os.getenv("TENDERSGO_PASSWORD", "")
+
+    if not email or not password:
+        return []
+
+    results = []
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
             try:
-                page = browser.new_page()
-                try:
-                    if not login(page, _LOGIN_URL, creds[0], creds[1], _LOGIN_SELECTORS):
-                        _log.warning("Tenders Go : login échoué — vérifiez vos identifiants dans Paramètres")
-                        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error="Login échoué")
-                        return 0
-                    page.goto(_SEARCH_URL, timeout=30000)
-                    page.wait_for_load_state("networkidle", timeout=30000)
-                    page_count = 0
-                    while page_count < 5:
-                        cards = extract_cards(page, _CARD, _FIELDS)
-                        nb_found += len(cards)
-                        for card in cards:
-                            title = card.get("title", "").strip()
-                            desc = card.get("description", "").strip()
-                            relevant, extra_tags = classify_relevance(f"{title} {desc}")
-                            if not relevant:
-                                continue
-                            url = card.get("url", "") or _SEARCH_URL
-                            if url and not url.startswith("http"):
-                                url = f"https://app.tendersgo.com{url}"
-                            tid = f"TENDERSGO-{hashlib.md5(f'{title}{url}'.encode()).hexdigest()}"
-                            t = Tender(
-                                id=tid, title=title, description=desc, source=url,
-                                publication_date=parse_date(card.get("date")),
-                                date_extraction=now_utc(),
-                                deadline=None, status="À qualifier",
-                                relevance_score=0, is_maintenance=False,
-                                llm_analysis=None, secteur="International",
-                                type_opportunite="Marché International",
-                                tags=extra_tags,
-                            )
-                            if insert_if_new(db, t, existing_ids):
-                                inserted += 1
-                        if not paginate(page, _NEXT):
-                            break
-                        page_count += 1
-                finally:
-                    page.close()
+                if not _login(page, email, password):
+                    return results
+
+                page.goto(_SEARCH_URL, timeout=30_000)
+                page.wait_for_load_state("networkidle", timeout=30_000)
+
+                for _ in range(_MAX_PAGES):
+                    cards = page.query_selector_all(_CARD)
+                    for card in cards:
+                        raw = _extract_card(card)
+                        if raw.get("name"):
+                            results.append(_normalise(raw))
+
+                    next_btn = page.query_selector(_NEXT)
+                    if not next_btn:
+                        break
+                    next_btn.click()
+                    try:
+                        page.wait_for_load_state("networkidle", timeout=15_000)
+                    except Exception:
+                        break
+
             finally:
-                browser.close()
+                page.close()
+        finally:
+            browser.close()
 
-        if inserted:
-            db.commit()
-        finish_scraper_run(db, _run_id, nb_found=nb_found, nb_new=inserted)
-        _log.info("Tenders Go : %d trouvés, %d inséré(s)", nb_found, inserted)
-    except Exception as exc:
-        _log.exception("Tenders Go : erreur collecte")
-        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
-        raise
-    finally:
-        db.close()
-    return inserted
+    return results
 
 
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    _log.info("Tenders Go : %d AO insérés", fetch_tendersgo_tenders())
+def _extract_card(card) -> dict:
+    """Extract raw fields from a Playwright element handle."""
+
+    def text(selector):
+        el = card.query_selector(selector)
+        return el.inner_text().strip() if el else ""
+
+    def href(selector):
+        el = card.query_selector(selector)
+        return el.get_attribute("href") or "" if el else ""
+
+    title = text("h3, h2, .tender-title, .title")
+    description = text(".tender-description, .description, .country")
+    url = href("a")
+    date = text(".tender-date, .date, time")
+
+    if url and not url.startswith("http"):
+        url = f"{_BASE}{url}"
+
+    return {
+        "name": title,
+        "description": description,
+        "url": url or _SEARCH_URL,
+        "raw_date": date,
+    }
+
+
+def _normalise(raw: dict) -> dict:
+    """Convert extracted card data to standard schema."""
+    raw_date = raw.get("raw_date") or ""
+    try:
+        publication_date = (
+            datetime.fromisoformat(raw_date[:10]).date().isoformat() if raw_date else ""
+        )
+    except ValueError:
+        publication_date = raw_date
+
+    return {
+        "name": raw.get("name", ""),
+        "url": raw.get("url", _SEARCH_URL),
+        "source": "TendersGo",
+        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "publication_date": publication_date,
+        "deadline": "",
+        "description": raw.get("description", ""),
+    }
