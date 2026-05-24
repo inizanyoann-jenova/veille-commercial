@@ -1,4 +1,3 @@
-import os
 import smtplib
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
@@ -22,7 +21,7 @@ def build_digest(since_hours: int = 24, db=None) -> dict | None:
         new_tenders = (
             db.query(Tender)
             .filter(
-                Tender.is_blacklisted == False,
+                Tender.is_blacklisted.is_(False),
                 Tender.publication_date >= cutoff,
             )
             .order_by(Tender.relevance_score.desc())
@@ -38,10 +37,10 @@ def build_digest(since_hours: int = 24, db=None) -> dict | None:
         urgences = (
             db.query(Tender)
             .filter(
-                Tender.is_blacklisted == False,
+                Tender.is_blacklisted.is_(False),
                 Tender.relevance_score >= SCORE_GO,
                 Tender.status.notin_(["Gagné", "Perdu"]),
-                Tender.deadline != None,
+                Tender.deadline.is_not(None),
                 Tender.deadline >= now,
                 Tender.deadline <= urgence_limit,
             )
