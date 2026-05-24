@@ -81,7 +81,7 @@ def fetch() -> list[dict]:
     Each item: name, url, source, date_found + domain-specific fields.
     """
     results = []
-    days_back = int(os.getenv("SCRAPER_WINDOW_DAYS", "90"))
+    days_back = int(os.getenv("SCRAPER_WINDOW_DAYS", "30"))
     date_min = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime(
         "%Y-%m-%d"
     )
