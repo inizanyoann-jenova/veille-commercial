@@ -296,6 +296,7 @@ def _tender_to_dict(t: Tender) -> dict:
         "id": t.id,
         "title": t.title or "Sans titre",
         "description": t.description or "",
+        "url": t.url,
         "source": t.source or "",
         "publication_date": _ser_dt(t.publication_date),
         "date_extraction": _ser_dt(t.date_extraction),
