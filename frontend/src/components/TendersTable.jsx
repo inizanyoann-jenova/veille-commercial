@@ -3,6 +3,7 @@ import { useTenders, useAnalyzeTender } from '../hooks/useTenders'
 
 const STATUTS = ['Tous', 'À qualifier', 'En cours', 'Soumis', 'Gagné', 'Perdu']
 const SECTEURS = ['Public', 'Privé', 'International']
+const GONOGOS = ['Tous', 'GO', 'Étudier', 'Passer']
 
 function GonogoBadge({ gonogo }) {
   if (!gonogo) return <span className="text-ocean-muted text-xs">—</span>
@@ -60,9 +61,11 @@ export default function TendersTable({
   status,
   secteur,
   searchText,
+  gonogo,
   onStatusChange,
   onSecteurChange,
   onSearchChange,
+  onGonogoChange,
   onRowClick,
 }) {
   const { data: tenders = [], isLoading, isError } = useTenders({ status, secteur })
@@ -70,12 +73,18 @@ export default function TendersTable({
   const { mutate: triggerAnalysis } = useAnalyzeTender()
 
   const filtered = useMemo(() => {
-    if (!searchText) return tenders
+    let result = tenders
+    if (gonogo && gonogo !== 'Tous') {
+      if (gonogo === 'GO') result = result.filter((t) => t.gonogo === 'GO')
+      else if (gonogo === 'Étudier') result = result.filter((t) => t.gonogo === 'Étudier')
+      else if (gonogo === 'Passer') result = result.filter((t) => t.gonogo != null && t.gonogo !== 'GO' && t.gonogo !== 'Étudier')
+    }
+    if (!searchText) return result
     const q = searchText.toLowerCase()
-    return tenders.filter((t) =>
+    return result.filter((t) =>
       `${t.title} ${t.domaine} ${t.territoire}`.toLowerCase().includes(q)
     )
-  }, [tenders, searchText])
+  }, [tenders, searchText, gonogo])
 
   const handleAnalyze = useCallback((id) => {
     setAnalyzingIds((prev) => new Set([...prev, id]))
@@ -110,6 +119,16 @@ export default function TendersTable({
         >
           {SECTEURS.map((s) => (
             <option key={s}>{s}</option>
+          ))}
+        </select>
+        <select
+          value={gonogo ?? 'Tous'}
+          onChange={(e) => onGonogoChange?.(e.target.value)}
+          aria-label="Filtrer par GO/NO-GO"
+          className="font-sans text-sm border border-ocean-border rounded-lg px-2 py-1.5 bg-ocean-navy text-ocean-text focus:border-ocean-cyan/20 focus:outline-none"
+        >
+          {GONOGOS.map((g) => (
+            <option key={g}>{g}</option>
           ))}
         </select>
         <input
