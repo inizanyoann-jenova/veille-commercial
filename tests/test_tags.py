@@ -1,4 +1,6 @@
-import sys, os
+import sys
+import os
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import pytest
@@ -10,7 +12,8 @@ from models import Base, Tender
 @pytest.fixture
 def db():
     from source_registry import Source  # noqa
-    from models import ScraperRun       # noqa
+    from models import ScraperRun  # noqa
+
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
@@ -29,4 +32,5 @@ def test_tender_tags_default_empty(db):
 
 def test_tender_tags_field_exists(db):
     from models import Tender as T
+
     assert hasattr(T, "tags")
