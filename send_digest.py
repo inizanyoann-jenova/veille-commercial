@@ -1,6 +1,7 @@
 """Script autonome — planifiable via Planificateur de tâches Windows.
 Usage : python send_digest.py
 """
+
 import os
 import sys
 from dotenv import load_dotenv
@@ -19,7 +20,7 @@ if not smtp_config["user"] or not smtp_config["to"]:
     print("❌ DIGEST_SMTP_USER et DIGEST_TO doivent être configurés dans .env")
     sys.exit(1)
 
-from email_digest import send_digest
+from email_digest import send_digest  # noqa: E402
 
 sent = send_digest(smtp_config)
-print(f"✅ Digest envoyé" if sent else "ℹ️  Aucun nouveau marché à envoyer")
+print("✅ Digest envoyé" if sent else "ℹ️  Aucun nouveau marché à envoyer")
