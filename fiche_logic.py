@@ -2,8 +2,14 @@ SCORE_GO = 65
 SCORE_ETUDE = 35
 
 _KW_TITRE = [
-    "ssi", "cmsi", "détection", "alarme incendie", "désenfumage",
-    "vidéosurveillance", "cctv", "courants faibles",
+    "ssi",
+    "cmsi",
+    "détection",
+    "alarme incendie",
+    "désenfumage",
+    "vidéosurveillance",
+    "cctv",
+    "courants faibles",
 ]
 
 
@@ -20,24 +26,34 @@ def _compute_fiche_data(
     # Validation défensive des paramètres
     score = int(score) if score is not None else 0
     score = max(0, min(100, score))
-    domaine    = str(domaine or "")
+    domaine = str(domaine or "")
     territoire = str(territoire or "")
-    title      = str(title or "")
-    a          = a if isinstance(a, dict) else {}
+    title = str(title or "")
+    a = a if isinstance(a, dict) else {}
     if jours_restants is not None:
         jours_restants = int(jours_restants)
 
-    if "🔥 SSI" in domaine:          sm = 45
-    elif "💨 CMSI" in domaine:       sm = 40
-    elif "📷 Vidéo" in domaine:      sm = 40
-    elif "⚡ Courants" in domaine:   sm = 30
-    else:                              sm = 5
+    if "🔥 SSI" in domaine:
+        sm = 45
+    elif "💨 CMSI" in domaine:
+        sm = 40
+    elif "📷 Vidéo" in domaine:
+        sm = 40
+    elif "⚡ Courants" in domaine:
+        sm = 30
+    else:
+        sm = 5
 
-    if "La Réunion" in territoire or "Mayotte" in territoire:   sg = 30
-    elif "Madagascar" in territoire or "Maurice" in territoire:  sg = 22
-    elif "Comores" in territoire:                                 sg = 18
-    elif "France" in territoire:                                  sg = 10
-    else:                                                         sg = 0
+    if "La Réunion" in territoire or "Mayotte" in territoire:
+        sg = 30
+    elif "Madagascar" in territoire or "Maurice" in territoire:
+        sg = 22
+    elif "Comores" in territoire:
+        sg = 18
+    elif "France" in territoire:
+        sg = 10
+    else:
+        sg = 0
 
     title_l = title.lower()
     _hits_titre = sum(1 for kw in _KW_TITRE if kw in title_l)
@@ -99,81 +115,122 @@ def _compute_fiche_data(
 
     atouts: list = []
     if sm >= 40:
-        atouts.append("✅ **Cœur de métier** — SSI/CMSI/Vidéo : DEF OI dispose de l'expertise technique, des certifications (Qualifelec, APSAD) et des références pour répondre")
+        atouts.append(
+            "✅ **Cœur de métier** — SSI/CMSI/Vidéo : DEF OI dispose de l'expertise technique, des certifications (Qualifelec, APSAD) et des références pour répondre"
+        )
     elif sm >= 30:
-        atouts.append("✅ **Périmètre DEF OI** — Courants faibles : prestation complémentaire au SSI, souvent regroupée dans les mêmes marchés")
+        atouts.append(
+            "✅ **Périmètre DEF OI** — Courants faibles : prestation complémentaire au SSI, souvent regroupée dans les mêmes marchés"
+        )
     if sg == 30:
-        atouts.append("✅ **Présence locale 974/976** — DEF OI connaît les donneurs d'ordre, les sites et les exigences locales ; avantage concurrentiel fort sur les entreprises métropolitaines")
+        atouts.append(
+            "✅ **Présence locale 974/976** — DEF OI connaît les donneurs d'ordre, les sites et les exigences locales ; avantage concurrentiel fort sur les entreprises métropolitaines"
+        )
     elif sg >= 18:
-        atouts.append("✅ **Zone Océan Indien** — axe de développement stratégique de DEF OI ; peu de concurrents locaux qualifiés SSI/CMSI sur ces marchés")
+        atouts.append(
+            "✅ **Zone Océan Indien** — axe de développement stratégique de DEF OI ; peu de concurrents locaux qualifiés SSI/CMSI sur ces marchés"
+        )
     if smaint == 10:
-        atouts.append("✅ **Maintenance** — CA récurrent et prévisible, taux de marge élevé, et levier pour consolider la relation client sur le long terme")
+        atouts.append(
+            "✅ **Maintenance** — CA récurrent et prévisible, taux de marge élevé, et levier pour consolider la relation client sur le long terme"
+        )
     if sk == 15:
-        atouts.append("✅ **Signal direct** — les mots-clés métier SSI/CMSI/Vidéo apparaissent dans le titre : opportunité clairement identifiable sans ambiguïté")
+        atouts.append(
+            "✅ **Signal direct** — les mots-clés métier SSI/CMSI/Vidéo apparaissent dans le titre : opportunité clairement identifiable sans ambiguïté"
+        )
     if not atouts:
-        atouts.append("ℹ️ **Pertinence limitée** — aucun marqueur fort du cœur de métier DEF OI (SSI/CMSI/Vidéo) ni du territoire prioritaire (974/976) ; étudier le CCTP complet avant d'engager des ressources")
+        atouts.append(
+            "ℹ️ **Pertinence limitée** — aucun marqueur fort du cœur de métier DEF OI (SSI/CMSI/Vidéo) ni du territoire prioritaire (974/976) ; étudier le CCTP complet avant d'engager des ressources"
+        )
 
     concurrents = a.get("marques_concurrentes_citees", [])
     risques: list = []
     if concurrents:
-        risques.append(f"⚠️ Concurrents nommés dans le DCE : {', '.join(concurrents[:4])}")
+        risques.append(
+            f"⚠️ Concurrents nommés dans le DCE : {', '.join(concurrents[:4])}"
+        )
     if a.get("risques_penalites"):
         risques.append(f"⚠️ {a['risques_penalites']}")
     if jours_restants is not None and 0 <= jours_restants <= 14:
         risques.append("⚠️ Délai très court — risque de réponse technique insuffisante")
 
     return {
-        "sm": sm, "sg": sg, "sk": sk, "smaint": smaint,
-        "label_action": label_action, "steps": steps,
-        "atouts": atouts, "risques": risques,
+        "sm": sm,
+        "sg": sg,
+        "sk": sk,
+        "smaint": smaint,
+        "label_action": label_action,
+        "steps": steps,
+        "atouts": atouts,
+        "risques": risques,
     }
 
 
-import re as _re
+import re as _re  # noqa: E402
 
 _HISTORY_STOP = {
-    'le', 'la', 'les', 'de', 'du', 'des', 'un', 'une', 'et', 'en', 'au', 'aux',
-    'sur', 'pour', 'par', 'dans', 'avec', 'marche', 'travaux', 'fourniture',
-    'prestation', 'services', 'accord', 'cadre', 'lot', 'mise', 'place',
+    "le",
+    "la",
+    "les",
+    "de",
+    "du",
+    "des",
+    "un",
+    "une",
+    "et",
+    "en",
+    "au",
+    "aux",
+    "sur",
+    "pour",
+    "par",
+    "dans",
+    "avec",
+    "marche",
+    "travaux",
+    "fourniture",
+    "prestation",
+    "services",
+    "accord",
+    "cadre",
+    "lot",
+    "mise",
+    "place",
 }
 
 
 def get_acheteur_history(db, tender) -> dict:
     from models import Tender as _Tender
 
-    title = (tender.title or '').lower()
-    tokens = [
-        t for t in _re.findall(r'[a-z]{4,}', title)
-        if t not in _HISTORY_STOP
-    ][:3]
+    title = (tender.title or "").lower()
+    tokens = [t for t in _re.findall(r"[a-z]{4,}", title) if t not in _HISTORY_STOP][:3]
 
     if len(tokens) < 2:
-        return {'nb_total': 0}
+        return {"nb_total": 0}
 
     candidates = (
         db.query(_Tender)
-        .filter(_Tender.id != tender.id, _Tender.is_blacklisted == False)
+        .filter(_Tender.id != tender.id, _Tender.is_blacklisted.is_(False))
         .order_by(_Tender.publication_date.desc())
         .limit(50)
         .all()
     )
 
     matches = [
-        c for c in candidates
-        if all(tok in (c.title or "").lower() for tok in tokens)
+        c for c in candidates if all(tok in (c.title or "").lower() for tok in tokens)
     ][:10]
 
     if len(matches) < 2:
-        return {'nb_total': 0}
+        return {"nb_total": 0}
 
     nb_go = sum(1 for t in matches if t.relevance_score >= SCORE_GO)
     nb_gagnes = sum(1 for t in matches if t.status == "Gagné")
     montant_gagne = sum(t.amount for t in matches if t.status == "Gagné" and t.amount)
 
     return {
-        'nb_total': len(matches),
-        'nb_go': nb_go,
-        'nb_gagnes': nb_gagnes,
-        'montant_total_gagne': montant_gagne,
-        'derniers': matches[:3],
+        "nb_total": len(matches),
+        "nb_go": nb_go,
+        "nb_gagnes": nb_gagnes,
+        "montant_total_gagne": montant_gagne,
+        "derniers": matches[:3],
     }
