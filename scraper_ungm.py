@@ -1,123 +1,160 @@
-import hashlib
-import logging
+"""
+UNGM (United Nations Global Marketplace) — appels d'offres Océan Indien.
+Source globale : filtrée par mots-clés SSI/incendie puis par pays OI.
+Method: REST API POST (UNGM SearchNotices).
+"""
 
-from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
-from filters import classify_relevance
-from models import Tender
-from scraper_utils import parse_date, retry_post, load_existing_ids, insert_if_new, now_utc
+import requests
+from datetime import datetime, timezone
 
-_log = logging.getLogger(__name__)
-
-UNGM_SEARCH_URL = "https://www.ungm.org/Public/Notice/SearchNotices"
-
-_UNGM_KEYWORDS = [
-    "fire detection", "SSI", "fire alarm", "fire safety",
-    "smoke detection", "CCTV", "surveillance", "access control",
-]
-
-_HEADERS = {
+HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; DEF-OI-Veille/1.0)",
     "Accept": "application/json, text/html, */*",
     "Content-Type": "application/json",
     "X-Requested-With": "XMLHttpRequest",
 }
 
+UNGM_SEARCH_URL = "https://www.ungm.org/Public/Notice/SearchNotices"
+
+_UNGM_KEYWORDS = [
+    "fire detection",
+    "SSI",
+    "fire alarm",
+    "fire safety",
+    "smoke detection",
+    "CCTV",
+    "surveillance",
+    "access control",
+]
+
+# Pays OI : codes ISO + noms pour filtrer les résultats globaux UNGM
+_COUNTRY_CODES_OI = ["MG", "MU", "KM", "RE", "YT", "FR", "DJ", "MZ", "TZ", "SC"]
+
+PAYS_OI = [
+    "madagascar",
+    "mauritius",
+    "île maurice",
+    "ile maurice",
+    "comoros",
+    "comores",
+    "réunion",
+    "reunion",
+    "mayotte",
+    "djibouti",
+    "mozambique",
+    "tanzania",
+    "seychelles",
+    "indian ocean",
+    "océan indien",
+]
+
+
+def _is_relevant_oi(title: str, description: str, country_code: str = "") -> bool:
+    if country_code.upper() in _COUNTRY_CODES_OI:
+        return True
+    text = f"{title} {description}".lower()
+    return any(p in text for p in PAYS_OI)
+
 
 def _search_ungm(keyword: str) -> list[dict]:
-    """Tente un POST JSON sur l'API UNGM. Retourne [] si indisponible."""
+    """POST one keyword search to UNGM API. Returns [] on failure."""
     payload = {
         "Title": keyword,
         "Description": "",
         "GoodsServices": "",
         "Deadline": None,
         "PublishedFrom": None,
-        "CountryCodes": [],
+        "CountryCodes": _COUNTRY_CODES_OI,
         "AgencyId": None,
         "Status": 0,
     }
     try:
-        resp = retry_post(UNGM_SEARCH_URL, json=payload, rate_delay=1.5)
+        resp = requests.post(UNGM_SEARCH_URL, headers=HEADERS, json=payload, timeout=30)
+        if resp.status_code != 200:
+            return []
         data = resp.json()
         if isinstance(data, list):
             return data
         if isinstance(data, dict):
             return data.get("Notices", data.get("notices", data.get("results", [])))
-    except Exception as exc:
-        _log.warning("UNGM API inaccessible pour '%s' : %s", keyword, type(exc).__name__)
+    except requests.RequestException:
+        pass
     return []
 
 
-def fetch_ungm_tenders() -> int:
-    init_db()
-    db = SessionLocal()
-    inserted = 0
-    _run_id = start_scraper_run(db, "UNGM")
+def fetch() -> list[dict]:
+    """
+    Returns UNGM tenders relevant to Indian Ocean countries.
+    Each item: name, url, source, date_found + domain-specific fields.
+    """
+    results = []
+    seen_ids = set()
 
-    try:
-        existing_ids = load_existing_ids(db)
-        nb_found     = 0
+    for keyword in _UNGM_KEYWORDS:
+        notices = _search_ungm(keyword)
 
-        for keyword in _UNGM_KEYWORDS:
-            notices = _search_ungm(keyword)
-            nb_found += len(notices)
+        for notice in notices:
+            title = (
+                notice.get("Title")
+                or notice.get("title")
+                or notice.get("NoticeTitle")
+                or ""
+            )
+            description = (
+                notice.get("Description")
+                or notice.get("description")
+                or notice.get("GoodsServices")
+                or ""
+            )
+            country = notice.get("CountryCode") or notice.get("countryCode") or ""
 
-            for notice in notices:
-                title = (notice.get("Title") or notice.get("title")
-                         or notice.get("NoticeTitle") or "")
-                description = (notice.get("Description") or notice.get("description")
-                               or notice.get("GoodsServices") or "")
-                full_text = f"{title} {description}"
+            if not title.strip():
+                continue
+            if not _is_relevant_oi(title, description, country):
+                continue
 
-                relevant, extra_tags = classify_relevance(full_text)
-                if not full_text.strip() or not relevant:
-                    continue
+            uid = notice.get("Id") or notice.get("id") or notice.get("NoticeId") or ""
+            if uid and uid in seen_ids:
+                continue
+            if uid:
+                seen_ids.add(uid)
 
-                uid = (notice.get("Id") or notice.get("id")
-                       or notice.get("NoticeId")
-                       or hashlib.md5(full_text.encode()).hexdigest())
-                tender_id = f"UNGM-{uid}"
+            results.append(_normalise(notice, title, description, uid))
 
-                deadline_raw = (notice.get("Deadline") or notice.get("deadline")
-                                or notice.get("SubmissionDeadline"))
-                pub_raw = (notice.get("PublishedOn") or notice.get("publishedOn")
-                           or notice.get("PublicationDate"))
-                url = (notice.get("Url") or notice.get("url")
-                       or f"https://www.ungm.org/Public/Notice/{uid}")
-
-                t = Tender(
-                    id=tender_id,
-                    title=title,
-                    description=description,
-                    source=url,
-                    publication_date=parse_date(pub_raw),
-                    date_extraction=now_utc(),
-                    deadline=parse_date(deadline_raw),
-                    status="À qualifier",
-                    relevance_score=0,
-                    is_maintenance=False,
-                    llm_analysis=None,
-                    secteur="Public",
-                    type_opportunite="Marché International",
-                    tags=extra_tags,
-                )
-                if insert_if_new(db, t, existing_ids):
-                    inserted += 1
-
-        if inserted:
-            db.commit()
-        finish_scraper_run(db, _run_id, nb_found=nb_found, nb_new=inserted)
-        _log.info("UNGM : %d trouvés, %d inséré(s)", nb_found, inserted)
-    except Exception as exc:
-        _log.exception("UNGM : erreur collecte")
-        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
-        raise
-    finally:
-        db.close()
-
-    return inserted
+    return results
 
 
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    count = fetch_ungm_tenders()
-    _log.info("UNGM terminé — %d marché(s)", count)
+def _normalise(notice: dict, title: str, description: str, uid: str) -> dict:
+    """Convert raw UNGM notice to standard schema."""
+
+    def _pick(*keys):
+        for k in keys:
+            v = notice.get(k)
+            if v:
+                return str(v)
+        return ""
+
+    def _to_iso(raw: str) -> str:
+        if not raw:
+            return ""
+        try:
+            return datetime.fromisoformat(raw[:10]).date().isoformat()
+        except ValueError:
+            return raw
+
+    url = _pick("Url", "url") or (
+        f"https://www.ungm.org/Public/Notice/{uid}" if uid else "https://www.ungm.org"
+    )
+
+    return {
+        "name": title,
+        "url": url,
+        "source": "UNGM",
+        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "publication_date": _to_iso(
+            _pick("PublishedOn", "publishedOn", "PublicationDate")
+        ),
+        "deadline": _to_iso(_pick("Deadline", "deadline", "SubmissionDeadline")),
+        "description": description,
+        "ungm_id": uid,
+    }
