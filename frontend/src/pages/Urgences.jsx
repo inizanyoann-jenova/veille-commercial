@@ -45,6 +45,11 @@ export default function Urgences() {
                 jours_restants={jours}
                 score={u.relevance_score}
                 source={u.source}
+                url={u.url}
+                description={u.description}
+                secteur={u.secteur}
+                amount={u.amount}
+                llm_resume={u.llm_resume}
               />
             )
           })}
