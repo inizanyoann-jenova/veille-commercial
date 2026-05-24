@@ -1,48 +1,18 @@
 """
-Utilitaires partagés par tous les scrapers DEF OI.
-
-Fournit :
-  - parse_date()        — parsing de date multi-format
-  - retry_get()         — GET avec retry exponentiel et rate limiting
-  - retry_post()        — POST avec retry exponentiel
-  - load_existing_ids() — charge les IDs tender existants (évite N+1)
-  - insert_if_new()     — insère un tender si non présent dans seen_ids
+Utilitaires réseau partagés par les scrapers DEF OI.
+Fournit retry_get() et retry_post() avec backoff exponentiel et gestion 429.
 """
+
 import logging
 import time
-from datetime import datetime, timedelta, timezone as _tz
 
 import requests
 
 _log = logging.getLogger(__name__)
 
-_DEFAULT_RATE_DELAY = 1.0   # secondes
-_MAX_RETRIES        = 3
-_BASE_BACKOFF       = 2.0   # secondes (doublé à chaque retry)
-
-
-def parse_date(value) -> datetime | None:
-    """Parse une date depuis divers formats (str, list, None). Retourne None si non parseable."""
-    if not value:
-        return None
-    if isinstance(value, list):
-        value = value[0] if value else None
-    if not value:
-        return None
-    s = str(value).strip()
-    for fmt, trunc in [
-        ("%Y-%m-%dT%H:%M:%S", 19),
-        ("%Y-%m-%d",           10),
-        ("%d/%m/%Y",           10),
-        ("%d-%m-%Y",           10),
-        ("%Y%m%d",              8),
-    ]:
-        try:
-            return datetime.strptime(s[:trunc], fmt)
-        except ValueError:
-            continue
-    _log.debug("parse_date: format non reconnu pour '%s'", s[:30])
-    return None
+_DEFAULT_RATE_DELAY = 1.0
+_MAX_RETRIES = 3
+_BASE_BACKOFF = 2.0
 
 
 def retry_get(
@@ -61,13 +31,11 @@ def retry_get(
     for attempt in range(retries):
         if attempt > 0:
             delay = _BASE_BACKOFF * (2 ** (attempt - 1))
-            _log.info("retry_get: tentative %d/%d — attente %.1fs (url=%s)", attempt + 1, retries, delay, url)
             time.sleep(delay)
         try:
             resp = requests.get(url, params=params, timeout=timeout)
             if resp.status_code == 429:
                 retry_after = int(resp.headers.get("retry-after", _BASE_BACKOFF * 2))
-                _log.warning("retry_get: 429 Too Many Requests — attente %ds", retry_after)
                 time.sleep(retry_after)
                 last_exc = requests.exceptions.HTTPError(response=resp)
                 continue
@@ -76,7 +44,6 @@ def retry_get(
             return resp
         except requests.exceptions.RequestException as exc:
             last_exc = exc
-            _log.warning("retry_get: erreur tentative %d/%d : %s", attempt + 1, retries, type(exc).__name__)
     raise last_exc  # type: ignore[misc]
 
 
@@ -84,22 +51,23 @@ def retry_post(
     url: str,
     *,
     json: dict | None = None,
+    headers: dict | None = None,
     timeout: int = 30,
     rate_delay: float = _DEFAULT_RATE_DELAY,
     retries: int = _MAX_RETRIES,
 ) -> requests.Response:
-    """POST avec retry exponentiel — même logique que retry_get."""
+    """
+    POST avec retry exponentiel — même logique que retry_get.
+    """
     last_exc: Exception | None = None
     for attempt in range(retries):
         if attempt > 0:
             delay = _BASE_BACKOFF * (2 ** (attempt - 1))
-            _log.info("retry_post: tentative %d/%d — attente %.1fs", attempt + 1, retries, delay)
             time.sleep(delay)
         try:
-            resp = requests.post(url, json=json, timeout=timeout)
+            resp = requests.post(url, json=json, headers=headers, timeout=timeout)
             if resp.status_code == 429:
                 retry_after = int(resp.headers.get("retry-after", _BASE_BACKOFF * 2))
-                _log.warning("retry_post: 429 — attente %ds", retry_after)
                 time.sleep(retry_after)
                 last_exc = requests.exceptions.HTTPError(response=resp)
                 continue
@@ -108,43 +76,49 @@ def retry_post(
             return resp
         except requests.exceptions.RequestException as exc:
             last_exc = exc
-            _log.warning("retry_post: erreur tentative %d/%d : %s", attempt + 1, retries, type(exc).__name__)
     raise last_exc  # type: ignore[misc]
 
 
-def load_existing_ids(db) -> set[str]:
-    """
-    Charge tous les IDs de tenders existants en une seule requête.
-    À appeler AVANT la boucle d'insertion pour éviter les N+1 queries.
-    """
-    from models import Tender
-    return {row[0] for row in db.query(Tender.id).all()}
+# ── Helpers DB partagés par les scrapers ──────────────────────────────────────
+
+_INSERT_MAX_AGE_DAYS = 30
 
 
-_MAX_ARTICLE_AGE_DAYS = 31  # articles plus vieux que 1 mois ignorés lors de la collecte
+def load_existing_ids(db) -> set:
+    """Retourne l'ensemble des IDs de tenders existants en base."""
+    from models import Tender as _Tender
+    return {row.id for row in db.query(_Tender.id).all()}
 
 
-def insert_if_new(db, tender_obj, seen_ids: set[str]) -> bool:
+def insert_if_new(db, tender, existing_ids: set) -> bool:
+    """Insère le tender si son ID est absent et sa date de publication valide et récente.
+
+    Règles :
+    - Rejeté si publication_date est None
+    - Rejeté si publication_date > _INSERT_MAX_AGE_DAYS jours
+    - Rejeté si id déjà dans existing_ids (doublon)
+    Mutate existing_ids : ajoute l'id inséré.
     """
-    Insère tender_obj dans db si son ID n'est pas dans seen_ids.
-    Rejette les articles sans date de publication ou publiés il y a plus de 1 mois.
-    Met à jour seen_ids. Retourne True si inséré.
-    Ne fait PAS de commit (à faire par l'appelant en batch).
-    """
-    if tender_obj.id in seen_ids:
+    from datetime import datetime as _dt, timedelta as _td
+
+    if tender.publication_date is None:
         return False
-    if not tender_obj.publication_date:
-        _log.debug("insert_if_new: article ignoré (date absente) — %s", tender_obj.id)
+
+    pub = tender.publication_date
+    if isinstance(pub, str):
+        try:
+            pub = _dt.fromisoformat(pub[:10])
+        except (ValueError, TypeError):
+            return False
+
+    cutoff = _dt.now() - _td(days=_INSERT_MAX_AGE_DAYS)
+    if pub < cutoff:
         return False
-    cutoff = datetime.now() - timedelta(days=_MAX_ARTICLE_AGE_DAYS)
-    if tender_obj.publication_date.replace(tzinfo=None) < cutoff:
-        _log.debug("insert_if_new: article ignoré (trop ancien) — %s", tender_obj.id)
+
+    if tender.id in existing_ids:
         return False
-    seen_ids.add(tender_obj.id)
-    db.add(tender_obj)
+
+    db.add(tender)
+    db.flush()
+    existing_ids.add(tender.id)
     return True
-
-
-def now_utc() -> datetime:
-    """Retourne la date/heure UTC courante sans info de fuseau (compatible SQLite)."""
-    return datetime.now(_tz.utc).replace(tzinfo=None)
