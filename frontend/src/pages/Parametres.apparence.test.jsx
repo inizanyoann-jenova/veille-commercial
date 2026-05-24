@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import Parametres from './Parametres'
-import { applyTheme } from '../utils/theme'
+import { applyTheme, applyBrightness } from '../utils/theme'
 
 vi.mock('../hooks/useTenders', () => ({
   useCredentials: () => ({ data: [], refetch: vi.fn(), isError: false }),
@@ -16,11 +16,15 @@ vi.mock('../hooks/useTenders', () => ({
   useResolveDuplicate: () => ({ mutate: vi.fn() }),
   useArchiveOld: () => ({ mutate: vi.fn(), isPending: false }),
   useResetDb: () => ({ mutate: vi.fn(), isPending: false }),
+  useSaveMistralKey: () => ({ mutate: vi.fn(), isPending: false, isSuccess: false, isError: false, error: null, reset: vi.fn() }),
+  useMistralStatus: () => ({ data: undefined }),
 }))
 
 vi.mock('../utils/theme', () => ({
   THEME_KEY: 'theme-colors',
+  BRIGHTNESS_KEY: 'app-brightness',
   DEFAULTS: { deep: '4 13 26', cyan: '0 200 255', coral: '255 107 107', text: '221 238 255' },
+  DEFAULT_BRIGHTNESS: 1.0,
   hexToRgbString: (hex) => {
     const r = parseInt(hex.slice(1, 3), 16)
     const g = parseInt(hex.slice(3, 5), 16)
@@ -29,6 +33,8 @@ vi.mock('../utils/theme', () => ({
   },
   applyTheme: vi.fn(),
   loadSavedTheme: vi.fn(),
+  applyBrightness: vi.fn(),
+  loadSavedBrightness: vi.fn(),
 }))
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -68,7 +74,7 @@ describe('Parametres — onglet Apparence', () => {
     expect(screen.getByRole('button', { name: /réinitialiser/i })).toBeInTheDocument()
   })
 
-  it('sauvegarde dans localStorage au clic sur Appliquer', async () => {
+  it('sauvegarde les couleurs dans localStorage au clic sur Appliquer', () => {
     render(<Parametres />, { wrapper: Wrapper })
     fireEvent.click(screen.getByText(/Apparence/i))
     fireEvent.click(screen.getByRole('button', { name: /appliquer/i }))
@@ -88,5 +94,43 @@ describe('Parametres — onglet Apparence', () => {
     fireEvent.click(screen.getByRole('button', { name: /réinitialiser/i }))
     expect(localStorage.getItem('theme-colors')).toBeNull()
     expect(applyTheme).toHaveBeenCalledWith({ deep: '4 13 26', cyan: '0 200 255', coral: '255 107 107', text: '221 238 255' })
+  })
+
+  it('affiche le slider de luminosité', () => {
+    render(<Parametres />, { wrapper: Wrapper })
+    fireEvent.click(screen.getByText(/Apparence/i))
+    expect(screen.getByRole('slider', { name: /luminosité/i })).toBeInTheDocument()
+  })
+
+  it('appelle applyBrightness quand le slider change', () => {
+    render(<Parametres />, { wrapper: Wrapper })
+    fireEvent.click(screen.getByText(/Apparence/i))
+    const slider = screen.getByRole('slider', { name: /luminosité/i })
+    fireEvent.change(slider, { target: { value: '1.5' } })
+    expect(applyBrightness).toHaveBeenCalledWith(1.5)
+  })
+
+  it('sauvegarde brightness dans localStorage au clic sur Appliquer', () => {
+    render(<Parametres />, { wrapper: Wrapper })
+    fireEvent.click(screen.getByText(/Apparence/i))
+    const slider = screen.getByRole('slider', { name: /luminosité/i })
+    fireEvent.change(slider, { target: { value: '1.5' } })
+    fireEvent.click(screen.getByRole('button', { name: /appliquer/i }))
+    expect(localStorage.getItem('app-brightness')).toBe('1.5')
+  })
+
+  it('supprime brightness de localStorage au clic sur Réinitialiser', () => {
+    localStorage.setItem('app-brightness', '1.5')
+    render(<Parametres />, { wrapper: Wrapper })
+    fireEvent.click(screen.getByText(/Apparence/i))
+    fireEvent.click(screen.getByRole('button', { name: /réinitialiser/i }))
+    expect(localStorage.getItem('app-brightness')).toBeNull()
+    expect(applyBrightness).toHaveBeenCalledWith(1.0)
+  })
+
+  it('affiche la valeur en % à côté du slider', () => {
+    render(<Parametres />, { wrapper: Wrapper })
+    fireEvent.click(screen.getByText(/Apparence/i))
+    expect(screen.getByText('100%')).toBeInTheDocument()
   })
 })
