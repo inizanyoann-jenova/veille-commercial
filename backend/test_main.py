@@ -1,28 +1,29 @@
 import logging
-import os, sys
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from unittest.mock import patch, MagicMock, call
-from datetime import datetime, timedelta
+from unittest.mock import patch, MagicMock
 from main import _tender_to_dict
 
 
 def _make_mock_tender():
     t = MagicMock()
-    t.id = 'test-1'
-    t.title = 'Marché SSI La Réunion'
-    t.description = 'ssi détection incendie la réunion'
-    t.source = 'DECP'
+    t.id = "test-1"
+    t.title = "Marché SSI La Réunion"
+    t.description = "ssi détection incendie la réunion"
+    t.source = "DECP"
     t.publication_date = None
     t.date_extraction = None
     t.deadline = None
-    t.status = 'À qualifier'
+    t.status = "À qualifier"
     t.relevance_score = 75
     t.adaptive_score = None
     t.is_maintenance = False
-    t.secteur = 'Public'
-    t.type_opportunite = 'Marché Public'
+    t.secteur = "Public"
+    t.type_opportunite = "Marché Public"
     t.amount = None
     t.is_blacklisted = False
     t.is_saved = False
@@ -35,29 +36,38 @@ def _make_mock_tender():
 
 def test_tender_to_dict_includes_fiche_data_and_jours_restants():
     result = _tender_to_dict(_make_mock_tender())
-    assert 'fiche_data' in result
-    assert 'jours_restants' in result
+    assert "fiche_data" in result
+    assert "jours_restants" in result
 
 
 def test_fiche_data_has_required_keys():
     result = _tender_to_dict(_make_mock_tender())
-    fd = result['fiche_data']
-    for key in ('sm', 'sg', 'sk', 'smaint', 'label_action', 'steps', 'atouts', 'risques'):
+    fd = result["fiche_data"]
+    for key in (
+        "sm",
+        "sg",
+        "sk",
+        "smaint",
+        "label_action",
+        "steps",
+        "atouts",
+        "risques",
+    ):
         assert key in fd, f"Clé manquante : {key}"
-    assert isinstance(fd['steps'], list)
-    assert isinstance(fd['atouts'], list)
-    assert isinstance(fd['risques'], list)
+    assert isinstance(fd["steps"], list)
+    assert isinstance(fd["atouts"], list)
+    assert isinstance(fd["risques"], list)
 
 
 def test_jours_restants_is_none_when_no_deadline():
     result = _tender_to_dict(_make_mock_tender())
-    assert result['jours_restants'] is None
+    assert result["jours_restants"] is None
 
 
 def test_fiche_data_sm_score_for_ssi_tender():
     t = _make_mock_tender()
     result = _tender_to_dict(t)
-    assert result['fiche_data']['sm'] == 45, (
+    assert result["fiche_data"]["sm"] == 45, (
         f"Expected sm=45 for SSI/La Réunion tender, got {result['fiche_data']['sm']}"
     )
 
@@ -71,6 +81,7 @@ def test_lifespan_starts_and_stops_scheduler():
 
         from fastapi.testclient import TestClient
         import main as m
+
         with TestClient(m.app) as client:
             resp = client.get("/api/tenders")
             assert resp.status_code == 200
@@ -91,16 +102,18 @@ def test_collect_critical_log_on_scraper_failure(caplog):
     failing_source.is_validated = True
     failing_source.name = "FakeSource"
 
-    with patch("main.list_sources", return_value=[failing_source]), \
-         patch("main.SessionLocal") as mock_sl, \
-         patch("main.start_scraper_run", return_value=99), \
-         patch("main.finish_scraper_run"), \
-         patch("importlib.import_module", side_effect=RuntimeError("playwright crash")), \
-         caplog.at_level(logging.CRITICAL, logger="main"):
-
+    with (
+        patch("main.list_sources", return_value=[failing_source]),
+        patch("main.SessionLocal") as _mock_sl,
+        patch("main.start_scraper_run", return_value=99),
+        patch("main.finish_scraper_run"),
+        patch("importlib.import_module", side_effect=RuntimeError("playwright crash")),
+        caplog.at_level(logging.CRITICAL, logger="main"),
+    ):
         from fastapi.testclient import TestClient
+
         client = TestClient(m.app)
-        resp = client.post("/api/collect", json={})
+        client.post("/api/collect", json={})
 
     assert any(
         r.levelno >= logging.CRITICAL and "FakeSource" in r.getMessage()
@@ -153,14 +166,15 @@ def test_collect_returns_200_partial_on_mixed_results():
     mock_db.query.return_value.all.return_value = []
     mock_db.query.return_value.filter.return_value.count.return_value = 2
 
-    with patch("main.list_sources", return_value=[ok_source, fail_source]), \
-         patch("main.SessionLocal", return_value=mock_db), \
-         patch("main.start_scraper_run", return_value=1), \
-         patch("main.finish_scraper_run"), \
-         patch("main.auto_analyze_pending"), \
-         patch("main.auto_analyze_claude"), \
-         patch("importlib.import_module", side_effect=mock_import):
-
+    with (
+        patch("main.list_sources", return_value=[ok_source, fail_source]),
+        patch("main.SessionLocal", return_value=mock_db),
+        patch("main.start_scraper_run", return_value=1),
+        patch("main.finish_scraper_run"),
+        patch("main.auto_analyze_pending"),
+        patch("main.auto_analyze_claude"),
+        patch("importlib.import_module", side_effect=mock_import),
+    ):
         client = TestClient(m.app)
         resp = client.post("/api/collect", json={})
 
@@ -189,14 +203,15 @@ def test_collect_returns_200_ok_when_all_succeed():
     mock_db.query.return_value.all.return_value = []
     mock_db.query.return_value.filter.return_value.count.return_value = 3
 
-    with patch("main.list_sources", return_value=[ok_source]), \
-         patch("main.SessionLocal", return_value=mock_db), \
-         patch("main.start_scraper_run", return_value=1), \
-         patch("main.finish_scraper_run"), \
-         patch("main.auto_analyze_pending"), \
-         patch("main.auto_analyze_claude"), \
-         patch("importlib.import_module", return_value=MagicMock()):
-
+    with (
+        patch("main.list_sources", return_value=[ok_source]),
+        patch("main.SessionLocal", return_value=mock_db),
+        patch("main.start_scraper_run", return_value=1),
+        patch("main.finish_scraper_run"),
+        patch("main.auto_analyze_pending"),
+        patch("main.auto_analyze_claude"),
+        patch("importlib.import_module", return_value=MagicMock()),
+    ):
         client = TestClient(m.app)
         resp = client.post("/api/collect", json={})
 
@@ -223,14 +238,15 @@ def test_collect_returns_500_when_all_sources_fail():
     mock_db = MagicMock()
     mock_db.query.return_value.all.return_value = []
 
-    with patch("main.list_sources", return_value=[fail_source]), \
-         patch("main.SessionLocal", return_value=mock_db), \
-         patch("main.start_scraper_run", return_value=1), \
-         patch("main.finish_scraper_run"), \
-         patch("main.auto_analyze_pending"), \
-         patch("main.auto_analyze_claude"), \
-         patch("importlib.import_module", side_effect=RuntimeError("crash")):
-
+    with (
+        patch("main.list_sources", return_value=[fail_source]),
+        patch("main.SessionLocal", return_value=mock_db),
+        patch("main.start_scraper_run", return_value=1),
+        patch("main.finish_scraper_run"),
+        patch("main.auto_analyze_pending"),
+        patch("main.auto_analyze_claude"),
+        patch("importlib.import_module", side_effect=RuntimeError("crash")),
+    ):
         client = TestClient(m.app, raise_server_exceptions=False)
         resp = client.post("/api/collect", json={})
 
@@ -242,17 +258,17 @@ def test_collect_returns_500_when_all_sources_fail():
     assert detail["results"][0]["status"] == "error"
 
 
-
 def test_get_kpis_public_includes_new_24h():
     """get_kpis_public doit retourner new_24h dans sa réponse."""
     from fastapi.testclient import TestClient
     from main import app
 
-    with patch('main.get_db') as mock_get_db:
+    with patch("main.get_db") as _mock_get_db:
         mock_db = MagicMock()
         # group_by query pour les statuts
         mock_db.query.return_value.filter.return_value.group_by.return_value.all.return_value = [
-            ('À qualifier', 5), ('En cours', 3),
+            ("À qualifier", 5),
+            ("En cours", 3),
         ]
         # scalar queries pour new_24h
         mock_db.query.return_value.filter.return_value.scalar.return_value = 7
@@ -261,12 +277,35 @@ def test_get_kpis_public_includes_new_24h():
             yield mock_db
 
         from main import get_db
+
         app.dependency_overrides[get_db] = override_get_db
         client = TestClient(app)
-        response = client.get('/api/kpis/public')
+        response = client.get("/api/kpis/public")
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
     data = response.json()
-    assert 'new_24h' in data, f"'new_24h' absent de la réponse : {data}"
-    assert isinstance(data['new_24h'], int)
+    assert "new_24h" in data, f"'new_24h' absent de la réponse : {data}"
+    assert isinstance(data["new_24h"], int)
+
+
+def test_dict_to_tender_date_extraction_est_datetime_precis():
+    """date_extraction doit être le datetime courant précis, pas minuit d'une date."""
+    from datetime import datetime
+    from main import _dict_to_tender
+
+    before = datetime.now()
+    t = _dict_to_tender({
+        "name": "Marché test",
+        "source": "BOAMP",
+        "publication_date": "2026-05-23",
+        "date_found": "2026-05-23",  # date seule → minuit si bug présent
+    })
+    after = datetime.now()
+
+    assert t.date_extraction is not None, "date_extraction ne doit pas être None"
+    assert before <= t.date_extraction <= after, (
+        f"date_extraction={t.date_extraction!r} n'est pas dans la fenêtre "
+        f"[{before!r}, {after!r}]. "
+        "Probable bug : date_found parsé en minuit au lieu de datetime.now()."
+    )
