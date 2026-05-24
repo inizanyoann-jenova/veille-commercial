@@ -1368,9 +1368,12 @@ def auto_analyze_pending(db) -> int:
     return len(pending)
 
 
+_LLM_BATCH_SIZE = int(os.getenv("LLM_BATCH_SIZE", "10"))
+
+
 def auto_analyze_claude(
     db,
-    max_per_run: int = 10,
+    max_per_run: int = _LLM_BATCH_SIZE,
     delay: float = 1.0,  # 1s entre requêtes — respecte les limites de l'API
     progress_cb=None,
 ) -> tuple[int, int]:
