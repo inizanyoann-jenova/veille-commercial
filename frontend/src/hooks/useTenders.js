@@ -6,6 +6,7 @@ import {
   updateTags, updateAmount, deleteTender, analyzeTender,
   getDuplicates, resolveDuplicate, detectDuplicates, archiveOld, resetDb,
   getCredentials, saveCredential, deleteCredential, testCredential,
+  saveMistralKey,
 } from '../services/api'
 
 export const useTenders = (params) =>
@@ -213,3 +214,11 @@ export const useTestCredential = () =>
   useMutation({
     mutationFn: ({ site, email, password }) => testCredential(site, email, password),
   })
+
+export const useSaveMistralKey = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: saveMistralKey,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['mistral-status'] }),
+  })
+}
