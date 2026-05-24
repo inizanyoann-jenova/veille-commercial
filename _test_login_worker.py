@@ -2,6 +2,7 @@
 Worker isolé pour tester la connexion Playwright.
 Lancé en sous-processus pour éviter le conflit asyncio / SelectorEventLoop sur Windows.
 """
+
 import sys
 import json
 import asyncio
@@ -106,5 +107,14 @@ if __name__ == "__main__":
         sys.exit(0)
     except Exception as exc:
         import traceback
-        print(json.dumps({"ok": False, "erreur_worker": str(exc), "traceback": traceback.format_exc()}))
+
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "erreur_worker": str(exc),
+                    "traceback": traceback.format_exc(),
+                }
+            )
+        )
         sys.exit(1)
