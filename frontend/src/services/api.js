@@ -84,6 +84,9 @@ export const getChartData = (max_rows = 5000) =>
 export const resetDb = () =>
   api.post('/admin/reset-db').then((r) => r.data)
 
+export const saveMistralKey = (api_key) =>
+  api.post('/settings/mistral-key', { api_key }).then((r) => r.data)
+
 export const archiveOld = (days = 30) =>
   api.post('/admin/archive-old', null, { params: { days } }).then((r) => r.data)
 
