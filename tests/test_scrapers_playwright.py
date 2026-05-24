@@ -4,42 +4,15 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from unittest.mock import patch, MagicMock
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from models import Base, Tender
 
 
-def _db_session():
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    return sessionmaker(bind=engine)
-
-
-def _mock_pw_context(cards_html=None):
-    """Retourne (mock_sync_playwright, mock_page) prêts à injecter."""
+def _make_pw_mock(page_url: str = "https://example.com/results"):
+    """Return (mock_pw, mock_page) — minimal sync_playwright context manager mock."""
     mock_page = MagicMock()
-    mock_page.goto.return_value = None
-    mock_page.wait_for_load_state.return_value = None
-    mock_page.query_selector.return_value = None  # pas de bouton "suivant"
-    if cards_html:
-        mock_cards = []
-        for data in cards_html:
-            card = MagicMock()
-
-            def make_qs(d):
-                def qs(sel):
-                    child = MagicMock()
-                    child.inner_text.return_value = d.get("text", "")
-                    child.get_attribute.return_value = d.get("href", "")
-                    return child
-
-                return qs
-
-            card.query_selector.side_effect = make_qs(data)
-            mock_cards.append(card)
-        mock_page.query_selector_all.return_value = mock_cards
-    else:
-        mock_page.query_selector_all.return_value = []
+    mock_page.url = page_url
+    mock_page.query_selector_all.return_value = []
+    mock_page.query_selector.return_value = None
+    mock_page.content.return_value = "<html></html>"
 
     mock_browser = MagicMock()
     mock_browser.new_page.return_value = mock_page
@@ -56,367 +29,296 @@ def _mock_pw_context(cards_html=None):
 
 
 def test_fetch_vaao_empty_page():
-    Session = _db_session()
-    mock_pw, _ = _mock_pw_context()
-    with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
-        with patch("scraper_vaao.SessionLocal", Session):
-            with patch("scraper_vaao.init_db"):
-                from scraper_vaao import fetch_vaao_tenders
+    import scraper_vaao
 
-                result = fetch_vaao_tenders()
-    assert result == 0
+    mock_pw, _ = _make_pw_mock()
+    with patch("scraper_vaao.sync_playwright", return_value=mock_pw):
+        result = scraper_vaao.fetch()
+    assert result == []
 
 
 def test_fetch_vaao_inserts_relevant():
-    Session = _db_session()
-    mock_pw, _ = _mock_pw_context()
-    with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
-        with patch(
-            "scraper_vaao.extract_cards",
-            return_value=[
-                {
-                    "title": "Installation SSI alarme incendie Réunion",
-                    "description": "",
-                    "url": "https://www.vaao.fr/ao/1",
-                    "date": "15/04/2026",
-                }
-            ],
-        ):
-            with patch("scraper_vaao.paginate", return_value=False):
-                with patch("scraper_vaao.SessionLocal", Session):
-                    with patch("scraper_vaao.init_db"):
-                        from scraper_vaao import fetch_vaao_tenders
+    import scraper_vaao
 
-                        result = fetch_vaao_tenders()
-    db = Session()
-    tenders = db.query(Tender).all()
-    db.close()
-    assert result == 1
-    assert len(tenders) == 1
+    mock_pw, mock_page = _make_pw_mock()
+    mock_page.query_selector_all.return_value = [MagicMock()]
+
+    with patch("scraper_vaao.sync_playwright", return_value=mock_pw):
+        with patch(
+            "scraper_vaao._extract_card",
+            return_value={
+                "name": "Installation SSI alarme incendie Réunion",
+                "description": "",
+                "url": "https://www.vaao.fr/ao/1",
+                "raw_date": "2026-04-15",
+            },
+        ):
+            result = scraper_vaao.fetch()
+
+    assert len(result) >= 1
+    assert "SSI" in result[0]["name"] or "incendie" in result[0]["name"].lower()
 
 
 # ── Marché Online ─────────────────────────────────────────────────────────────
 
 
 def test_fetch_marcheonline_empty():
-    Session = _db_session()
-    mock_pw, _ = _mock_pw_context()
-    with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
-        with patch("scraper_marcheonline.extract_cards", return_value=[]):
-            with patch("scraper_marcheonline.paginate", return_value=False):
-                with patch("scraper_marcheonline.SessionLocal", Session):
-                    with patch("scraper_marcheonline.init_db"):
-                        from scraper_marcheonline import fetch_marcheonline_tenders
+    import scraper_marcheonline
 
-                        result = fetch_marcheonline_tenders()
-    assert result == 0
+    mock_pw, _ = _make_pw_mock()
+    with patch("scraper_marcheonline.sync_playwright", return_value=mock_pw):
+        result = scraper_marcheonline.fetch()
+    assert result == []
 
 
 # ── Nukema ────────────────────────────────────────────────────────────────────
 
 
 def test_fetch_nukema_inserts_relevant():
-    Session = _db_session()
-    mock_pw, _ = _mock_pw_context()
-    with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
-        with patch(
-            "scraper_nukema.extract_cards",
-            return_value=[
-                {
-                    "title": "Maintenance CCTV vidéosurveillance campus universitaire",
+    import scraper_nukema
+
+    mock_pw, mock_page = _make_pw_mock(
+        page_url="https://marches-publics.nukema.com/consultation"
+    )
+    mock_page.query_selector_all.return_value = [MagicMock()]
+
+    with patch.dict(os.environ, {"NUKEMA_EMAIL": "test@test.com", "NUKEMA_PASSWORD": "pass"}):
+        with patch("scraper_nukema.sync_playwright", return_value=mock_pw):
+            with patch(
+                "scraper_nukema._extract_card",
+                return_value={
+                    "name": "Maintenance CCTV vidéosurveillance campus universitaire",
                     "description": "Mayotte 976",
                     "url": "https://marches-publics.nukema.com/consultation/12345",
-                    "date": "10/05/2026",
-                }
-            ],
-        ):
-            with patch("scraper_nukema.paginate", return_value=False):
-                with patch("scraper_nukema.SessionLocal", Session):
-                    with patch("scraper_nukema.init_db"):
-                        with patch(
-                            "scraper_nukema.CredentialManager.get", return_value=None
-                        ):
-                            from scraper_nukema import fetch_nukema_tenders
+                    "raw_date": "2026-05-10",
+                },
+            ):
+                result = scraper_nukema.fetch()
 
-                            result = fetch_nukema_tenders()
-    assert result == 1
+    assert len(result) >= 1
 
 
 # ── Marchés Sécurisés ─────────────────────────────────────────────────────────
 
 
 def test_fetch_marchessecurises_skips_without_creds():
-    Session = _db_session()
-    with patch("credential_manager.CredentialManager.get", return_value=None):
-        with patch("scraper_marchessecurises.SessionLocal", Session):
-            with patch("scraper_marchessecurises.init_db"):
-                from scraper_marchessecurises import fetch_marchessecurises_tenders
+    import scraper_marchessecurises
 
-                result = fetch_marchessecurises_tenders()
-    assert result == 0
+    with patch.dict(os.environ, {"MARCHESSECURISES_LOGIN": "", "MARCHESSECURISES_PASSWORD": ""}):
+        result = scraper_marchessecurises.fetch()
+    assert result == []
 
 
 def test_fetch_marchessecurises_with_creds_inserts():
-    Session = _db_session()
-    mock_pw, _ = _mock_pw_context()
-    with patch(
-        "credential_manager.CredentialManager.get", return_value=("u@u.com", "pass")
-    ):
-        with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
-            with patch("scraper_marchessecurises.login", return_value=True):
-                with patch(
-                    "scraper_marchessecurises.extract_cards",
-                    return_value=[
-                        {
-                            "title": "Maintenance SSI incendie établissement public",
-                            "description": "La Réunion 974",
-                            "url": "https://www.marches-securises.fr/ao/99",
-                            "date": "01/05/2026",
-                        }
-                    ],
-                ):
-                    with patch("scraper_marchessecurises.paginate", return_value=False):
-                        with patch("scraper_marchessecurises.SessionLocal", Session):
-                            with patch("scraper_marchessecurises.init_db"):
-                                from scraper_marchessecurises import (
-                                    fetch_marchessecurises_tenders,
-                                )
+    import scraper_marchessecurises
 
-                                result = fetch_marchessecurises_tenders()
-    assert result == 1
+    mock_pw, mock_page = _make_pw_mock(
+        page_url="https://www.marches-securises.fr/entreprise/?page=recherche"
+    )
+    mock_page.query_selector_all.return_value = [MagicMock()]
+
+    with patch.dict(
+        os.environ,
+        {"MARCHESSECURISES_LOGIN": "u@u.com", "MARCHESSECURISES_PASSWORD": "pass"},
+    ):
+        with patch("scraper_marchessecurises.sync_playwright", return_value=mock_pw):
+            with patch(
+                "scraper_marchessecurises._extract_card",
+                return_value={
+                    "name": "Maintenance SSI incendie établissement public",
+                    "description": "La Réunion 974",
+                    "url": "https://www.marches-securises.fr/ao/99",
+                    "raw_date": "2026-05-01",
+                },
+            ):
+                result = scraper_marchessecurises.fetch()
+
+    assert len(result) >= 1
 
 
 # ── Instao ────────────────────────────────────────────────────────────────────
 
 
 def test_fetch_instao_skips_without_creds():
-    Session = _db_session()
-    with patch("credential_manager.CredentialManager.get", return_value=None):
-        with patch("scraper_instao.SessionLocal", Session):
-            with patch("scraper_instao.init_db"):
-                from scraper_instao import fetch_instao_tenders
+    import scraper_instao
 
-                result = fetch_instao_tenders()
-    assert result == 0
+    with patch.dict(os.environ, {"INSTAO_EMAIL": "", "INSTAO_PASSWORD": ""}):
+        result = scraper_instao.fetch()
+    assert result == []
 
 
 # ── Tenders Go ────────────────────────────────────────────────────────────────
 
 
 def test_fetch_tendersgo_skips_without_creds():
-    Session = _db_session()
-    with patch("credential_manager.CredentialManager.get", return_value=None):
-        with patch("scraper_tendersgo.SessionLocal", Session):
-            with patch("scraper_tendersgo.init_db"):
-                from scraper_tendersgo import fetch_tendersgo_tenders
+    import scraper_tendersgo
 
-                result = fetch_tendersgo_tenders()
-    assert result == 0
+    with patch.dict(os.environ, {"TENDERSGO_EMAIL": "", "TENDERSGO_PASSWORD": ""}):
+        result = scraper_tendersgo.fetch()
+    assert result == []
 
 
 # ── IsDB ──────────────────────────────────────────────────────────────────────
 
 
 def test_fetch_isdb_empty_page():
-    Session = _db_session()
-    mock_pw, _ = _mock_pw_context()
-    with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
-        with patch("scraper_isdb.extract_cards", return_value=[]):
-            with patch("scraper_isdb.paginate", return_value=False):
-                with patch("scraper_isdb.SessionLocal", Session):
-                    with patch("scraper_isdb.init_db"):
-                        from scraper_isdb import fetch_isdb_tenders
+    import scraper_isdb
 
-                        result = fetch_isdb_tenders()
-    assert result == 0
+    mock_pw, _ = _make_pw_mock()
+    with patch("scraper_isdb.sync_playwright", return_value=mock_pw):
+        result = scraper_isdb.fetch()
+    assert result == []
 
 
 def test_fetch_isdb_inserts_relevant():
-    Session = _db_session()
-    mock_pw, _ = _mock_pw_context()
-    with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
-        with patch(
-            "scraper_isdb.extract_cards",
-            return_value=[
-                {
-                    "title": "Construction hôpital SSI alarme incendie Comores",
-                    "description": "Projet infrastructure sanitaire Comores",
-                    "url": "https://www.isdb.org/project-procurement/12345",
-                    "date": "15/05/2026",
-                }
-            ],
-        ):
-            with patch("scraper_isdb.paginate", return_value=False):
-                with patch("scraper_isdb.SessionLocal", Session):
-                    with patch("scraper_isdb.init_db"):
-                        from scraper_isdb import fetch_isdb_tenders
+    import scraper_isdb
 
-                        result = fetch_isdb_tenders()
-    db = Session()
-    tenders = db.query(Tender).all()
-    db.close()
-    assert result == 1
-    assert len(tenders) == 1
-    assert "SSI" in tenders[0].title or "incendie" in tenders[0].title.lower()
+    mock_pw, mock_page = _make_pw_mock()
+    mock_page.query_selector_all.return_value = [MagicMock()]
+
+    with patch("scraper_isdb.sync_playwright", return_value=mock_pw):
+        with patch(
+            "scraper_isdb._extract_card",
+            return_value={
+                "name": "Construction hôpital SSI alarme incendie Comores",
+                "description": "Projet infrastructure sanitaire Comores",
+                "url": "https://www.isdb.org/project-procurement/12345",
+                "raw_date": "2026-05-15",
+            },
+        ):
+            result = scraper_isdb.fetch()
+
+    assert len(result) >= 1
+    assert "SSI" in result[0]["name"] or "incendie" in result[0]["name"].lower()
 
 
 def test_fetch_isdb_skips_irrelevant():
-    Session = _db_session()
-    mock_pw, _ = _mock_pw_context()
-    with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
-        with patch(
-            "scraper_isdb.extract_cards",
-            return_value=[
-                {
-                    "title": "Fournitures de bureau papeterie",
-                    "description": "Achat fournitures",
-                    "url": "https://www.isdb.org/project-procurement/99999",
-                    "date": "",
-                }
-            ],
-        ):
-            with patch("scraper_isdb.paginate", return_value=False):
-                with patch("scraper_isdb.SessionLocal", Session):
-                    with patch("scraper_isdb.init_db"):
-                        from scraper_isdb import fetch_isdb_tenders
+    import scraper_isdb
 
-                        result = fetch_isdb_tenders()
-    assert result == 0
+    mock_pw, mock_page = _make_pw_mock()
+    mock_page.query_selector_all.return_value = [MagicMock()]
+
+    with patch("scraper_isdb.sync_playwright", return_value=mock_pw):
+        with patch(
+            "scraper_isdb._extract_card",
+            return_value={
+                "name": "Fournitures de bureau papeterie",
+                "description": "Achat fournitures",
+                "url": "https://www.isdb.org/project-procurement/99999",
+                "raw_date": "",
+            },
+        ):
+            result = scraper_isdb.fetch()
+
+    assert result == []
 
 
 # ── SEMADER Réunion ───────────────────────────────────────────────────────────
 
 
 def test_fetch_semader_empty_page():
-    Session = _db_session()
-    mock_pw, _ = _mock_pw_context()
-    with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
-        with patch("scraper_semader.extract_cards", return_value=[]):
-            with patch("scraper_semader.paginate", return_value=False):
-                with patch("scraper_semader.SessionLocal", Session):
-                    with patch("scraper_semader.init_db"):
-                        from scraper_semader import fetch_semader_tenders
+    import scraper_semader
 
-                        result = fetch_semader_tenders()
-    assert result == 0
+    mock_pw, _ = _make_pw_mock()
+    with patch("scraper_semader.sync_playwright", return_value=mock_pw):
+        result = scraper_semader.fetch()
+    assert result == []
 
 
 def test_fetch_semader_inserts_relevant():
-    Session = _db_session()
-    mock_pw, _ = _mock_pw_context()
-    with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
+    import scraper_semader
+
+    mock_pw, mock_page = _make_pw_mock()
+    mock_page.query_selector_all.return_value = [MagicMock()]
+
+    with patch("scraper_semader.sync_playwright", return_value=mock_pw):
         with patch(
-            "scraper_semader.extract_cards",
-            return_value=[
-                {
-                    "title": "Réhabilitation immeuble résidentiel — vidéosurveillance CCTV",
-                    "description": "Programme logement social SEMADER Réunion",
-                    "url": "https://www.semader.re/appels-d-offres/42",
-                    "date": "20/05/2026",
-                }
-            ],
+            "scraper_semader._extract_card",
+            return_value={
+                "name": "Réhabilitation immeuble résidentiel — vidéosurveillance CCTV",
+                "description": "Programme logement social SEMADER Réunion",
+                "url": "https://www.semader.re/appels-d-offres/42",
+                "raw_date": "2026-05-20",
+            },
         ):
-            with patch("scraper_semader.paginate", return_value=False):
-                with patch("scraper_semader.SessionLocal", Session):
-                    with patch("scraper_semader.init_db"):
-                        from scraper_semader import fetch_semader_tenders
+            result = scraper_semader.fetch()
 
-                        result = fetch_semader_tenders()
-    db = Session()
-    tenders = db.query(Tender).all()
-    db.close()
-    assert result == 1
-    assert len(tenders) == 1
+    assert len(result) >= 1
 
 
-def test_fetch_semader_skips_irrelevant():
-    Session = _db_session()
-    mock_pw, _ = _mock_pw_context()
-    with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
+def test_fetch_semader_includes_all_items():
+    """SEMADER n'applique aucun filtre par secteur — tous les marchés sont retournés."""
+    import scraper_semader
+
+    mock_pw, mock_page = _make_pw_mock()
+    mock_page.query_selector_all.return_value = [MagicMock()]
+
+    with patch("scraper_semader.sync_playwright", return_value=mock_pw):
         with patch(
-            "scraper_semader.extract_cards",
-            return_value=[
-                {
-                    "title": "Entretien espaces verts jardinage",
-                    "description": "Taille de haies et tonte",
-                    "url": "https://www.semader.re/appels-d-offres/10",
-                    "date": "",
-                }
-            ],
+            "scraper_semader._extract_card",
+            return_value={
+                "name": "Entretien espaces verts jardinage",
+                "description": "Taille de haies et tonte",
+                "url": "https://www.semader.re/appels-d-offres/10",
+                "raw_date": "",
+            },
         ):
-            with patch("scraper_semader.paginate", return_value=False):
-                with patch("scraper_semader.SessionLocal", Session):
-                    with patch("scraper_semader.init_db"):
-                        from scraper_semader import fetch_semader_tenders
+            result = scraper_semader.fetch()
 
-                        result = fetch_semader_tenders()
-    assert result == 0
+    assert len(result) >= 1
 
 
 # ── Centre Hospitalier Mayotte ────────────────────────────────────────────────
 
 
 def test_fetch_chm_empty_page():
-    Session = _db_session()
-    mock_pw, _ = _mock_pw_context()
-    with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
-        with patch("scraper_chm.extract_cards", return_value=[]):
-            with patch("scraper_chm.paginate", return_value=False):
-                with patch("scraper_chm.SessionLocal", Session):
-                    with patch("scraper_chm.init_db"):
-                        from scraper_chm import fetch_chm_tenders
+    import scraper_chm
 
-                        result = fetch_chm_tenders()
-    assert result == 0
+    mock_pw, _ = _make_pw_mock()
+    with patch("scraper_chm.sync_playwright", return_value=mock_pw):
+        result = scraper_chm.fetch()
+    assert result == []
 
 
 def test_fetch_chm_inserts_relevant():
-    Session = _db_session()
-    mock_pw, _ = _mock_pw_context()
-    with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
+    import scraper_chm
+
+    mock_pw, mock_page = _make_pw_mock()
+    mock_page.query_selector_all.return_value = [MagicMock()]
+
+    with patch("scraper_chm.sync_playwright", return_value=mock_pw):
         with patch(
-            "scraper_chm.extract_cards",
-            return_value=[
-                {
-                    "title": "Maintenance SSI détection incendie CHM Mayotte",
-                    "description": "Entretien système sécurité incendie bâtiments hospitaliers",
-                    "url": "https://www.chm-mayotte.fr/appels-d-offres/77",
-                    "date": "18/05/2026",
-                }
-            ],
+            "scraper_chm._extract_card",
+            return_value={
+                "name": "Maintenance SSI détection incendie CHM Mayotte",
+                "description": "Entretien système sécurité incendie bâtiments hospitaliers",
+                "url": "https://www.chm-mayotte.fr/appels-d-offres/77",
+                "raw_date": "2026-05-18",
+            },
         ):
-            with patch("scraper_chm.paginate", return_value=False):
-                with patch("scraper_chm.SessionLocal", Session):
-                    with patch("scraper_chm.init_db"):
-                        from scraper_chm import fetch_chm_tenders
+            result = scraper_chm.fetch()
 
-                        result = fetch_chm_tenders()
-    db = Session()
-    tenders = db.query(Tender).all()
-    db.close()
-    assert result == 1
-    assert "SSI" in tenders[0].title or "incendie" in tenders[0].title.lower()
+    assert len(result) >= 1
+    assert "SSI" in result[0]["name"] or "incendie" in result[0]["name"].lower()
 
 
-def test_fetch_chm_skips_irrelevant():
-    Session = _db_session()
-    mock_pw, _ = _mock_pw_context()
-    with patch("playwright.sync_api.sync_playwright", return_value=mock_pw):
+def test_fetch_chm_includes_all_items():
+    """CHM n'applique aucun filtre par secteur — tous les marchés sont retournés."""
+    import scraper_chm
+
+    mock_pw, mock_page = _make_pw_mock()
+    mock_page.query_selector_all.return_value = [MagicMock()]
+
+    with patch("scraper_chm.sync_playwright", return_value=mock_pw):
         with patch(
-            "scraper_chm.extract_cards",
-            return_value=[
-                {
-                    "title": "Achat médicaments pharmacie",
-                    "description": "Fourniture produits pharmaceutiques",
-                    "url": "https://www.chm-mayotte.fr/appels-d-offres/55",
-                    "date": "",
-                }
-            ],
+            "scraper_chm._extract_card",
+            return_value={
+                "name": "Achat médicaments pharmacie",
+                "description": "Fourniture produits pharmaceutiques",
+                "url": "https://www.chm-mayotte.fr/appels-d-offres/55",
+                "raw_date": "",
+            },
         ):
-            with patch("scraper_chm.paginate", return_value=False):
-                with patch("scraper_chm.SessionLocal", Session):
-                    with patch("scraper_chm.init_db"):
-                        from scraper_chm import fetch_chm_tenders
+            result = scraper_chm.fetch()
 
-                        result = fetch_chm_tenders()
-    assert result == 0
+    assert len(result) >= 1
