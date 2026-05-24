@@ -1,5 +1,7 @@
+import { useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
+import { loadSavedBrightness } from '../utils/theme'
 
 const PAGE_TITLES = {
   '/': 'Pipeline',
@@ -17,6 +19,8 @@ export default function Layout() {
     day: 'numeric', month: 'long', year: 'numeric',
   })
 
+  useEffect(() => { loadSavedBrightness() }, [])
+
   return (
     <div className="flex h-screen overflow-hidden bg-ocean-deep">
       <Sidebar />
@@ -25,7 +29,10 @@ export default function Layout() {
           <span className="font-serif text-xl font-bold text-ocean-text">{title}</span>
           <span className="ml-auto font-mono text-xs text-ocean-muted">{today}</span>
         </header>
-        <main className="flex-1 overflow-auto bg-ocean-deep">
+        <main
+          className="flex-1 overflow-auto bg-ocean-deep"
+          style={{ filter: 'brightness(var(--app-brightness, 1))' }}
+        >
           <Outlet />
         </main>
       </div>
