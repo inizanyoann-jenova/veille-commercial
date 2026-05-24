@@ -154,4 +154,5 @@ def _normalise(entry, territoire: str, nom: str, feed_url: str) -> dict:
         "deadline": "",
         "territoire": territoire,
         "description": summary[:500],
+        "type_opportunite": "Banque Dev.",
     }
