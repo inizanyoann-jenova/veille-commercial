@@ -1,5 +1,5 @@
 from unittest.mock import patch, MagicMock
-from health_check import check_source, HealthResult
+from health_check import check_source
 
 
 def test_check_source_ok_returns_healthy():
@@ -38,7 +38,9 @@ def test_check_source_missing_json_marker_returns_unhealthy():
 
 
 def test_check_source_http_error_returns_unhealthy():
-    with patch("health_check.requests.get", side_effect=Exception("Connection refused")):
+    with patch(
+        "health_check.requests.get", side_effect=Exception("Connection refused")
+    ):
         result = check_source(
             name="BOAMP",
             url="https://boamp-datadila.opendatasoft.com",
@@ -68,7 +70,7 @@ def test_check_source_html_marker_found():
 def test_check_source_html_marker_missing():
     mock_resp = MagicMock()
     mock_resp.status_code = 200
-    mock_resp.text = '<html><body>page restructured</body></html>'
+    mock_resp.text = "<html><body>page restructured</body></html>"
     mock_resp.json.side_effect = ValueError("not JSON")
 
     with patch("health_check.requests.get", return_value=mock_resp):
@@ -90,8 +92,10 @@ def test_run_all_health_checks_returns_dict():
     mock_resp.text = '{"results": []}'
     mock_resp.json.return_value = {"results": []}
 
-    with patch("health_check.requests.get", return_value=mock_resp), \
-         patch("health_check.requests.post", return_value=mock_resp):
+    with (
+        patch("health_check.requests.get", return_value=mock_resp),
+        patch("health_check.requests.post", return_value=mock_resp),
+    ):
         results = run_all_health_checks()
 
     assert isinstance(results, dict)
