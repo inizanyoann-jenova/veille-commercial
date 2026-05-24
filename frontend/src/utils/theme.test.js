@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { hexToRgbString, applyTheme, loadSavedTheme, DEFAULTS, THEME_KEY } from './theme'
+import {
+  hexToRgbString, applyTheme, loadSavedTheme, DEFAULTS, THEME_KEY,
+  applyBrightness, loadSavedBrightness, BRIGHTNESS_KEY, DEFAULT_BRIGHTNESS,
+} from './theme'
 
 describe('hexToRgbString', () => {
   it('convertit un hex sombre en chaîne RGB', () => {
@@ -89,5 +92,66 @@ describe('loadSavedTheme', () => {
     localStorage.setItem(THEME_KEY, 'not-valid-json{{{')
     loadSavedTheme()
     expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--color-ocean-deep', DEFAULTS.deep)
+  })
+})
+
+describe('applyBrightness', () => {
+  beforeEach(() => {
+    vi.spyOn(document.documentElement.style, 'setProperty').mockImplementation(() => {})
+  })
+
+  afterEach(() => vi.restoreAllMocks())
+
+  it('définit --app-brightness sur documentElement', () => {
+    applyBrightness(1.5)
+    expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--app-brightness', '1.5')
+  })
+
+  it('accepte la valeur minimale 0.5', () => {
+    applyBrightness(0.5)
+    expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--app-brightness', '0.5')
+  })
+
+  it('accepte la valeur maximale 2.0', () => {
+    applyBrightness(2)
+    expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--app-brightness', '2')
+  })
+})
+
+describe('loadSavedBrightness', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    vi.spyOn(document.documentElement.style, 'setProperty').mockImplementation(() => {})
+  })
+
+  afterEach(() => vi.restoreAllMocks())
+
+  it('applique DEFAULT_BRIGHTNESS si rien en localStorage', () => {
+    loadSavedBrightness()
+    expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--app-brightness', '1')
+  })
+
+  it('applique la valeur sauvegardée depuis localStorage', () => {
+    localStorage.setItem(BRIGHTNESS_KEY, '1.5')
+    loadSavedBrightness()
+    expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--app-brightness', '1.5')
+  })
+
+  it('clamp à 2 les valeurs trop élevées', () => {
+    localStorage.setItem(BRIGHTNESS_KEY, '5')
+    loadSavedBrightness()
+    expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--app-brightness', '2')
+  })
+
+  it('clamp à 0.5 les valeurs trop basses', () => {
+    localStorage.setItem(BRIGHTNESS_KEY, '0.1')
+    loadSavedBrightness()
+    expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--app-brightness', '0.5')
+  })
+
+  it('ignore une valeur non-numérique et utilise le défaut', () => {
+    localStorage.setItem(BRIGHTNESS_KEY, 'not-a-number')
+    loadSavedBrightness()
+    expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--app-brightness', '1')
   })
 })
