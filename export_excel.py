@@ -27,14 +27,18 @@ def generate_executive_report(db_session) -> bytes:
             {
                 "Date Limite": _fmt_date(t.deadline),
                 "Titre du Marché": t.title or "Sans titre",
-                "Type (Travaux/Maintenance)": analysis.get("type_marche", "Non analysé"),
+                "Type (Travaux/Maintenance)": analysis.get(
+                    "type_marche", "Non analysé"
+                ),
                 "Score DEF": t.relevance_score or analysis.get("score_pertinence", 0),
                 "Concurrents identifiés": ", ".join(
                     analysis.get("marques_concurrentes_citees", [])
-                ) or "Aucun",
+                )
+                or "Aucun",
                 "Lien source": t.source or "",
                 "Statut actuel": t.status or "À qualifier",
-                "Risques / Pénalités": analysis.get("risques_penalites") or "Non renseigné",
+                "Risques / Pénalités": analysis.get("risques_penalites")
+                or "Non renseigné",
                 "Date de publication": _fmt_date(t.publication_date),
             }
         )
@@ -49,12 +53,16 @@ def generate_executive_report(db_session) -> bytes:
         ws = writer.sheets["Opportunités DEF OI"]
 
         # Header styling
-        header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
+        header_fill = PatternFill(
+            start_color="1F4E79", end_color="1F4E79", fill_type="solid"
+        )
         header_font = Font(color="FFFFFF", bold=True, size=11)
         for cell in ws[1]:
             cell.fill = header_fill
             cell.font = header_font
-            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.alignment = Alignment(
+                horizontal="center", vertical="center", wrap_text=True
+            )
 
         # Row colour by status
         status_colors = {
