@@ -116,6 +116,11 @@ describe('applyBrightness', () => {
     applyBrightness(2)
     expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--app-brightness', '2')
   })
+
+  it('passe les valeurs hors plage telles quelles (pas de clamping)', () => {
+    applyBrightness(5)
+    expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--app-brightness', '5')
+  })
 })
 
 describe('loadSavedBrightness', () => {
@@ -128,7 +133,7 @@ describe('loadSavedBrightness', () => {
 
   it('applique DEFAULT_BRIGHTNESS si rien en localStorage', () => {
     loadSavedBrightness()
-    expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--app-brightness', '1')
+    expect(document.documentElement.style.setProperty).toHaveBeenCalledWith('--app-brightness', String(DEFAULT_BRIGHTNESS))
   })
 
   it('applique la valeur sauvegardée depuis localStorage', () => {
