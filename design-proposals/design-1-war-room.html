@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Design 1 — War Room</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700;900&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0b0d0a;
+    --bg2:       #111408;
+    --panel:     #141810;
+    --border:    #2a3020;
+    --grid:      rgba(80,100,50,0.07);
+    --olive:     #5a6b3a;
+    --lime:      #8bc34a;
+    --amber:     #ffb300;
+    --red:       #d32f2f;
+    --text:      #c8d4b0;
+    --muted:     #5a6650;
+    --mono:      'Share Tech Mono', monospace;
+    --head:      'Barlow Condensed', sans-serif;
+    --body:      'Barlow', sans-serif;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--body);
+    height: 100vh;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* Scan-line overlay */
+  body::after {
+    content:'';
+    position:fixed; inset:0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* Grid background */
+  .main-area {
+    flex:1;
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 32px 32px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── SIDEBAR ─────────────────────────────────── */
+  aside {
+    width: 220px;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+
+  .logo-zone {
+    padding: 18px 16px 14px;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+  }
+  .logo-zone::after {
+    content: '';
+    position:absolute;
+    bottom: -1px; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--red), var(--amber), transparent);
+  }
+
+  .logo-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .logo-icon {
+    width: 36px; height: 36px;
+    border: 2px solid var(--red);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--head);
+    font-weight: 900;
+    font-size: 13px;
+    color: var(--red);
+    letter-spacing: 1px;
+    position: relative;
+  }
+  .logo-icon::before {
+    content:'';
+    position:absolute;
+    inset: 2px;
+    background: rgba(211,47,47,0.08);
+  }
+  .logo-title {
+    font-family: var(--head);
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text);
+    line-height: 1.1;
+  }
+  .logo-sub {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--olive);
+    letter-spacing: 1px;
+    margin-top: 6px;
+  }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .status-dot {
+    width: 6px; height: 6px;
+    background: var(--lime);
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  .status-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 1px;
+  }
+
+  @keyframes pulse {
+    0%,100% { opacity:1; }
+    50% { opacity:.3; }
+  }
+
+  /* Nav */
+  nav { padding: 8px 0; flex-shrink: 0; }
+
+  .nav-section-label {
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    padding: 8px 16px 4px;
+    text-transform: uppercase;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 16px;
+    text-decoration: none;
+    color: var(--muted);
+    font-family: var(--head);
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    transition: all 0.15s;
+    position: relative;
+    border-left: 2px solid transparent;
+    cursor: pointer;
+  }
+  .nav-item:hover { color: var(--text); background: rgba(139,195,74,0.04); }
+  .nav-item.active {
+    color: var(--lime);
+    border-left-color: var(--lime);
+    background: rgba(139,195,74,0.06);
+  }
+  .nav-item.active::after {
+    content: '▶';
+    position: absolute;
+    right: 12px;
+    font-size: 6px;
+    color: var(--lime);
+    opacity: .5;
+  }
+
+  .nav-icon {
+    font-size: 11px;
+    width: 14px;
+    text-align: center;
+    font-family: var(--mono);
+    opacity: .7;
+  }
+
+  .nav-badge {
+    margin-left: auto;
+    background: var(--red);
+    color: #fff;
+    font-family: var(--mono);
+    font-size: 8px;
+    padding: 1px 5px;
+    letter-spacing: 0;
+  }
+
+  .nav-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+  }
+
+  /* Collecte section */
+  .collect-section {
+    border-top: 1px solid var(--border);
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 14px;
+  }
+
+  .collect-label {
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .collect-label::after {
+    content:'';
+    flex:1;
+    height:1px;
+    background: var(--border);
+  }
+
+  .source-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-bottom: 10px;
+  }
+  .source-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 2px 0;
+  }
+  .source-item:hover { color: var(--text); }
+  .source-check {
+    width: 10px; height: 10px;
+    border: 1px solid var(--olive);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-size: 7px;
+    color: var(--lime);
+  }
+
+  .collect-btn {
+    width: 100%;
+    padding: 7px;
+    background: transparent;
+    border: 1px solid var(--olive);
+    color: var(--lime);
+    font-family: var(--head);
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+    overflow: hidden;
+  }
+  .collect-btn::before {
+    content:'';
+    position:absolute;
+    left:-100%;
+    top:0; bottom:0;
+    width:100%;
+    background: linear-gradient(90deg, transparent, rgba(139,195,74,0.1), transparent);
+    transition: left 0.4s;
+  }
+  .collect-btn:hover { border-color: var(--lime); background: rgba(139,195,74,0.05); }
+  .collect-btn:hover::before { left:100%; }
+
+  /* Settings */
+  .settings-zone {
+    border-top: 1px solid var(--border);
+    padding: 8px 0;
+    flex-shrink: 0;
+  }
+
+  /* ── MAIN ─────────────────────────────────────── */
+  .top-bar {
+    height: 44px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 20px;
+    background: rgba(11,13,10,0.8);
+    backdrop-filter: blur(4px);
+    flex-shrink: 0;
+  }
+
+  .top-bar-title {
+    font-family: var(--head);
+    font-weight: 700;
+    font-size: 16px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--text);
+  }
+  .top-bar-sep { color: var(--border); font-size: 20px; }
+
+  .breadcrumb {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 1px;
+  }
+
+  .top-bar-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .timestamp {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--olive);
+    letter-spacing: 1px;
+  }
+
+  .content {
+    flex: 1;
+    padding: 20px;
+    overflow: auto;
+  }
+
+  /* KPI cards */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .kpi-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 14px 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .kpi-card::before {
+    content:'';
+    position:absolute;
+    top:0; left:0; right:0;
+    height:2px;
+  }
+  .kpi-card.green::before { background: var(--lime); }
+  .kpi-card.amber::before { background: var(--amber); }
+  .kpi-card.red::before   { background: var(--red); }
+  .kpi-card.blue::before  { background: #29b6f6; }
+
+  .kpi-label {
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .kpi-value {
+    font-family: var(--head);
+    font-weight: 900;
+    font-size: 36px;
+    line-height: 1;
+    color: var(--text);
+  }
+  .kpi-delta {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--lime);
+    margin-top: 4px;
+  }
+  .kpi-delta.neg { color: var(--red); }
+
+  /* Table */
+  .table-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+  }
+  .table-header {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+  }
+  .table-title {
+    font-family: var(--head);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--text);
+  }
+  .table-count {
+    font-family: var(--mono);
+    font-size: 9px;
+    background: rgba(139,195,74,0.1);
+    border: 1px solid rgba(139,195,74,0.2);
+    color: var(--lime);
+    padding: 1px 6px;
+  }
+  .filter-row {
+    display: flex;
+    gap: 8px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .filter-btn {
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 1px;
+    padding: 3px 8px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.1s;
+  }
+  .filter-btn:hover, .filter-btn.active {
+    border-color: var(--lime);
+    color: var(--lime);
+    background: rgba(139,195,74,0.05);
+  }
+  .search-box {
+    margin-left: auto;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 9px;
+    padding: 3px 8px;
+    outline: none;
+    letter-spacing: 1px;
+    width: 160px;
+  }
+  .search-box::placeholder { color: var(--muted); }
+  .search-box:focus { border-color: var(--olive); }
+
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 8px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    background: rgba(0,0,0,0.2);
+  }
+  td {
+    padding: 8px 16px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text);
+    border-bottom: 1px solid rgba(42,48,32,0.5);
+  }
+  tr:hover td { background: rgba(139,195,74,0.03); cursor: pointer; }
+
+  .priority-tag {
+    display: inline-block;
+    font-size: 7px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    font-family: var(--mono);
+  }
+  .priority-tag.high { background: rgba(211,47,47,0.15); color: var(--red); border: 1px solid rgba(211,47,47,0.3); }
+  .priority-tag.med  { background: rgba(255,179,0,0.1);  color: var(--amber); border: 1px solid rgba(255,179,0,0.25); }
+  .priority-tag.low  { background: rgba(139,195,74,0.1); color: var(--lime);  border: 1px solid rgba(139,195,74,0.25); }
+</style>
+</head>
+<body>
+
+<aside>
+  <div class="logo-zone">
+    <div class="logo-badge">
+      <div class="logo-icon">OI</div>
+      <div>
+        <div class="logo-title">DEF<br>Océan Indien</div>
+      </div>
+    </div>
+    <div class="logo-sub">// VEILLE_MARCHÉS v2.1</div>
+    <div class="status-bar">
+      <div class="status-dot"></div>
+      <span class="status-label">SYSTÈME OPÉRATIONNEL</span>
+    </div>
+  </div>
+
+  <nav>
+    <div class="nav-section-label">Modules</div>
+    <a class="nav-item active">
+      <span class="nav-icon">[P]</span>
+      Pipeline
+    </a>
+    <a class="nav-item">
+      <span class="nav-icon">[A]</span>
+      Analytics
+    </a>
+    <a class="nav-item">
+      <span class="nav-icon">[D]</span>
+      Direction
+    </a>
+    <a class="nav-item">
+      <span class="nav-icon">[!]</span>
+      Urgences
+      <span class="nav-badge">3</span>
+    </a>
+    <div class="nav-divider"></div>
+    <a class="nav-item">
+      <span class="nav-icon">[?]</span>
+      Guide
+    </a>
+  </nav>
+
+  <div class="collect-section">
+    <div class="collect-label">Collecte</div>
+    <div class="source-grid">
+      <label class="source-item"><div class="source-check">✓</div> nukema</label>
+      <label class="source-item"><div class="source-check">✓</div> marcheonline</label>
+      <label class="source-item"><div class="source-check">✓</div> tendersgo</label>
+      <label class="source-item"><div class="source-check">✓</div> vaao</label>
+      <label class="source-item"><div class="source-check" style="opacity:.3"></div> instao 🔒</label>
+      <label class="source-item"><div class="source-check" style="opacity:.3"></div> marches_sec 🔒</label>
+    </div>
+    <button class="collect-btn">▶ Lancer collecte</button>
+  </div>
+
+  <div class="settings-zone">
+    <a class="nav-item">
+      <span class="nav-icon">[⚙]</span>
+      Paramètres
+    </a>
+  </div>
+</aside>
+
+<div class="main-area">
+  <div class="top-bar">
+    <span class="top-bar-title">Pipeline</span>
+    <span class="top-bar-sep">/</span>
+    <span class="breadcrumb">APPELS D'OFFRES &gt; ACTIFS</span>
+    <div class="top-bar-right">
+      <span class="timestamp" id="ts"></span>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="kpi-row">
+      <div class="kpi-card green">
+        <div class="kpi-label">En pipeline</div>
+        <div class="kpi-value">47</div>
+        <div class="kpi-delta">+12 cette semaine</div>
+      </div>
+      <div class="kpi-card amber">
+        <div class="kpi-label">Urgent ≤7j</div>
+        <div class="kpi-value">3</div>
+        <div class="kpi-delta neg">–1 aujourd'hui</div>
+      </div>
+      <div class="kpi-card blue">
+        <div class="kpi-label">Analysés IA</div>
+        <div class="kpi-value">31</div>
+        <div class="kpi-delta">66% du total</div>
+      </div>
+      <div class="kpi-card red">
+        <div class="kpi-label">En attente</div>
+        <div class="kpi-value">16</div>
+        <div class="kpi-delta neg">À traiter</div>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <div class="table-header">
+        <span class="table-title">Appels d'offres</span>
+        <span class="table-count">47 résultats</span>
+      </div>
+      <div class="filter-row">
+        <button class="filter-btn active">Tous</button>
+        <button class="filter-btn">Nouveau</button>
+        <button class="filter-btn">En cours</button>
+        <button class="filter-btn">Soumis</button>
+        <button class="filter-btn">Public</button>
+        <button class="filter-btn">Privé</button>
+        <input class="search-box" placeholder="RECHERCHER..." />
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Référence</th>
+            <th>Objet</th>
+            <th>Acheteur</th>
+            <th>Échéance</th>
+            <th>Priorité</th>
+            <th>Statut</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>AO-2026-0312</td>
+            <td>Fourniture équipements informatiques</td>
+            <td>Région Réunion</td>
+            <td>2026-05-30</td>
+            <td><span class="priority-tag high">Élevée</span></td>
+            <td><span class="priority-tag med">En cours</span></td>
+          </tr>
+          <tr>
+            <td>AO-2026-0298</td>
+            <td>Maintenance réseau télécoms</td>
+            <td>CHU Réunion</td>
+            <td>2026-06-05</td>
+            <td><span class="priority-tag med">Moyenne</span></td>
+            <td><span class="priority-tag low">Nouveau</span></td>
+          </tr>
+          <tr>
+            <td>AO-2026-0287</td>
+            <td>Logiciels de gestion documentaire</td>
+            <td>Département 974</td>
+            <td>2026-06-12</td>
+            <td><span class="priority-tag low">Faible</span></td>
+            <td><span class="priority-tag low">Nouveau</span></td>
+          </tr>
+          <tr>
+            <td>AO-2026-0281</td>
+            <td>Audit cybersécurité SI</td>
+            <td>CCI Réunion</td>
+            <td>2026-06-18</td>
+            <td><span class="priority-tag high">Élevée</span></td>
+            <td><span class="priority-tag med">Analyse IA</span></td>
+          </tr>
+          <tr>
+            <td>AO-2026-0274</td>
+            <td>Formation agents collectivités</td>
+            <td>Mairie Saint-Denis</td>
+            <td>2026-06-25</td>
+            <td><span class="priority-tag med">Moyenne</span></td>
+            <td><span class="priority-tag low">Nouveau</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  function tick() {
+    const now = new Date()
+    document.getElementById('ts').textContent =
+      now.toISOString().replace('T', ' ').substring(0,19) + ' UTC'
+  }
+  tick(); setInterval(tick, 1000)
+
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'))
+      this.classList.add('active')
+    })
+  })
+
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', function() {
+      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'))
+      this.classList.add('active')
+    })
+  })
+</script>
+</body>
+</html>
