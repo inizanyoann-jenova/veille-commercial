@@ -309,3 +309,33 @@ def test_dict_to_tender_date_extraction_est_datetime_precis():
         f"[{before!r}, {after!r}]. "
         "Probable bug : date_found parsé en minuit au lieu de datetime.now()."
     )
+
+
+def test_mistral_key_endpoint_saves_and_activates():
+    """POST /api/settings/mistral-key must write .env, set env var, reset client."""
+    import main as m
+    from fastapi.testclient import TestClient
+
+    with (
+        patch("main._save_api_key_to_env") as mock_save,
+        patch("main.reset_mistral_client") as mock_reset,
+        patch.dict("os.environ", {}, clear=False),
+    ):
+        client = TestClient(m.app)
+        resp = client.post("/api/settings/mistral-key", json={"api_key": "sk-test-key"})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    mock_save.assert_called_once_with("sk-test-key")
+    mock_reset.assert_called_once()
+
+
+def test_mistral_key_endpoint_rejects_empty_key():
+    """Empty api_key must return 422."""
+    import main as m
+    from fastapi.testclient import TestClient
+
+    client = TestClient(m.app)
+    resp = client.post("/api/settings/mistral-key", json={"api_key": ""})
+    assert resp.status_code == 422
