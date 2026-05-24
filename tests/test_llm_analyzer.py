@@ -1,22 +1,29 @@
-import sys, os
+import sys
+import os
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 
 def test_compute_combined_score_with_gemini():
     from llm_analyzer import compute_combined_score
+
     result = compute_combined_score(llm_score=80, local_score=50, llm_available=True)
     assert result == round(80 * 0.70 + 50 * 0.30)  # 71
 
 
 def test_compute_combined_score_without_gemini():
     from llm_analyzer import compute_combined_score
+
     result = compute_combined_score(llm_score=80, local_score=50, llm_available=False)
     assert result == 50  # local uniquement
 
 
 def test_local_analyze_returns_new_fields():
     from llm_analyzer import _local_analyze
-    result = _local_analyze("Maintenance SSI système de sécurité incendie La Réunion 974")
+
+    result = _local_analyze(
+        "Maintenance SSI système de sécurité incendie La Réunion 974"
+    )
     assert "tag_pertinence" in result
     assert result["tag_pertinence"] in ("Très pertinent", "À évaluer", "Hors périmètre")
     assert "domaines_concernes" in result
@@ -28,6 +35,7 @@ def test_local_analyze_returns_new_fields():
 
 def test_local_analyze_ssi_reunion_high_score():
     from llm_analyzer import _local_analyze
+
     result = _local_analyze(
         "Marché de maintenance SSI CMSI alarme incendie - Saint-Denis La Réunion 974"
     )
@@ -38,6 +46,7 @@ def test_local_analyze_ssi_reunion_high_score():
 
 def test_local_analyze_gardiennage_low_score():
     from llm_analyzer import _local_analyze
+
     result = _local_analyze("Prestations de gardiennage et agents de sécurité")
     assert result["score_pertinence"] < 35
     assert result["tag_pertinence"] in ("À évaluer", "Hors périmètre")
@@ -70,35 +79,38 @@ def test_analyze_tender_returns_combined_score(monkeypatch):
 
 def test_local_analyze_empty_string():
     from llm_analyzer import _local_analyze
+
     result = _local_analyze("")
     assert "score_pertinence" in result
     assert result["score_pertinence"] == 0
 
 
-
 def test_analyze_tender_structured_returns_none_for_short_description():
     """Description < 50 chars -> None sans appeler l API."""
     from llm_analyzer import analyze_tender_structured
-    result = analyze_tender_structured('Titre', 'Court')
+
+    result = analyze_tender_structured("Titre", "Court")
     assert result is None
 
 
 def test_analyze_tender_structured_returns_none_without_api_key(monkeypatch):
     """Pas de MISTRAL_API_KEY -> None."""
-    monkeypatch.delenv('MISTRAL_API_KEY', raising=False)
+    monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
     import llm_analyzer
+
     llm_analyzer._mistral_client = None
     from llm_analyzer import analyze_tender_structured
+
     result = analyze_tender_structured(
-        'Installation SSI ERP type J',
-        'Installation d un systeme de securite incendie dans un ERP de type J, categorie 2.',
+        "Installation SSI ERP type J",
+        "Installation d un systeme de securite incendie dans un ERP de type J, categorie 2.",
     )
     assert result is None
 
 
 def test_analyze_tender_structured_parses_valid_json(monkeypatch):
     """Réponse Mistral JSON valide -> dict avec les bons champs."""
-    monkeypatch.setenv('MISTRAL_API_KEY', 'fake-mistral-key-1234')
+    monkeypatch.setenv("MISTRAL_API_KEY", "fake-mistral-key-1234")
     import llm_analyzer
     from unittest.mock import MagicMock
 
@@ -114,27 +126,28 @@ def test_analyze_tender_structured_parses_valid_json(monkeypatch):
     monkeypatch.setattr(llm_analyzer, "_get_mistral_client", lambda: mock_client)
 
     from llm_analyzer import analyze_tender_structured
+
     result = analyze_tender_structured(
-        'Installation SSI ERP type J',
-        'Installation d un systeme de securite incendie dans un ERP de type J categorie 2, desenfumage CMSI inclus.',
+        "Installation SSI ERP type J",
+        "Installation d un systeme de securite incendie dans un ERP de type J categorie 2, desenfumage CMSI inclus.",
         amount=150000,
     )
 
     assert result is not None
-    assert result['recommandation'] == 'GO'
-    assert result['score_confiance'] == 82
-    assert 'budget_estime' in result
-    assert isinstance(result['lots'], list)
+    assert result["recommandation"] == "GO"
+    assert result["score_confiance"] == 82
+    assert "budget_estime" in result
+    assert isinstance(result["lots"], list)
 
 
 def test_analyze_tender_structured_handles_invalid_json(monkeypatch):
     """Mistral retourne du texte invalide -> None sans exception."""
-    monkeypatch.setenv('MISTRAL_API_KEY', 'fake-mistral-key-1234')
+    monkeypatch.setenv("MISTRAL_API_KEY", "fake-mistral-key-1234")
     import llm_analyzer
     from unittest.mock import MagicMock
 
     mock_choice = MagicMock()
-    mock_choice.message.content = 'Desole, je ne peux pas repondre.'
+    mock_choice.message.content = "Desole, je ne peux pas repondre."
     mock_response = MagicMock()
     mock_response.choices = [mock_choice]
 
@@ -144,9 +157,10 @@ def test_analyze_tender_structured_handles_invalid_json(monkeypatch):
     monkeypatch.setattr(llm_analyzer, "_get_mistral_client", lambda: mock_client)
 
     from llm_analyzer import analyze_tender_structured
+
     result = analyze_tender_structured(
-        'Installation SSI',
-        'Installation d un systeme de securite incendie complet avec CMSI et desenfumage.',
+        "Installation SSI",
+        "Installation d un systeme de securite incendie complet avec CMSI et desenfumage.",
     )
     assert result is None
 
@@ -155,6 +169,7 @@ def test_mistral_analyze_returns_none_without_key(monkeypatch):
     """Pas de MISTRAL_API_KEY -> None sans appel réseau."""
     monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
     import llm_analyzer
+
     llm_analyzer._mistral_client = None
     result = llm_analyzer._mistral_analyze("test texte")
     assert result is None
@@ -283,6 +298,7 @@ def test_analyze_tender_routes_to_mistral(monkeypatch):
 
 def test_reset_mistral_client_sets_none():
     import llm_analyzer
+
     llm_analyzer._mistral_client = object()  # simuler un client existant
     llm_analyzer.reset_mistral_client()
     assert llm_analyzer._mistral_client is None
@@ -290,6 +306,7 @@ def test_reset_mistral_client_sets_none():
 
 def test_system_prompt_contains_decision_field():
     from llm_analyzer import SYSTEM_PROMPT
+
     assert '"decision"' in SYSTEM_PROMPT
     assert '"OUI"' in SYSTEM_PROMPT
     assert '"NON"' in SYSTEM_PROMPT
@@ -297,9 +314,11 @@ def test_system_prompt_contains_decision_field():
 
 def test_system_prompt_contains_alerte_erp_field():
     from llm_analyzer import SYSTEM_PROMPT
+
     assert '"alerte_erp"' in SYSTEM_PROMPT
 
 
 def test_system_prompt_enforces_date_extraction():
     from llm_analyzer import SYSTEM_PROMPT
+
     assert "IMPÉRATIVEMENT" in SYSTEM_PROMPT or "obligatoire" in SYSTEM_PROMPT.lower()
