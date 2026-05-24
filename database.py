@@ -300,8 +300,14 @@ def load_urgences(db, score_go: int = 65, days_ahead: int = 30) -> list[dict]:
         {
             "id": t.id,
             "title": t.title,
-            "score": t.relevance_score,
-            "jours": (t.deadline.replace(tzinfo=None) - today).days,
+            "relevance_score": t.relevance_score,
+            "jours_restants": (t.deadline.replace(tzinfo=None) - today).days,
+            "source": t.source,
+            "url": t.url,
+            "description": (t.description or "")[:300] if t.description else None,
+            "secteur": t.secteur,
+            "amount": t.amount,
+            "llm_resume": (t.llm_analysis or {}).get("resume") if t.llm_analysis else None,
         }
         for t in rows
     ]
