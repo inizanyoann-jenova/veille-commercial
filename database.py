@@ -3,7 +3,7 @@ import logging as _logging
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
-from models import Base, Credential  # noqa: Credential enregistre la table credentials
+from models import Base  # noqa: Credential enregistre la table credentials
 
 _log = _logging.getLogger(__name__)
 
@@ -19,17 +19,18 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Whitelist de migrations autorisées — (table, col_name, col_def)
 _MIGRATIONS: list[tuple[str, str, str]] = [
-    ("tenders", "date_extraction",        "DATETIME DEFAULT NULL"),
-    ("tenders", "secteur",               "VARCHAR"),
-    ("tenders", "type_opportunite",      "VARCHAR DEFAULT 'Marché Public'"),
-    ("tenders", "amount",                "INTEGER"),
-    ("tenders", "is_blacklisted",        "BOOLEAN DEFAULT 0"),
-    ("tenders", "is_saved",              "BOOLEAN DEFAULT 0"),
-    ("tenders", "notes",                 "TEXT"),
-    ("tenders", "tags",                  "JSON DEFAULT '[]'"),
-    ("sources", "is_validated",          "BOOLEAN DEFAULT 0"),
-    ("sources", "ping_failures_count",   "INTEGER DEFAULT 0"),
-    ("sources", "last_ping_at",          "DATETIME DEFAULT NULL"),
+    ("tenders", "date_extraction", "DATETIME DEFAULT NULL"),
+    ("tenders", "secteur", "VARCHAR"),
+    ("tenders", "type_opportunite", "VARCHAR DEFAULT 'Marché Public'"),
+    ("tenders", "amount", "INTEGER"),
+    ("tenders", "is_blacklisted", "BOOLEAN DEFAULT 0"),
+    ("tenders", "is_saved", "BOOLEAN DEFAULT 0"),
+    ("tenders", "notes", "TEXT"),
+    ("tenders", "tags", "JSON DEFAULT '[]'"),
+    ("sources", "is_validated", "BOOLEAN DEFAULT 0"),
+    ("sources", "ping_failures_count", "INTEGER DEFAULT 0"),
+    ("sources", "last_ping_at", "DATETIME DEFAULT NULL"),
+    ("tenders", "url", "VARCHAR DEFAULT NULL"),
 ]
 
 _VALID_TABLES = {"tenders", "sources"}
@@ -50,7 +51,9 @@ def _run_migrations(engine) -> None:
             try:
                 # Pour une application locale, cette approche est sécurisée grâce à la validation whitelist
                 # Les requêtes DDL avec noms de tables/colonnes paramétrés ne sont pas supportées par SQLAlchemy
-                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}"))
+                conn.execute(
+                    text(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
+                )
                 conn.commit()
             except OperationalError as e:
                 err = str(e).lower()
@@ -104,22 +107,29 @@ def get_db():
         db.close()
 
 
-from datetime import datetime as _dt, timezone as _tz, timedelta as _td
-from difflib import SequenceMatcher as _SM
-from sqlalchemy import and_ as _and, or_ as _or
+from datetime import datetime as _dt, timezone as _tz, timedelta as _td  # noqa: E402
+from difflib import SequenceMatcher as _SM  # noqa: E402
 
 
 def start_scraper_run(db, source_name: str) -> int:
     from models import ScraperRun
-    run = ScraperRun(source_name=source_name, started_at=_dt.now(_tz.utc).replace(tzinfo=None), status="running")
+
+    run = ScraperRun(
+        source_name=source_name,
+        started_at=_dt.now(_tz.utc).replace(tzinfo=None),
+        status="running",
+    )
     db.add(run)
     db.commit()
     db.refresh(run)
     return run.id
 
 
-def finish_scraper_run(db, run_id: int, nb_found: int, nb_new: int, error: str | None = None) -> None:
+def finish_scraper_run(
+    db, run_id: int, nb_found: int, nb_new: int, error: str | None = None
+) -> None:
     from models import ScraperRun
+
     run = db.query(ScraperRun).filter(ScraperRun.id == run_id).first()
     if not run:
         _log.warning("finish_scraper_run: ScraperRun id=%s introuvable", run_id)
@@ -137,7 +147,7 @@ def finish_scraper_run(db, run_id: int, nb_found: int, nb_new: int, error: str |
 
 
 _DEDUP_MAX_TENDERS = 2000  # au-delà, O(N²) devient trop lent
-_DEDUP_MAX_SECONDS = 30   # timeout pour éviter de bloquer l'UI
+_DEDUP_MAX_SECONDS = 30  # timeout pour éviter de bloquer l'UI
 
 
 def detect_duplicates(db) -> int:
@@ -154,20 +164,30 @@ def detect_duplicates(db) -> int:
     new_pairs = 0
 
     # Charger les paires existantes
-    existing_raw = db.query(DuplicateCandidate.tender_id_a, DuplicateCandidate.tender_id_b).all()
-    existing_pairs: set[tuple] = {
-        (min(a, b), max(a, b)) for a, b in existing_raw
-    }
+    existing_raw = db.query(
+        DuplicateCandidate.tender_id_a, DuplicateCandidate.tender_id_b
+    ).all()
+    existing_pairs: set[tuple] = {(min(a, b), max(a, b)) for a, b in existing_raw}
 
     # Charger les tenders avec leurs deadlines pour filtrage préliminaire
-    tenders = db.query(Tender).filter(
-        Tender.is_blacklisted == False,
-        Tender.title != None,
-        Tender.title != ""
-    ).all()
+    tenders = (
+        db.query(Tender)
+        .filter(
+            Tender.is_blacklisted.is_(False), Tender.title.is_not(None), Tender.title != ""
+        )
+        .all()
+    )
 
     if len(tenders) > _DEDUP_MAX_TENDERS:
-        tenders = sorted(tenders, key=lambda t: (t.publication_date.replace(tzinfo=None) if t.publication_date else _ddt.min), reverse=True)[:_DEDUP_MAX_TENDERS]
+        tenders = sorted(
+            tenders,
+            key=lambda t: (
+                t.publication_date.replace(tzinfo=None)
+                if t.publication_date
+                else _ddt.min
+            ),
+            reverse=True,
+        )[:_DEDUP_MAX_TENDERS]
 
     # Grouper les tenders par source pour éviter les comparaisons inutiles
     tenders_by_source = defaultdict(list)
@@ -234,12 +254,14 @@ def detect_duplicates(db) -> int:
                     continue
 
                 # Ajouter la nouvelle paire
-                db.add(DuplicateCandidate(
-                    tender_id_a=a.id,
-                    tender_id_b=b.id,
-                    similarity_score=round(ratio, 3),
-                    detected_at=_ddt.now(_tz.utc).replace(tzinfo=None),
-                ))
+                db.add(
+                    DuplicateCandidate(
+                        tender_id_a=a.id,
+                        tender_id_b=b.id,
+                        similarity_score=round(ratio, 3),
+                        detected_at=_ddt.now(_tz.utc).replace(tzinfo=None),
+                    )
+                )
                 existing_pairs.add(pair_key)
                 new_pairs += 1
 
@@ -247,7 +269,9 @@ def detect_duplicates(db) -> int:
         db.commit()
 
     elapsed = _time.monotonic() - start_time
-    _log.info("detect_duplicates: %d paires traitées en %.2f secondes", new_pairs, elapsed)
+    _log.info(
+        "detect_duplicates: %d paires traitées en %.2f secondes", new_pairs, elapsed
+    )
     return new_pairs
 
 
@@ -255,14 +279,16 @@ def load_urgences(db, score_go: int = 65, days_ahead: int = 30) -> list[dict]:
     from models import Tender
     from datetime import datetime as _ddt, timedelta as _td, timezone as _tz
 
-    today = _ddt.now(_tz.utc).replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
+    today = _ddt.now(_tz.utc).replace(
+        tzinfo=None, hour=0, minute=0, second=0, microsecond=0
+    )
     cutoff = today + _td(days=days_ahead)
     rows = (
         db.query(Tender)
         .filter(
             Tender.relevance_score >= score_go,
-            Tender.is_blacklisted == False,
-            Tender.deadline != None,
+            Tender.is_blacklisted.is_(False),
+            Tender.deadline.is_not(None),
             Tender.deadline >= today,
             Tender.deadline <= cutoff,
             ~Tender.status.in_(["Gagné", "Perdu"]),
@@ -284,17 +310,22 @@ def load_urgences(db, score_go: int = 65, days_ahead: int = 30) -> list[dict]:
 def count_decisions(db) -> int:
     """Nombre de tenders avec une décision enregistrée (Soumis/Gagné/Perdu)."""
     from models import Tender
-    return db.query(Tender).filter(
-        Tender.status.in_(["Soumis", "Gagné", "Perdu"]),
-        Tender.is_blacklisted == False,
-    ).count()
+
+    return (
+        db.query(Tender)
+        .filter(
+            Tender.status.in_(["Soumis", "Gagné", "Perdu"]),
+            Tender.is_blacklisted.is_(False),
+        )
+        .count()
+    )
 
 
 def load_pipeline_data(db, score_go: int = 65) -> dict:
     from models import Tender
     from datetime import datetime as _ddt
 
-    tenders = db.query(Tender).filter(Tender.is_blacklisted == False).all()
+    tenders = db.query(Tender).filter(Tender.is_blacklisted.is_(False)).all()
     go, soumis, resultats = [], [], []
     for t in tenders:
         if t.status in ("Gagné", "Perdu"):
@@ -304,8 +335,14 @@ def load_pipeline_data(db, score_go: int = 65) -> dict:
         elif t.relevance_score >= score_go:
             go.append(t)
 
-    def _dl(t): return (t.deadline.replace(tzinfo=None) if t.deadline else _ddt.max)
-    def _pub(t): return (t.publication_date.replace(tzinfo=None) if t.publication_date else _ddt.min)
+    def _dl(t):
+        return t.deadline.replace(tzinfo=None) if t.deadline else _ddt.max
+
+    def _pub(t):
+        return (
+            t.publication_date.replace(tzinfo=None) if t.publication_date else _ddt.min
+        )
+
     go.sort(key=_dl)
     soumis.sort(key=_dl)
     resultats.sort(key=_pub, reverse=True)
@@ -329,8 +366,8 @@ def clean_obsolete_data(db, days: int = 30) -> int:
         db.query(Tender)
         .filter(
             Tender.status == "À qualifier",
-            Tender.is_blacklisted == False,
-            Tender.publication_date != None,
+            Tender.is_blacklisted.is_(False),
+            Tender.publication_date.is_not(None),
             Tender.publication_date < cutoff,
         )
         .all()
@@ -361,7 +398,7 @@ def delete_old_tenders(db, months: int = 3) -> int:
     tenders = (
         db.query(Tender)
         .filter(
-            Tender.publication_date != None,
+            Tender.publication_date.is_not(None),
             Tender.publication_date < cutoff,
             ~Tender.status.in_(["Soumis", "Gagné", "Perdu"]),
         )
@@ -373,7 +410,9 @@ def delete_old_tenders(db, months: int = 3) -> int:
         db.delete(t)
     if count:
         db.commit()
-        _log.info("delete_old_tenders : %d tenders supprimés (> %d mois)", count, months)
+        _log.info(
+            "delete_old_tenders : %d tenders supprimés (> %d mois)", count, months
+        )
     return count
 
 
