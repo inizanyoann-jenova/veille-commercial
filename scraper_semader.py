@@ -1,95 +1,102 @@
-import hashlib
-import logging
+"""
+SEMADER (Société d'Économie Mixte d'Aménagement de La Réunion) — appels d'offres.
+Method: JS-rendered scraping via Playwright (site Drupal dynamique).
+"""
+
+from datetime import datetime, timezone
 
 from playwright.sync_api import sync_playwright
 
-from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
-from filters import classify_relevance
-from models import Tender
-from playwright_base import extract_cards, paginate
-from scraper_utils import parse_date, load_existing_ids, insert_if_new, now_utc
-
-_log = logging.getLogger(__name__)
-
 _URL = "https://www.semader.re/appels-d-offres"
+_BASE = "https://www.semader.re"
 _CARD = "article, .views-row, .node--type-appel-offre, li.ao-item, .field-content"
-_FIELDS = {
-    "title": "h2, h3, .node__title, .field--name-title",
-    "description": ".field--name-body, .teaser, .description, p",
-    "url": "a@href",
-    "date": ".date, time, .field--name-field-date",
-}
 _NEXT = "a[title='Page suivante'], li.pager__item--next a, .pager-next a"
+_MAX_PAGES = 5
 
 
-def fetch_semader_tenders() -> int:
-    init_db()
-    db = SessionLocal()
-    inserted = 0
-    _run_id = start_scraper_run(db, "SEMADER — Appels d'offres Réunion")
-    try:
-        existing_ids = load_existing_ids(db)
+def fetch() -> list[dict]:
+    """
+    Returns SEMADER tenders (La Réunion).
+    Each item: name, url, source, date_found + domain-specific fields.
+    """
+    results = []
 
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True)
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
             try:
-                page = browser.new_page()
+                page.goto(_URL, timeout=30_000)
+                page.wait_for_load_state("networkidle", timeout=30_000)
+            except Exception:
+                return results
+
+            for _ in range(_MAX_PAGES):
+                cards = page.query_selector_all(_CARD)
+                for card in cards:
+                    raw = _extract_card(card)
+                    if raw.get("name"):
+                        results.append(_normalise(raw))
+
+                next_btn = page.query_selector(_NEXT)
+                if not next_btn:
+                    break
+                next_btn.click()
                 try:
-                    try:
-                        page.goto(_URL, timeout=30000)
-                        page.wait_for_load_state("networkidle", timeout=30000)
-                    except Exception as exc:
-                        _log.warning("SEMADER inaccessible : %s", type(exc).__name__)
-                        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
-                        return 0
-                    page_count = 0
-                    nb_found   = 0
-                    while page_count < 5:
-                        cards = extract_cards(page, _CARD, _FIELDS)
-                        nb_found += len(cards)
-                        for card in cards:
-                            title = card.get("title", "").strip()
-                            desc = card.get("description", "").strip()
-                            relevant, extra_tags = classify_relevance(f"{title} {desc}")
-                            if not relevant:
-                                continue
-                            url = card.get("url", "") or _URL
-                            if url and not url.startswith("http"):
-                                url = f"https://www.semader.re{url}"
-                            tid = f"SEMADER-{hashlib.md5(f'{title}{url}'.encode()).hexdigest()}"
-                            t = Tender(
-                                id=tid, title=title, description=desc, source=url,
-                                publication_date=parse_date(card.get("date")),
-                                date_extraction=now_utc(),
-                                deadline=None, status="À qualifier",
-                                relevance_score=0, is_maintenance=False,
-                                llm_analysis=None, secteur="Public",
-                                type_opportunite="Marché Public",
-                                tags=extra_tags,
-                            )
-                            if insert_if_new(db, t, existing_ids):
-                                inserted += 1
-                        if not paginate(page, _NEXT):
-                            break
-                        page_count += 1
-                finally:
-                    page.close()
-            finally:
-                browser.close()
+                    page.wait_for_load_state("networkidle", timeout=15_000)
+                except Exception:
+                    break
 
-        if inserted:
-            db.commit()
-        finish_scraper_run(db, _run_id, nb_found=nb_found, nb_new=inserted)
-        _log.info("SEMADER : %d trouvés, %d inséré(s)", nb_found, inserted)
-    except Exception as exc:
-        _log.exception("SEMADER : erreur collecte")
-        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
-        raise
-    finally:
-        db.close()
-    return inserted
+            page.close()
+        finally:
+            browser.close()
+
+    return results
 
 
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    _log.info("SEMADER : %d AO insérés", fetch_semader_tenders())
+def _extract_card(card) -> dict:
+    """Extract raw fields from a Playwright element handle."""
+
+    def text(selector):
+        el = card.query_selector(selector)
+        return el.inner_text().strip() if el else ""
+
+    def href(selector):
+        el = card.query_selector(selector)
+        return el.get_attribute("href") or "" if el else ""
+
+    title = text("h2, h3, .node__title, .field--name-title")
+    description = text(".field--name-body, .teaser, .description, p")
+    url = href("a")
+    date = text(".date, time, .field--name-field-date")
+
+    if url and not url.startswith("http"):
+        url = f"{_BASE}{url}"
+
+    return {
+        "name": title,
+        "description": description,
+        "url": url or _URL,
+        "raw_date": date,
+    }
+
+
+def _normalise(raw: dict) -> dict:
+    """Convert extracted card data to standard schema."""
+    raw_date = raw.get("raw_date") or ""
+    try:
+        publication_date = (
+            datetime.fromisoformat(raw_date[:10]).date().isoformat() if raw_date else ""
+        )
+    except ValueError:
+        publication_date = raw_date
+
+    return {
+        "name": raw.get("name", ""),
+        "url": raw.get("url", _URL),
+        "source": "SEMADER",
+        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "publication_date": publication_date,
+        "deadline": "",
+        "description": raw.get("description", ""),
+    }
