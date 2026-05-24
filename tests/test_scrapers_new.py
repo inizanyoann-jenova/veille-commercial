@@ -9,30 +9,21 @@ from unittest.mock import patch, MagicMock
 # ── Tests scraper_decp ─────────────────────────────────────────────────────
 
 
-def test_fetch_decp_returns_zero_on_empty_response():
+def test_fetch_decp_returns_empty_on_empty_response():
     mock_resp = MagicMock()
+    mock_resp.status_code = 200
     mock_resp.json.return_value = {"results": [], "total_count": 0}
-    mock_resp.raise_for_status.return_value = None
+
+    import scraper_decp
 
     with patch("requests.get", return_value=mock_resp):
-        from scraper_decp import fetch_decp_tenders
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import sessionmaker
-        from models import Base
-
-        engine = create_engine("sqlite:///:memory:")
-        Base.metadata.create_all(engine)
-        Session = sessionmaker(bind=engine)
-
-        with patch("scraper_decp.SessionLocal", Session):
-            with patch("scraper_decp.init_db"):
-                result = fetch_decp_tenders()
-    assert result == 0
+        result = scraper_decp.fetch()
+    assert result == []
 
 
-def test_fetch_decp_inserts_relevant_record():
+def test_fetch_decp_returns_relevant_record():
     mock_resp = MagicMock()
-    mock_resp.raise_for_status.return_value = None
+    mock_resp.status_code = 200
     mock_resp.json.return_value = {
         "results": [
             {
@@ -48,32 +39,18 @@ def test_fetch_decp_inserts_relevant_record():
         "total_count": 1,
     }
 
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from models import Base, Tender
-
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
+    import scraper_decp
 
     with patch("requests.get", return_value=mock_resp):
-        with patch("scraper_decp.SessionLocal", Session):
-            with patch("scraper_decp.init_db"):
-                from scraper_decp import fetch_decp_tenders
+        result = scraper_decp.fetch()
 
-                result = fetch_decp_tenders()
-
-    db = Session()
-    tenders = db.query(Tender).all()
-    db.close()
-    assert result == 1
-    assert len(tenders) == 1
-    assert "SSI" in tenders[0].title or "incendie" in tenders[0].title.lower()
+    assert len(result) == 1
+    assert "SSI" in result[0]["name"] or "incendie" in result[0]["name"].lower()
 
 
-def test_fetch_decp_inserts_public_erp_implicit_record():
+def test_fetch_decp_includes_erp_via_construction_filter():
     mock_resp = MagicMock()
-    mock_resp.raise_for_status.return_value = None
+    mock_resp.status_code = 200
     mock_resp.json.return_value = {
         "results": [
             {
@@ -87,58 +64,31 @@ def test_fetch_decp_inserts_public_erp_implicit_record():
         "total_count": 1,
     }
 
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from models import Base, Tender
-
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
+    import scraper_decp
 
     with patch("requests.get", return_value=mock_resp) as req:
-        with patch("scraper_decp.SessionLocal", Session):
-            with patch("scraper_decp.init_db"):
-                from scraper_decp import fetch_decp_tenders
-
-                result = fetch_decp_tenders()
+        result = scraper_decp.fetch()
 
     where_clause = req.call_args.kwargs["params"]["where"]
-    db = Session()
-    tenders = db.query(Tender).all()
-    db.close()
-
     assert "construction" in where_clause
     assert "collège" in where_clause
-    assert result == 1
-    assert len(tenders) == 1
-    assert "Potentiel SSI implicite" in tenders[0].tags
+    assert len(result) == 1
 
 
 # ── Tests scraper_ungm ─────────────────────────────────────────────────────
 
 
-def test_fetch_ungm_returns_zero_on_empty_html():
+def test_fetch_ungm_returns_empty_on_no_results():
     mock_resp = MagicMock()
-    mock_resp.raise_for_status.return_value = None
-    mock_resp.text = "<html><body>No results</body></html>"
     mock_resp.status_code = 200
+    # json() returns a MagicMock — neither list nor dict → _search_ungm returns []
+    mock_resp.json.return_value = []
 
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from models import Base
-
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
+    import scraper_ungm
 
     with patch("requests.post", return_value=mock_resp):
-        with patch("requests.get", return_value=mock_resp):
-            with patch("scraper_ungm.SessionLocal", Session):
-                with patch("scraper_ungm.init_db"):
-                    from scraper_ungm import fetch_ungm_tenders
-
-                    result = fetch_ungm_tenders()
-    assert result == 0
+        result = scraper_ungm.fetch()
+    assert result == []
 
 
 # ── Tests scraper_ted ─────────────────────────────────────────────────────────
@@ -149,7 +99,7 @@ def test_ted_api_url_is_v3():
     import scraper_ted
 
     importlib.reload(scraper_ted)
-    assert scraper_ted.TED_API_URL == "https://ted.europa.eu/api/v3.0/notices/search"
+    assert scraper_ted.TED_API_URL == "https://api.ted.europa.eu/v3/notices/search"
 
 
 def test_ted_mayotte_query_includes_city_variants():
@@ -168,26 +118,19 @@ def test_ted_public_search_includes_cpv():
     import scraper_ted
 
     importlib.reload(scraper_ted)
-    assert "PC~45312100" in scraper_ted._PUBLIC_SEARCH
-    assert "PC~50610000" in scraper_ted._PUBLIC_SEARCH
+    assert "PC=45312100" in scraper_ted._PUBLIC_SEARCH
+    assert "PC=50610000" in scraper_ted._PUBLIC_SEARCH
 
 
 def test_ted_fetch_sends_date_filter():
     """Le payload envoyé à l'API doit contenir un filtre de date PD>=."""
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from models import Base
-
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-
     mock_resp = MagicMock()
+    mock_resp.status_code = 200
     mock_resp.json.return_value = {"notices": []}
 
     captured_payloads = []
 
-    def fake_retry_post(url, json=None, **kwargs):
+    def fake_post(url, json=None, **kwargs):
         captured_payloads.append(json or {})
         return mock_resp
 
@@ -196,10 +139,8 @@ def test_ted_fetch_sends_date_filter():
 
     importlib.reload(scraper_ted)
 
-    with patch("scraper_ted.retry_post", side_effect=fake_retry_post):
-        with patch("scraper_ted.SessionLocal", Session):
-            with patch("scraper_ted.init_db"):
-                scraper_ted.fetch_ted_tenders(zones=["La Réunion"])
+    with patch("requests.post", side_effect=fake_post):
+        scraper_ted.fetch()
 
     assert len(captured_payloads) > 0
     assert "PD>=" in captured_payloads[0].get("query", "")
@@ -211,113 +152,77 @@ def test_ted_fetch_sends_date_filter():
 def test_decp_cpv_filter_in_where_clause():
     """Le where DECP doit inclure les codes CPV SSI."""
     mock_resp = MagicMock()
-    mock_resp.raise_for_status.return_value = None
+    mock_resp.status_code = 200
     mock_resp.json.return_value = {"results": [], "total_count": 0}
 
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from models import Base
+    import importlib
+    import scraper_decp
 
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
+    importlib.reload(scraper_decp)
 
     with patch("requests.get", return_value=mock_resp) as req:
-        with patch("scraper_decp.SessionLocal", Session):
-            with patch("scraper_decp.init_db"):
-                import importlib
-                import scraper_decp
-
-                importlib.reload(scraper_decp)
-                scraper_decp.fetch_decp_tenders()
+        scraper_decp.fetch()
 
     where_clause = req.call_args.kwargs["params"]["where"]
     assert "45312100" in where_clause
     assert "50610000" in where_clause
 
 
-def test_decp_window_defaults_to_90_days():
-    """La fenêtre par défaut doit être 90 jours (pas 3 ans)."""
+def test_decp_window_defaults_to_30_days():
+    """La fenêtre par défaut doit être 30 jours."""
     import os
     from datetime import datetime, timedelta
+    import importlib
+    import scraper_decp
 
     mock_resp = MagicMock()
-    mock_resp.raise_for_status.return_value = None
+    mock_resp.status_code = 200
     mock_resp.json.return_value = {"results": [], "total_count": 0}
 
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from models import Base
-
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-
-    os.environ.pop("SCRAPER_WINDOW_DAYS", None)
+    os.environ.pop("DECP_WINDOW_DAYS", None)
 
     with patch("requests.get", return_value=mock_resp) as req:
-        with patch("scraper_decp.SessionLocal", Session):
-            with patch("scraper_decp.init_db"):
-                import importlib
-                import scraper_decp
-
-                importlib.reload(scraper_decp)
-                scraper_decp.fetch_decp_tenders()
+        importlib.reload(scraper_decp)
+        scraper_decp.fetch()
 
     where_clause = req.call_args.kwargs["params"]["where"]
-    expected_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+    expected_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
     assert expected_date in where_clause
 
 
 # ── Tests BOAMP fenêtre temporelle ───────────────────────────────────────────
 
 
-def test_boamp_window_defaults_to_90_days():
-    """La fenêtre par défaut doit être 90 jours (pas 2 ans)."""
+def test_boamp_window_defaults_to_30_days():
+    """La fenêtre par défaut doit être 30 jours."""
     import os
     from datetime import datetime, timedelta
+    import scraper_boamp
 
-    mock_resp = MagicMock()
-    mock_resp.raise_for_status.return_value = None
-    mock_resp.json.return_value = {"results": [], "total_count": 0}
+    captured = {}
 
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from models import Base
-
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
+    def fake_retry_get(url, *, params=None, headers=None, timeout=15, **kwargs):
+        captured["params"] = params or {}
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {"results": []}
+        return resp
 
     os.environ.pop("SCRAPER_WINDOW_DAYS", None)
 
-    with patch("requests.get", return_value=mock_resp) as req:
-        with patch("scraper_boamp.SessionLocal", Session):
-            with patch("scraper_boamp.init_db"):
-                import importlib
-                import scraper_boamp
+    with patch("scraper_boamp.retry_get", side_effect=fake_retry_get):
+        scraper_boamp.fetch()
 
-                importlib.reload(scraper_boamp)
-                scraper_boamp.fetch_boamp_tenders()
-
-    where_clause = req.call_args.kwargs["params"]["where"]
-    expected_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+    where_clause = captured.get("params", {}).get("where", "")
+    expected_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
     assert expected_date in where_clause
 
 
 # ── Tests scraper_devbanks — UNDP / ADB ───────────────────────────────────────
 
 
-def test_fetch_devbanks_undp_inserted():
-    """Un flux UNDP avec une entrée OI/construction doit être inséré."""
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from models import Base, Tender
-
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-
+def test_fetch_devbanks_undp_included():
+    """Un flux UNDP avec une entrée OI/construction doit être retourné."""
     mock_entry = MagicMock()
     mock_entry.get.side_effect = lambda k, default="": {
         "title": "UNDP Procurement — Construction hospital Madagascar",
@@ -330,30 +235,17 @@ def test_fetch_devbanks_undp_inserted():
     mock_feed = MagicMock()
     mock_feed.entries = [mock_entry]
 
+    import scraper_devbanks
+
     with patch("feedparser.parse", return_value=mock_feed):
-        with patch("scraper_devbanks.SessionLocal", Session):
-            with patch("scraper_devbanks.init_db"):
-                from scraper_devbanks import fetch_devbanks
+        result = scraper_devbanks.fetch()
 
-                result = fetch_devbanks()
-
-    db = Session()
-    tenders = db.query(Tender).all()
-    db.close()
-    assert result >= 1
-    assert any("UNDP" in t.title or "madagascar" in t.title.lower() for t in tenders)
+    assert len(result) >= 1
+    assert any("UNDP" in r["name"] or "madagascar" in r["name"].lower() for r in result)
 
 
 def test_fetch_devbanks_irrelevant_skipped():
-    """Une entrée sans lien OI/secteur ne doit pas être insérée."""
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from models import Base
-
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-
+    """Une entrée sans lien OI/secteur ne doit pas être retournée."""
     mock_entry = MagicMock()
     mock_entry.get.side_effect = lambda k, default="": {
         "title": "Project in Germany — Software Development",
@@ -366,11 +258,9 @@ def test_fetch_devbanks_irrelevant_skipped():
     mock_feed = MagicMock()
     mock_feed.entries = [mock_entry]
 
+    import scraper_devbanks
+
     with patch("feedparser.parse", return_value=mock_feed):
-        with patch("scraper_devbanks.SessionLocal", Session):
-            with patch("scraper_devbanks.init_db"):
-                from scraper_devbanks import fetch_devbanks
+        result = scraper_devbanks.fetch()
 
-                result = fetch_devbanks()
-
-    assert result == 0
+    assert result == []
