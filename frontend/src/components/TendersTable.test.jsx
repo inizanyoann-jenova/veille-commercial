@@ -53,9 +53,11 @@ const DEFAULT_PROPS = {
   status: 'Tous',
   secteur: 'Public',
   searchText: '',
+  gonogo: 'Tous',
   onStatusChange: vi.fn(),
   onSecteurChange: vi.fn(),
   onSearchChange: vi.fn(),
+  onGonogoChange: vi.fn(),
 }
 
 describe('TendersTable', () => {
@@ -200,6 +202,44 @@ describe('TendersTable', () => {
     const analyzeBtn = screen.getAllByText(/▶ Analyser/)[0]
     fireEvent.click(analyzeBtn)
     expect(onRowClick).not.toHaveBeenCalled()
+  })
+
+  it('affiche le filtre GO/NO-GO avec aria-label', () => {
+    useTenders.mockReturnValue({ data: [], isLoading: false, isError: false })
+    render(<TendersTable {...DEFAULT_PROPS} />)
+    expect(screen.getByRole('combobox', { name: /go\/no-go/i })).toBeInTheDocument()
+  })
+
+  it('filtre les offres par gonogo GO', () => {
+    useTenders.mockReturnValue({ data: MOCK_TENDERS, isLoading: false, isError: false })
+    render(<TendersTable {...DEFAULT_PROPS} gonogo="GO" />)
+    expect(screen.getByText('Marché SSI Réunion')).toBeInTheDocument()
+    expect(screen.queryByText('Vidéosurveillance Mayotte')).not.toBeInTheDocument()
+    expect(screen.queryByText('Maintenance alarme')).not.toBeInTheDocument()
+  })
+
+  it('filtre les offres par gonogo Étudier', () => {
+    useTenders.mockReturnValue({ data: MOCK_TENDERS, isLoading: false, isError: false })
+    render(<TendersTable {...DEFAULT_PROPS} gonogo="Étudier" />)
+    expect(screen.getByText('Vidéosurveillance Mayotte')).toBeInTheDocument()
+    expect(screen.queryByText('Marché SSI Réunion')).not.toBeInTheDocument()
+    expect(screen.queryByText('Maintenance alarme')).not.toBeInTheDocument()
+  })
+
+  it('filtre les offres par gonogo Passer', () => {
+    useTenders.mockReturnValue({ data: MOCK_TENDERS, isLoading: false, isError: false })
+    render(<TendersTable {...DEFAULT_PROPS} gonogo="Passer" />)
+    expect(screen.getByText('Maintenance alarme')).toBeInTheDocument()
+    expect(screen.queryByText('Marché SSI Réunion')).not.toBeInTheDocument()
+    expect(screen.queryByText('Vidéosurveillance Mayotte')).not.toBeInTheDocument()
+  })
+
+  it('affiche tous les marchés quand gonogo est Tous', () => {
+    useTenders.mockReturnValue({ data: MOCK_TENDERS, isLoading: false, isError: false })
+    render(<TendersTable {...DEFAULT_PROPS} gonogo="Tous" />)
+    expect(screen.getByText('Marché SSI Réunion')).toBeInTheDocument()
+    expect(screen.getByText('Vidéosurveillance Mayotte')).toBeInTheDocument()
+    expect(screen.getByText('Maintenance alarme')).toBeInTheDocument()
   })
 
   it('le bouton ▶ Analyser a un aria-label contenant le titre', () => {
