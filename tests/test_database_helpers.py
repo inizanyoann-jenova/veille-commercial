@@ -1,4 +1,6 @@
-import sys, os
+import sys
+import os
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import pytest
@@ -9,8 +11,7 @@ from models import Base
 
 @pytest.fixture
 def engine():
-    from source_registry import Source  # noqa: registers Source
-    from models import ScraperRun       # noqa: registers ScraperRun
+
     e = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(e)
     return e
@@ -32,8 +33,16 @@ def test_scraper_run_table_exists(engine):
 def test_scraper_run_columns(engine):
     inspector = inspect(engine)
     cols = {c["name"] for c in inspector.get_columns("scraper_runs")}
-    assert {"id", "source_name", "started_at", "finished_at",
-            "nb_found", "nb_new", "error", "status"} <= cols
+    assert {
+        "id",
+        "source_name",
+        "started_at",
+        "finished_at",
+        "nb_found",
+        "nb_new",
+        "error",
+        "status",
+    } <= cols
 
 
 def test_tender_has_tags_column(engine):
@@ -52,6 +61,7 @@ def test_source_has_ping_columns(engine):
 def test_start_scraper_run_creates_record(db):
     from database import start_scraper_run
     from models import ScraperRun
+
     run_id = start_scraper_run(db, "BOAMP — Journal Officiel")
     assert isinstance(run_id, int)
     record = db.query(ScraperRun).filter(ScraperRun.id == run_id).first()
@@ -64,6 +74,7 @@ def test_start_scraper_run_creates_record(db):
 def test_finish_scraper_run_ok(db):
     from database import start_scraper_run, finish_scraper_run
     from models import ScraperRun
+
     run_id = start_scraper_run(db, "TED Europe")
     finish_scraper_run(db, run_id, nb_found=10, nb_new=3)
     record = db.query(ScraperRun).filter(ScraperRun.id == run_id).first()
@@ -77,6 +88,7 @@ def test_finish_scraper_run_ok(db):
 def test_finish_scraper_run_error(db):
     from database import start_scraper_run, finish_scraper_run
     from models import ScraperRun
+
     run_id = start_scraper_run(db, "VAAO")
     finish_scraper_run(db, run_id, nb_found=0, nb_new=0, error="Connection timeout")
     record = db.query(ScraperRun).filter(ScraperRun.id == run_id).first()
@@ -86,11 +98,13 @@ def test_finish_scraper_run_error(db):
 
 def test_finish_scraper_run_invalid_id_does_not_raise(db):
     from database import finish_scraper_run
+
     finish_scraper_run(db, run_id=99999, nb_found=0, nb_new=0)
 
 
 def test_load_existing_ids_empty_db(db):
     from scraper_utils import load_existing_ids
+
     ids = load_existing_ids(db)
     assert isinstance(ids, set)
     assert len(ids) == 0
@@ -100,9 +114,16 @@ def test_insert_if_new_adds_tender(db):
     from scraper_utils import load_existing_ids, insert_if_new
     from models import Tender
     from datetime import datetime, timedelta
-    t = Tender(id="X-001", title="Test", source="https://example.com",
-               publication_date=datetime.now() - timedelta(days=5),
-               status="À qualifier", relevance_score=0, is_blacklisted=False)
+
+    t = Tender(
+        id="X-001",
+        title="Test",
+        source="https://example.com",
+        publication_date=datetime.now() - timedelta(days=5),
+        status="À qualifier",
+        relevance_score=0,
+        is_blacklisted=False,
+    )
     existing = load_existing_ids(db)
     inserted = insert_if_new(db, t, existing)
     assert inserted is True
@@ -112,9 +133,16 @@ def test_insert_if_new_adds_tender(db):
 def test_insert_if_new_rejects_tender_without_date(db):
     from scraper_utils import insert_if_new
     from models import Tender
-    t = Tender(id="X-NODATE", title="Sans date", source="https://example.com",
-               publication_date=None, status="À qualifier",
-               relevance_score=0, is_blacklisted=False)
+
+    t = Tender(
+        id="X-NODATE",
+        title="Sans date",
+        source="https://example.com",
+        publication_date=None,
+        status="À qualifier",
+        relevance_score=0,
+        is_blacklisted=False,
+    )
     existing = set()
     inserted = insert_if_new(db, t, existing)
     assert inserted is False
@@ -125,9 +153,16 @@ def test_insert_if_new_rejects_tender_too_old(db):
     from scraper_utils import insert_if_new
     from models import Tender
     from datetime import datetime, timedelta
-    t = Tender(id="X-OLD", title="Vieux", source="https://example.com",
-               publication_date=datetime.now() - timedelta(days=45),
-               status="À qualifier", relevance_score=0, is_blacklisted=False)
+
+    t = Tender(
+        id="X-OLD",
+        title="Vieux",
+        source="https://example.com",
+        publication_date=datetime.now() - timedelta(days=45),
+        status="À qualifier",
+        relevance_score=0,
+        is_blacklisted=False,
+    )
     existing = set()
     inserted = insert_if_new(db, t, existing)
     assert inserted is False
@@ -138,12 +173,25 @@ def test_insert_if_new_skips_duplicate(db):
     from scraper_utils import load_existing_ids, insert_if_new
     from models import Tender
     from datetime import datetime, timedelta
-    t1 = Tender(id="X-002", title="Test", source="https://example.com",
-                publication_date=datetime.now() - timedelta(days=3),
-                status="À qualifier", relevance_score=0, is_blacklisted=False)
-    t2 = Tender(id="X-002", title="Test bis", source="https://example.com",
-                publication_date=datetime.now() - timedelta(days=3),
-                status="À qualifier", relevance_score=0, is_blacklisted=False)
+
+    t1 = Tender(
+        id="X-002",
+        title="Test",
+        source="https://example.com",
+        publication_date=datetime.now() - timedelta(days=3),
+        status="À qualifier",
+        relevance_score=0,
+        is_blacklisted=False,
+    )
+    t2 = Tender(
+        id="X-002",
+        title="Test bis",
+        source="https://example.com",
+        publication_date=datetime.now() - timedelta(days=3),
+        status="À qualifier",
+        relevance_score=0,
+        is_blacklisted=False,
+    )
     existing = load_existing_ids(db)
     insert_if_new(db, t1, existing)
     inserted_second = insert_if_new(db, t2, existing)
@@ -157,16 +205,27 @@ def test_reset_tenders_db_vide_les_trois_tables(db, make_tender):
 
     make_tender(id="T-RESET-1")
     make_tender(id="T-RESET-2")
-    db.add(ScraperRun(source_name="test", started_at=datetime.now(timezone.utc).replace(tzinfo=None), status="done"))
-    db.add(DuplicateCandidate(
-        tender_id_a="T-RESET-1", tender_id_b="T-RESET-2",
-        similarity_score=0.9, detected_at=datetime.now(timezone.utc).replace(tzinfo=None),
-    ))
+    db.add(
+        ScraperRun(
+            source_name="test",
+            started_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            status="done",
+        )
+    )
+    db.add(
+        DuplicateCandidate(
+            tender_id_a="T-RESET-1",
+            tender_id_b="T-RESET-2",
+            similarity_score=0.9,
+            detected_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        )
+    )
     db.flush()
 
     nb = reset_tenders_db(db)
 
     from models import Tender
+
     assert db.query(Tender).count() == 0
     assert db.query(ScraperRun).count() == 0
     assert db.query(DuplicateCandidate).count() == 0
@@ -177,7 +236,15 @@ def test_reset_tenders_db_preserve_sources(db):
     from database import reset_tenders_db
     from source_registry import Source
 
-    db.add(Source(name="test-source", url="https://example.com", category="Public", is_manual=True, is_validated=True))
+    db.add(
+        Source(
+            name="test-source",
+            url="https://example.com",
+            category="Public",
+            is_manual=True,
+            is_validated=True,
+        )
+    )
     db.flush()
 
     reset_tenders_db(db)
