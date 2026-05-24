@@ -1223,18 +1223,21 @@ def _save_api_key_to_env(api_key: str) -> None:
     )
     lines = []
     key_written = False
-    if os.path.exists(env_path):
-        with open(env_path, "r", encoding="utf-8") as f:
-            for line in f:
-                if line.startswith("MISTRAL_API_KEY="):
-                    lines.append(f"MISTRAL_API_KEY={api_key}\n")
-                    key_written = True
-                else:
-                    lines.append(line)
-    if not key_written:
-        lines.append(f"MISTRAL_API_KEY={api_key}\n")
-    with open(env_path, "w", encoding="utf-8") as f:
-        f.writelines(lines)
+    try:
+        if os.path.exists(env_path):
+            with open(env_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("MISTRAL_API_KEY="):
+                        lines.append(f"MISTRAL_API_KEY={api_key}\n")
+                        key_written = True
+                    else:
+                        lines.append(line)
+        if not key_written:
+            lines.append(f"MISTRAL_API_KEY={api_key}\n")
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Impossible d'écrire .env : {exc}") from exc
 
 
 class MistralKeyBody(BaseModel):
