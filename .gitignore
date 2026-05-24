@@ -29,6 +29,12 @@ __pycache__/
 # Fichiers temporaires Superpowers (brainstorm)
 .superpowers/brainstorm/
 
+# Playwright MCP (screenshots auto-générés)
+.playwright-mcp/
+
+# Artefacts de tests
+frontend/test-output.txt
+
 # Cache plugins Claude Code (skills locaux)
 .skill/
 
