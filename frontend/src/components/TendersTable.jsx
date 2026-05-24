@@ -188,7 +188,22 @@ export default function TendersTable({
                     <GonogoBadge gonogo={t.gonogo} />
                   </td>
                   <td className="px-4 py-3 font-sans text-xs text-ocean-text/80">{t.status}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-ocean-muted">{t.source}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-ocean-muted">
+                    {t.url ? (
+                      <a
+                        href={t.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-ocean-cyan hover:text-ocean-teal underline underline-offset-2 transition-colors"
+                        aria-label={`Voir l'annonce ${t.source}`}
+                      >
+                        {t.source}
+                      </a>
+                    ) : (
+                      t.source
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <IaBadge
                       tender={t}
