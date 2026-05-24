@@ -56,8 +56,11 @@ from llm_analyzer import (  # noqa: E402
     auto_analyze_pending,
 )
 from credential_manager import CredentialManager as _CredMgr, _ENV_MAP as _CRED_ENV_MAP  # noqa: E402
+import hashlib
 import json as _json
 import subprocess as _subprocess
+from filters import is_relevant_def  # noqa: E402
+from scraper_utils import load_existing_ids, insert_if_new  # noqa: E402
 
 _log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -76,46 +79,163 @@ DOMAINES: dict[str, list] = {
 
 TERRITOIRES: dict[str, list[str]] = {
     "La Réunion": [
-        "la réunion", "la reunion", " 974 ", "(974)", "ile bourbon",
-        "ile de la reunion", "saint-denis", "saint-pierre", "saint-paul",
-        "le tampon", "saint-louis", "le port", "sainte-marie",
-        "saint-benoît", "saint-benoit", "saint-joseph", "saint-leu",
-        "sainte-suzanne", "saint-andré", "saint-andre", "bras-panon",
-        "cilaos", "entre-deux", "étang-salé", "etang-sale", "petite-île",
-        "la plaine-des-palmistes", "saint-philippe", "sainte-rose",
-        "salazie", "les trois-bassins", "trois-bassins", "les avirons",
-        "la possession", "saint-gilles", "l'hermitage", "la saline",
-        "grand bois", "97400", "97410", "97411", "97412", "97413",
-        "97414", "97416", "97417", "97418", "97419", "97420", "97421",
-        "97422", "97423", "97424", "97425", "97426", "97427", "97428",
-        "97429", "97430", "97431", "97432", "97433", "97434", "97436",
-        "97437", "97438", "97439", "97440", "97441", "97442", "97450",
-        "97460", "97470", "97480", "97490",
+        "la réunion",
+        "la reunion",
+        " 974 ",
+        "(974)",
+        "ile bourbon",
+        "ile de la reunion",
+        "saint-denis",
+        "saint-pierre",
+        "saint-paul",
+        "le tampon",
+        "saint-louis",
+        "le port",
+        "sainte-marie",
+        "saint-benoît",
+        "saint-benoit",
+        "saint-joseph",
+        "saint-leu",
+        "sainte-suzanne",
+        "saint-andré",
+        "saint-andre",
+        "bras-panon",
+        "cilaos",
+        "entre-deux",
+        "étang-salé",
+        "etang-sale",
+        "petite-île",
+        "la plaine-des-palmistes",
+        "saint-philippe",
+        "sainte-rose",
+        "salazie",
+        "les trois-bassins",
+        "trois-bassins",
+        "les avirons",
+        "la possession",
+        "saint-gilles",
+        "l'hermitage",
+        "la saline",
+        "grand bois",
+        "97400",
+        "97410",
+        "97411",
+        "97412",
+        "97413",
+        "97414",
+        "97416",
+        "97417",
+        "97418",
+        "97419",
+        "97420",
+        "97421",
+        "97422",
+        "97423",
+        "97424",
+        "97425",
+        "97426",
+        "97427",
+        "97428",
+        "97429",
+        "97430",
+        "97431",
+        "97432",
+        "97433",
+        "97434",
+        "97436",
+        "97437",
+        "97438",
+        "97439",
+        "97440",
+        "97441",
+        "97442",
+        "97450",
+        "97460",
+        "97470",
+        "97480",
+        "97490",
     ],
     "Mayotte": [
-        "mayotte", " 976 ", "(976)", "petite-terre", "grande-terre",
-        "mamoudzou", "dzaoudzi", "pamandzi", "koungou", "bandraboua",
-        "bouéni", "boueni", "chiconi", "chirongui", "dembéni", "dembeni",
-        "kani-kéli", "kani-keli", "mtsamboro", "m'tsangamouji", "ouangani",
-        "sada", "tsingoni", "acoua",
-        "97600", "97610", "97615", "97616", "97617", "97618", "97619",
-        "97620", "97625", "97630", "97640", "97650", "97660", "97670",
+        "mayotte",
+        " 976 ",
+        "(976)",
+        "petite-terre",
+        "grande-terre",
+        "mamoudzou",
+        "dzaoudzi",
+        "pamandzi",
+        "koungou",
+        "bandraboua",
+        "bouéni",
+        "boueni",
+        "chiconi",
+        "chirongui",
+        "dembéni",
+        "dembeni",
+        "kani-kéli",
+        "kani-keli",
+        "mtsamboro",
+        "m'tsangamouji",
+        "ouangani",
+        "sada",
+        "tsingoni",
+        "acoua",
+        "97600",
+        "97610",
+        "97615",
+        "97616",
+        "97617",
+        "97618",
+        "97619",
+        "97620",
+        "97625",
+        "97630",
+        "97640",
+        "97650",
+        "97660",
+        "97670",
         "97680",
     ],
     "France métropole": [
-        "france", "paris", "lyon", "marseille", "bordeaux", "nantes",
-        "toulouse", "lille", "strasbourg", "rennes", "nice", "montpellier",
+        "france",
+        "paris",
+        "lyon",
+        "marseille",
+        "bordeaux",
+        "nantes",
+        "toulouse",
+        "lille",
+        "strasbourg",
+        "rennes",
+        "nice",
+        "montpellier",
     ],
     "Madagascar": [
-        "madagascar", "antananarivo", "tamatave", "toamasina",
-        "mahajanga", "fianarantsoa", "toliara",
+        "madagascar",
+        "antananarivo",
+        "tamatave",
+        "toamasina",
+        "mahajanga",
+        "fianarantsoa",
+        "toliara",
     ],
     "Maurice": [
-        "mauritius", "île maurice", "ile maurice", "port-louis",
-        "port louis", "beau bassin", "curepipe", "vacoas",
+        "mauritius",
+        "île maurice",
+        "ile maurice",
+        "port-louis",
+        "port louis",
+        "beau bassin",
+        "curepipe",
+        "vacoas",
     ],
     "Comores": [
-        "comores", "comoros", "moroni", "anjouan", "mohéli", "moheli",
+        "comores",
+        "comoros",
+        "moroni",
+        "anjouan",
+        "mohéli",
+        "moheli",
         "grande comore",
     ],
 }
@@ -123,7 +243,9 @@ TERRITOIRES: dict[str, list[str]] = {
 
 def _detect_domaine(title: str, description: str = "") -> str:
     t = f" {(title + ' ' + description).lower()} "
-    found = [label for label, kws in DOMAINES.items() if any(_match(kw, t) for kw in kws)]
+    found = [
+        label for label, kws in DOMAINES.items() if any(_match(kw, t) for kw in kws)
+    ]
     return ", ".join(found) if found else "Autre"
 
 
@@ -155,10 +277,19 @@ def _tender_to_dict(t: Tender) -> dict:
     score = a.get("score_pertinence", t.relevance_score or 0)
     domaine = _detect_domaine(t.title or "", t.description or "")
     territoire = _detect_territoire(t.title or "", t.description or "")
-    jours_restants = (t.deadline - datetime.now(timezone.utc).replace(tzinfo=None)).days if t.deadline else None
+    jours_restants = (
+        (t.deadline - datetime.now(timezone.utc).replace(tzinfo=None)).days
+        if t.deadline
+        else None
+    )
     fiche_data = _compute_fiche_data(
-        score, jours_restants, domaine, territoire,
-        bool(t.is_maintenance), t.title or "", a
+        score,
+        jours_restants,
+        domaine,
+        territoire,
+        bool(t.is_maintenance),
+        t.title or "",
+        a,
     )
     return {
         "id": t.id,
@@ -185,6 +316,7 @@ def _tender_to_dict(t: Tender) -> dict:
         "type_marche": a.get("type_marche") or t.type_opportunite or "",
         "concurrents": ", ".join(a.get("marques_concurrentes_citees", [])),
         "llm_structured": t.llm_structured,
+        "llm_analysis": t.llm_analysis,
         "jours_restants": jours_restants,
         "fiche_data": fiche_data,
     }
@@ -192,11 +324,18 @@ def _tender_to_dict(t: Tender) -> dict:
 
 # ── Scheduler jobs ───────────────────────────────────────────────────────────
 
+
 def _send_daily_digest() -> None:
     """Job APScheduler — envoi digest email quotidien."""
     try:
         from email_digest import send_digest as _sd
-        required = ["DIGEST_SMTP_HOST", "DIGEST_SMTP_PORT", "DIGEST_TO", "DIGEST_SMTP_USER"]
+
+        required = [
+            "DIGEST_SMTP_HOST",
+            "DIGEST_SMTP_PORT",
+            "DIGEST_TO",
+            "DIGEST_SMTP_USER",
+        ]
         missing = [p for p in required if not os.getenv(p)]
         if missing:
             _log.error("Digest email: paramètres SMTP manquants: %s", missing)
@@ -218,6 +357,7 @@ def _weekly_adaptive_scores() -> None:
     """Job APScheduler — recalcul hebdomadaire des scores adaptatifs."""
     try:
         from score_adaptive import recompute_adaptive_scores as _r
+
         _r()
         _log.info("Scores adaptatifs recalculés")
     except Exception as exc:
@@ -228,6 +368,7 @@ def _weekly_source_ping() -> None:
     """Job APScheduler — ping hebdomadaire des sources."""
     try:
         from source_registry import _run_weekly_ping as _rwp
+
         _rwp()
     except Exception as exc:
         _log.error("Échec weekly_ping : %s", exc, exc_info=True)
@@ -247,9 +388,7 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
 
-    scheduler = BackgroundScheduler(
-        job_defaults={"max_instances": 1, "coalesce": True}
-    )
+    scheduler = BackgroundScheduler(job_defaults={"max_instances": 1, "coalesce": True})
     scheduler.add_job(_weekly_source_ping, "interval", weeks=1, id="weekly_ping")
     scheduler.add_job(
         _weekly_adaptive_scores, "interval", weeks=1, id="weekly_adaptive_scores"
@@ -293,20 +432,26 @@ app.add_middleware(
 
 # ── Schémas Pydantic ──────────────────────────────────────────────────────────
 
+
 class StatusUpdate(BaseModel):
     status: str
+
 
 class NotesUpdate(BaseModel):
     notes: Optional[str] = None
 
+
 class TagsUpdate(BaseModel):
     tags: list[str]
+
 
 class AmountUpdate(BaseModel):
     amount: Optional[int] = None
 
+
 class SavedUpdate(BaseModel):
     is_saved: bool
+
 
 class SourceCreate(BaseModel):
     name: str
@@ -314,8 +459,10 @@ class SourceCreate(BaseModel):
     category: str
     notes: Optional[str] = None
 
+
 class CollectRequest(BaseModel):
     source_names: Optional[list[str]] = None  # None = toutes les sources activées
+
 
 class CollectResult(BaseModel):
     source: str
@@ -385,18 +532,18 @@ _SITES_PUBLIC = {
     "marchespublicsinfo": "Marchés Publics Info",
 }
 
-_ALL_CREDENTIAL_SITES: dict[str, str] = (
-    {site: cfg["label"] for site, cfg in _LOGIN_CONFIG.items()} | _SITES_PUBLIC
-)
+_ALL_CREDENTIAL_SITES: dict[str, str] = {
+    site: cfg["label"] for site, cfg in _LOGIN_CONFIG.items()
+} | _SITES_PUBLIC
 
 _SCRAPER_TO_CRED_SITE: dict[str, str] = {
-    "scraper_nukema":             "nukema",
-    "scraper_marcheonline":       "marcheonline",
-    "scraper_instao":             "instao",
-    "scraper_marchessecurises":   "marches_securises",
-    "scraper_tendersgo":          "tendersgo",
-    "scraper_vaao":               "vaao",
-    "scraper_dept974":            "dept974",
+    "scraper_nukema": "nukema",
+    "scraper_marcheonline": "marcheonline",
+    "scraper_instao": "instao",
+    "scraper_marchessecurises": "marches_securises",
+    "scraper_tendersgo": "tendersgo",
+    "scraper_vaao": "vaao",
+    "scraper_dept974": "dept974",
     "scraper_marchespublicsinfo": "marchespublicsinfo",
 }
 
@@ -434,10 +581,10 @@ def get_tenders(
         except ValueError:
             raise HTTPException(422, "date_from doit être au format ISO (YYYY-MM-DD)")
 
-    q = db.query(Tender).filter(Tender.is_blacklisted == False)
+    q = db.query(Tender).filter(Tender.is_blacklisted.is_(False))
 
     if secteur == "Public":
-        q = q.filter(or_(Tender.secteur == "Public", Tender.secteur == None))
+        q = q.filter(or_(Tender.secteur == "Public", Tender.secteur.is_(None)))
     elif secteur == "Privé":
         q = q.filter(Tender.secteur == "Privé")
     elif secteur == "International":
@@ -451,17 +598,19 @@ def get_tenders(
         q = q.filter(Tender.status == status)
 
     if maintenance_only:
-        q = q.filter(Tender.is_maintenance == True)
+        q = q.filter(Tender.is_maintenance.is_(True))
 
     if dt_from is not None:
         if strict_date:
             q = q.filter(Tender.publication_date >= dt_from)
         else:
-            q = q.filter(or_(
-                Tender.publication_date >= dt_from,
-                Tender.deadline >= dt_from,
-                Tender.publication_date == None,
-            ))
+            q = q.filter(
+                or_(
+                    Tender.publication_date >= dt_from,
+                    Tender.deadline >= dt_from,
+                    Tender.publication_date.is_(None),
+                )
+            )
 
     tenders = q.order_by(
         Tender.deadline.asc().nullslast(),
@@ -474,7 +623,7 @@ def get_tenders(
 def get_saved_tenders(db: Session = Depends(get_db)):
     tenders = (
         db.query(Tender)
-        .filter(Tender.is_saved == True, Tender.is_blacklisted == False)
+        .filter(Tender.is_saved.is_(True), Tender.is_blacklisted.is_(False))
         .order_by(Tender.publication_date.desc())
         .all()
     )
@@ -491,12 +640,13 @@ def get_tender(tender_id: str, db: Session = Depends(get_db)):
 
 # ── GET /api/kpis/* ───────────────────────────────────────────────────────────
 
+
 @app.get("/api/kpis/public", summary="KPIs marchés publics (compteurs par statut)")
 def get_kpis_public(db: Session = Depends(get_db)):
-    pub_filter = or_(Tender.secteur == "Public", Tender.secteur == None)
+    pub_filter = or_(Tender.secteur == "Public", Tender.secteur.is_(None))
     counts = dict(
         db.query(Tender.status, _func.count(Tender.id))
-        .filter(Tender.is_blacklisted == False, pub_filter)
+        .filter(Tender.is_blacklisted.is_(False), pub_filter)
         .group_by(Tender.status)
         .all()
     )
@@ -507,10 +657,15 @@ def get_kpis_public(db: Session = Depends(get_db)):
     total = a_qualifier + en_cours + soumis + gagnes
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    new_24h = db.query(_func.count(Tender.id)).filter(
-        Tender.is_blacklisted == False,
-        Tender.date_extraction >= now - timedelta(hours=24),
-    ).scalar() or 0
+    new_24h = (
+        db.query(_func.count(Tender.id))
+        .filter(
+            Tender.is_blacklisted.is_(False),
+            Tender.date_extraction >= now - timedelta(hours=24),
+        )
+        .scalar()
+        or 0
+    )
 
     return {
         "total": total,
@@ -524,10 +679,13 @@ def get_kpis_public(db: Session = Depends(get_db)):
 
 @app.get("/api/kpis/ca", summary="KPIs CA pipeline (sommes montants)")
 def get_kpis_ca(db: Session = Depends(get_db)):
-    pub = (Tender.is_blacklisted == False, or_(Tender.secteur == "Public", Tender.secteur == None))
+    pub = (
+        Tender.is_blacklisted.is_(False),
+        or_(Tender.secteur == "Public", Tender.secteur.is_(None)),
+    )
     sums = dict(
         db.query(Tender.status, _func.sum(Tender.amount))
-        .filter(*pub, Tender.amount != None)
+        .filter(*pub, Tender.amount.is_not(None))
         .group_by(Tender.status)
         .all()
     )
@@ -545,19 +703,25 @@ def get_kpis_ca(db: Session = Depends(get_db)):
 @app.get("/api/kpis/priv", summary="KPIs signaux privés (compteurs par type)")
 def get_kpis_priv(db: Session = Depends(get_db)):
     try:
-        priv = (Tender.is_blacklisted == False, Tender.secteur == "Privé")
+        priv = (Tender.is_blacklisted.is_(False), Tender.secteur == "Privé")
         type_counts = dict(
             db.query(Tender.type_opportunite, _func.count(Tender.id))
             .filter(*priv)
             .group_by(Tender.type_opportunite)
             .all()
         )
-        devbanks = db.query(_func.count(Tender.id)).filter(
-            *priv, Tender.type_opportunite == "Banque Dev."
-        ).scalar() or 0
-        qualif_priv = db.query(_func.count(Tender.id)).filter(
-            *priv, Tender.status == "À qualifier"
-        ).scalar() or 0
+        devbanks = (
+            db.query(_func.count(Tender.id))
+            .filter(*priv, Tender.type_opportunite == "Banque Dev.")
+            .scalar()
+            or 0
+        )
+        qualif_priv = (
+            db.query(_func.count(Tender.id))
+            .filter(*priv, Tender.status == "À qualifier")
+            .scalar()
+            or 0
+        )
         return {
             "permis": type_counts.get("Permis Construire", 0),
             "presse": type_counts.get("Presse", 0),
@@ -571,6 +735,7 @@ def get_kpis_priv(db: Session = Depends(get_db)):
 
 
 # ── GET /api/pipeline ─────────────────────────────────────────────────────────
+
 
 @app.get("/api/pipeline", summary="Marchés publics groupés par statut (pipeline)")
 def get_pipeline(db: Session = Depends(get_db)):
@@ -592,6 +757,7 @@ def get_pipeline(db: Session = Depends(get_db)):
 
 # ── GET /api/urgences ─────────────────────────────────────────────────────────
 
+
 @app.get("/api/urgences", summary="Marchés GO avec délai imminent (<30j)")
 def get_urgences(
     score_go: int = Query(SCORE_GO),
@@ -603,7 +769,10 @@ def get_urgences(
 
 # ── GET /api/chart-data ───────────────────────────────────────────────────────
 
-@app.get("/api/chart-data", summary="Données brutes pour graphiques (publication / domaine)")
+
+@app.get(
+    "/api/chart-data", summary="Données brutes pour graphiques (publication / domaine)"
+)
 def get_chart_data(
     max_rows: int = Query(5000, le=10000),
     db: Session = Depends(get_db),
@@ -615,7 +784,7 @@ def get_chart_data(
             Tender.description,
             Tender.secteur,
         )
-        .filter(Tender.is_blacklisted == False)
+        .filter(Tender.is_blacklisted.is_(False))
         .order_by(Tender.publication_date.desc())
         .limit(max_rows)
         .all()
@@ -635,11 +804,12 @@ def get_chart_data(
 
 # ── GET /api/duplicates ───────────────────────────────────────────────────────
 
+
 @app.get("/api/duplicates", summary="Candidats doublons non résolus")
 def get_duplicates(db: Session = Depends(get_db)):
     pairs = (
         db.query(DuplicateCandidate)
-        .filter(DuplicateCandidate.resolved == False)
+        .filter(DuplicateCandidate.resolved.is_(False))
         .order_by(DuplicateCandidate.similarity_score.desc())
         .all()
     )
@@ -647,13 +817,15 @@ def get_duplicates(db: Session = Depends(get_db)):
     for p in pairs:
         ta = db.query(Tender).filter(Tender.id == p.tender_id_a).first()
         tb = db.query(Tender).filter(Tender.id == p.tender_id_b).first()
-        result.append({
-            "id": p.id,
-            "similarity_score": p.similarity_score,
-            "detected_at": _ser_dt(p.detected_at),
-            "tender_a": _tender_to_dict(ta) if ta else None,
-            "tender_b": _tender_to_dict(tb) if tb else None,
-        })
+        result.append(
+            {
+                "id": p.id,
+                "similarity_score": p.similarity_score,
+                "detected_at": _ser_dt(p.detected_at),
+                "tender_a": _tender_to_dict(ta) if ta else None,
+                "tender_b": _tender_to_dict(tb) if tb else None,
+            }
+        )
     return result
 
 
@@ -661,7 +833,10 @@ class ResolveAction(BaseModel):
     action: str  # "keep" | "ignore"
 
 
-@app.post("/api/duplicates/{pair_id}/resolve", summary="Marquer une paire de doublons comme résolue")
+@app.post(
+    "/api/duplicates/{pair_id}/resolve",
+    summary="Marquer une paire de doublons comme résolue",
+)
 def resolve_duplicate(pair_id: int, body: ResolveAction, db: Session = Depends(get_db)):
     pair = db.query(DuplicateCandidate).filter(DuplicateCandidate.id == pair_id).first()
     if not pair:
@@ -673,16 +848,14 @@ def resolve_duplicate(pair_id: int, body: ResolveAction, db: Session = Depends(g
 
 # ── GET /api/scraper-runs ─────────────────────────────────────────────────────
 
+
 @app.get("/api/scraper-runs", summary="Historique des exécutions de scrapers")
 def get_scraper_runs(
     limit: int = Query(50, le=500),
     db: Session = Depends(get_db),
 ):
     runs = (
-        db.query(ScraperRun)
-        .order_by(ScraperRun.started_at.desc())
-        .limit(limit)
-        .all()
+        db.query(ScraperRun).order_by(ScraperRun.started_at.desc()).limit(limit).all()
     )
     return [
         {
@@ -700,6 +873,7 @@ def get_scraper_runs(
 
 
 # ── GET /api/sources ──────────────────────────────────────────────────────────
+
 
 @app.get("/api/sources", summary="Liste des sources de collecte")
 def get_sources(db: Session = Depends(get_db)):
@@ -798,7 +972,10 @@ def delete_tender(tender_id: str, db: Session = Depends(get_db)):
 
 # ── POST /api/tenders/{id}/analyze ───────────────────────────────────────────
 
-@app.post("/api/tenders/{tender_id}/analyze", summary="Déclencher l'analyse LLM d'un marché")
+
+@app.post(
+    "/api/tenders/{tender_id}/analyze", summary="Déclencher l'analyse LLM d'un marché"
+)
 def analyze_one(tender_id: str, db: Session = Depends(get_db)):
     t = db.query(Tender).filter(Tender.id == tender_id).first()
     if not t:
@@ -821,6 +998,49 @@ def analyze_one(tender_id: str, db: Session = Depends(get_db)):
 
 # ── POST /api/collect ─────────────────────────────────────────────────────────
 
+
+def _dict_to_tender(item: dict) -> Tender:
+    """Convertit un dict retourné par un scraper en objet Tender."""
+    from datetime import datetime as _ddt, date as _date
+
+    name = item.get("name") or ""
+    source = item.get("source") or ""
+    pub_raw = item.get("publication_date")
+
+    def _parse(raw):
+        if not raw:
+            return None
+        if isinstance(raw, _ddt):
+            return raw
+        if isinstance(raw, _date):
+            return _ddt(raw.year, raw.month, raw.day)
+        try:
+            return _ddt.fromisoformat(str(raw)[:10])
+        except (ValueError, TypeError):
+            return None
+
+    fingerprint = f"{source}|{name}|{pub_raw}"
+    tid = hashlib.md5(fingerprint.encode()).hexdigest()[:16]
+
+    text = f"{name} {item.get('description') or ''}"
+    score = 50 if is_relevant_def(text) else 0
+
+    return Tender(
+        id=tid,
+        title=name,
+        source=source,
+        url=item.get("url"),
+        description=item.get("description"),
+        publication_date=_parse(pub_raw),
+        deadline=_parse(item.get("deadline")),
+        date_extraction=_parse(item.get("date_found")),
+        relevance_score=score,
+        status="À qualifier",
+        is_blacklisted=False,
+        tags=[],
+    )
+
+
 @app.post("/api/collect", summary="Lancer la collecte (toutes sources ou liste)")
 def collect(body: CollectRequest):
     """
@@ -835,7 +1055,8 @@ def collect(body: CollectRequest):
         if body.source_names:
             sources = [s for s in sources if s.name in body.source_names]
         sources = [
-            s for s in sources
+            s
+            for s in sources
             if not s.is_manual and s.scraper_module and s.enabled and s.is_validated
         ]
     finally:
@@ -844,14 +1065,12 @@ def collect(body: CollectRequest):
     if not sources:
         raise HTTPException(
             status_code=500,
-            detail="Aucune source active et validée trouvée — collecte annulée"
+            detail="Aucune source active et validée trouvée — collecte annulée",
         )
 
     pre_db = SessionLocal()
     try:
-        known_ids: set = {row.id for row in pre_db.query(Tender.id).all()}
-        # Snapshot pris une fois avant le loop : les ids insérés par une source
-        # peuvent décaler le nb_new des sources suivantes (acceptable, sources indépendantes).
+        known_ids: set = load_existing_ids(pre_db)
     finally:
         pre_db.close()
 
@@ -868,21 +1087,30 @@ def collect(body: CollectRequest):
         try:
             mod = importlib.import_module(source.scraper_module)
             func = getattr(mod, source.scraper_func)
-            func()
-            post_db = SessionLocal()
+            items: list[dict] = func() or []
+            nb_found = len(items)
+            nb_new = 0
+            insert_db = SessionLocal()
             try:
-                new_count = post_db.query(Tender).filter(
-                    ~Tender.id.in_(known_ids)
-                ).count()
-                finish_scraper_run(post_db, run_id, nb_found=new_count, nb_new=new_count)
+                for item in items:
+                    t = _dict_to_tender(item)
+                    if insert_if_new(insert_db, t, known_ids):
+                        nb_new += 1
+                insert_db.commit()
+                finish_scraper_run(insert_db, run_id, nb_found=nb_found, nb_new=nb_new)
+            except Exception:
+                insert_db.rollback()
+                raise
             finally:
-                post_db.close()
-            results.append({"source": source.name, "status": "ok", "nb_new": new_count})
+                insert_db.close()
+            results.append({"source": source.name, "status": "ok", "nb_new": nb_new})
 
         except Exception as exc:
             _log.critical(
                 "SCRAPER FAILURE [%s] — %s: %s",
-                source.name, type(exc).__name__, exc,
+                source.name,
+                type(exc).__name__,
+                exc,
                 exc_info=True,
             )
             if run_id is not None:
@@ -905,11 +1133,13 @@ def collect(body: CollectRequest):
             # )
             # ─────────────────────────────────────────────────────────────
 
-            results.append({
-                "source": source.name,
-                "status": "error",
-                "error": type(exc).__name__,
-            })
+            results.append(
+                {
+                    "source": source.name,
+                    "status": "error",
+                    "error": type(exc).__name__,
+                }
+            )
 
     # Analyse automatique post-collecte
     analysis_db = None
@@ -946,6 +1176,7 @@ def collect(body: CollectRequest):
 
 # ── POST /api/analyze-pending ─────────────────────────────────────────────────
 
+
 @app.post("/api/analyze-pending", summary="Analyser tous les marchés en attente (LLM)")
 def analyze_pending(background_tasks: BackgroundTasks):
     def _run():
@@ -962,6 +1193,7 @@ def analyze_pending(background_tasks: BackgroundTasks):
 
 # ── POST /api/detect-duplicates ───────────────────────────────────────────────
 
+
 @app.post("/api/detect-duplicates", summary="Détecter les doublons")
 def run_detect_duplicates(db: Session = Depends(get_db)):
     n = detect_duplicates(db)
@@ -970,21 +1202,31 @@ def run_detect_duplicates(db: Session = Depends(get_db)):
 
 # ── POST /api/admin/reset-db ──────────────────────────────────────────────────
 
+
 @app.post("/api/admin/reset-db", summary="[DANGER] Vider tenders/runs/doublons")
 def admin_reset_db(db: Session = Depends(get_db)):
     n = reset_tenders_db(db)
-    return {"deleted_tenders": n, "message": "Base vidée (sources et credentials préservés)"}
+    return {
+        "deleted_tenders": n,
+        "message": "Base vidée (sources et credentials préservés)",
+    }
 
 
 # ── POST /api/admin/archive-old ───────────────────────────────────────────────
 
-@app.post("/api/admin/archive-old", summary="Archiver les tenders À qualifier > N jours")
-def admin_archive_old(days: int = Query(30, ge=1, le=365), db: Session = Depends(get_db)):
+
+@app.post(
+    "/api/admin/archive-old", summary="Archiver les tenders À qualifier > N jours"
+)
+def admin_archive_old(
+    days: int = Query(30, ge=1, le=365), db: Session = Depends(get_db)
+):
     n = clean_obsolete_data(db, days=days)
     return {"archived": n}
 
 
 # ── GET /api/health ───────────────────────────────────────────────────────────
+
 
 @app.get("/api/health", summary="État des sources externes")
 def health():
@@ -1000,23 +1242,30 @@ def health():
 
 # ── POST /api/sources ─────────────────────────────────────────────────────────
 
+
 @app.post("/api/sources", status_code=201, summary="Ajouter une source manuelle")
 def create_source(src: SourceCreate, db: Session = Depends(get_db)):
-    s = add_source(db, name=src.name, url=src.url, category=src.category, notes=src.notes)
+    s = add_source(
+        db, name=src.name, url=src.url, category=src.category, notes=src.notes
+    )
     return {"id": s.id, "name": s.name}
 
 
 # ── DELETE /api/sources/{id} ──────────────────────────────────────────────────
 
+
 @app.delete("/api/sources/{source_id}", summary="Supprimer une source manuelle")
 def delete_source(source_id: int, db: Session = Depends(get_db)):
     ok = remove_source(db, source_id)
     if not ok:
-        raise HTTPException(400, "Source introuvable ou non supprimable (scraper dédié)")
+        raise HTTPException(
+            400, "Source introuvable ou non supprimable (scraper dédié)"
+        )
     return {"ok": True}
 
 
 # ── PATCH /api/sources/{id}/toggle ───────────────────────────────────────────
+
 
 @app.patch("/api/sources/{source_id}/toggle", summary="Activer / désactiver une source")
 def toggle_source(source_id: int, db: Session = Depends(get_db)):
@@ -1027,6 +1276,7 @@ def toggle_source(source_id: int, db: Session = Depends(get_db)):
 
 
 # ── GET /api/export/excel ─────────────────────────────────────────────────────
+
 
 @app.get("/api/export/excel", summary="Télécharger le rapport Excel")
 def export_excel(db: Session = Depends(get_db)):
@@ -1039,6 +1289,7 @@ def export_excel(db: Session = Depends(get_db)):
 
 
 # ── GET /api/credentials ──────────────────────────────────────────────────────
+
 
 @app.get("/api/credentials", summary="Liste les 8 sites protégés et leur statut d'auth")
 def list_credentials(db: Session = Depends(get_db)):
@@ -1053,17 +1304,20 @@ def list_credentials(db: Session = Depends(get_db)):
             status, email = "configured", db_creds[site].email
         else:
             status, email = "missing", None
-        result.append({
-            "site": site,
-            "label": label,
-            "status": status,
-            "email": email,
-            "has_login_url": site in _LOGIN_CONFIG,
-        })
+        result.append(
+            {
+                "site": site,
+                "label": label,
+                "status": status,
+                "email": email,
+                "has_login_url": site in _LOGIN_CONFIG,
+            }
+        )
     return result
 
 
 # ── POST /api/credentials/{site} ─────────────────────────────────────────────
+
 
 @app.post("/api/credentials/{site}", summary="Sauvegarder les identifiants d'un site")
 def save_credential(site: str, body: CredentialSave):
@@ -1075,6 +1329,7 @@ def save_credential(site: str, body: CredentialSave):
 
 # ── DELETE /api/credentials/{site} ───────────────────────────────────────────
 
+
 @app.delete("/api/credentials/{site}", summary="Supprimer les identifiants d'un site")
 def delete_credential(site: str):
     if site not in _ALL_CREDENTIAL_SITES:
@@ -1084,6 +1339,7 @@ def delete_credential(site: str):
 
 
 # ── POST /api/credentials/{site}/test ────────────────────────────────────────
+
 
 @app.post("/api/credentials/{site}/test", summary="Tester la connexion Playwright")
 def test_credential(site: str, body: CredentialSave):
@@ -1108,7 +1364,12 @@ def test_credential(site: str, body: CredentialSave):
         )
         if not proc.stdout or not proc.stdout.strip():
             stderr_hint = (proc.stderr or "").strip()[:200]
-            return {"ok": False, "message": f"Worker sans sortie — {stderr_hint}" if stderr_hint else "Worker sans sortie"}
+            return {
+                "ok": False,
+                "message": f"Worker sans sortie — {stderr_hint}"
+                if stderr_hint
+                else "Worker sans sortie",
+            }
         result = _json.loads(proc.stdout)
         if result.get("ok"):
             return {"ok": True}
@@ -1122,6 +1383,9 @@ def test_credential(site: str, body: CredentialSave):
             msg = result.get("erreur_worker") or "Connexion refusée"
         return {"ok": False, "message": msg}
     except _subprocess.TimeoutExpired:
-        return {"ok": False, "message": "Test expiré — site trop lent ou inaccessible (>30s)"}
+        return {
+            "ok": False,
+            "message": "Test expiré — site trop lent ou inaccessible (>30s)",
+        }
     except Exception as exc:
         return {"ok": False, "message": str(exc)}
