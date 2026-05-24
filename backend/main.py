@@ -1099,11 +1099,14 @@ def collect(body: CollectRequest):
             items: list[dict] = func() or []
             nb_found = len(items)
             nb_new = 0
+            nb_rejected_no_date = 0
             insert_db = SessionLocal()
             try:
                 for item in items:
                     t = _dict_to_tender(item, source_category=source.category)
-                    if insert_if_new(insert_db, t, known_ids):
+                    if t.publication_date is None:
+                        nb_rejected_no_date += 1
+                    elif insert_if_new(insert_db, t, known_ids):
                         nb_new += 1
                 insert_db.commit()
                 finish_scraper_run(insert_db, run_id, nb_found=nb_found, nb_new=nb_new)
@@ -1112,7 +1115,13 @@ def collect(body: CollectRequest):
                 raise
             finally:
                 insert_db.close()
-            results.append({"source": source.name, "status": "ok", "nb_new": nb_new})
+            results.append({
+                "source": source.name,
+                "status": "ok",
+                "nb_found": nb_found,
+                "nb_new": nb_new,
+                "nb_rejected_no_date": nb_rejected_no_date,
+            })
 
         except Exception as exc:
             _log.critical(
