@@ -61,30 +61,83 @@ EXCLUSION_KEYWORDS = [
 # Indicateurs de projet de construction ou réhabilitation
 # (condition NÉCESSAIRE pour les signaux presse/institution)
 KEYWORDS_CONSTRUCTION = [
-    "construction", "chantier", "travaux", "permis de construire",
-    "réhabilitation", "rénovation", "extension", "restructuration",
-    "aménagement", "programme immobilier", "promotion immobilière",
-    "lotissement", "inauguration", "pose de la première pierre",
-    "mise en service", "nouveau bâtiment", "nouvelle construction",
-    "projet de construction", "maître d'ouvrage", "maîtrise d'ouvrage",
-    "financement construction", "investissement immobilier",
-    "bâtiment neuf", "immeuble neuf",
+    "construction",
+    "chantier",
+    "travaux",
+    "permis de construire",
+    "réhabilitation",
+    "rénovation",
+    "extension",
+    "restructuration",
+    "aménagement",
+    "programme immobilier",
+    "promotion immobilière",
+    "lotissement",
+    "inauguration",
+    "pose de la première pierre",
+    "mise en service",
+    "nouveau bâtiment",
+    "nouvelle construction",
+    "projet de construction",
+    "maître d'ouvrage",
+    "maîtrise d'ouvrage",
+    "financement construction",
+    "investissement immobilier",
+    "bâtiment neuf",
+    "immeuble neuf",
 ]
 
 # Types d'ERP / bâtiments à obligation SSI
 # (condition NÉCESSAIRE pour les signaux presse/institution)
 KEYWORDS_ERP_CIBLES = [
-    "hôpital", "hopital", "clinique", "ehpad", "maison de retraite",
-    "hôtel", "hotel", "résidence hôtelière", "resort",
-    "école", "ecole", "lycée", "lycee", "collège", "college",
-    "université", "universite", "centre commercial", "mall",
-    "galerie marchande", "salle de sport", "gymnase", "stade", "arena",
-    "centre culturel", "théâtre", "theatre", "cinéma", "cinema",
-    "immeuble de bureaux", "siège social", "entrepôt logistique",
-    "entrepot", "usine", "résidence étudiante", "campus", "internat",
-    "aéroport", "aeroport", "gare", "port maritime",
-    "centre de données", "data center",
-    "mairie", "préfecture", "tribunal", "commissariat", "centre médical",
+    "hôpital",
+    "hopital",
+    "clinique",
+    "ehpad",
+    "maison de retraite",
+    "hôtel",
+    "hotel",
+    "résidence hôtelière",
+    "resort",
+    "école",
+    "ecole",
+    "lycée",
+    "lycee",
+    "collège",
+    "college",
+    "université",
+    "universite",
+    "centre commercial",
+    "mall",
+    "galerie marchande",
+    "salle de sport",
+    "gymnase",
+    "stade",
+    "arena",
+    "centre culturel",
+    "théâtre",
+    "theatre",
+    "cinéma",
+    "cinema",
+    "immeuble de bureaux",
+    "siège social",
+    "entrepôt logistique",
+    "entrepot",
+    "usine",
+    "résidence étudiante",
+    "campus",
+    "internat",
+    "aéroport",
+    "aeroport",
+    "gare",
+    "port maritime",
+    "centre de données",
+    "data center",
+    "mairie",
+    "préfecture",
+    "tribunal",
+    "commissariat",
+    "centre médical",
     "dispensaire",
 ]
 
@@ -93,8 +146,7 @@ _WORD_BOUNDARY_KW = {"ssi", "cmsi", "cctv", "ria", "gtb", "gtc", "bms"}
 
 # Pré-compilation pour éviter de recompiler à chaque appel
 _COMPILED_BOUNDARY = {
-    kw: _re.compile(r"\b" + _re.escape(kw) + r"\b")
-    for kw in _WORD_BOUNDARY_KW
+    kw: _re.compile(r"\b" + _re.escape(kw) + r"\b") for kw in _WORD_BOUNDARY_KW
 }
 
 
@@ -119,13 +171,18 @@ def classify_relevance(text: str) -> tuple[bool, list[str]]:
 
     has_chantier = any(kw in text_lower for kw in KEYWORDS_CONSTRUCTION)
     has_erp = any(kw in text_lower for kw in KEYWORDS_ERP_CIBLES)
-    
+
     # Logique assouplie : construction seule = potentiel SSI pour ERP publics
     if has_chantier:
         if has_erp:
             return True, ["Potentiel SSI implicite"]
         # Ajout : tout projet de construction dans 974/976 est potentiellement pertinent
-        if "974" in text_lower or "976" in text_lower or "réunion" in text_lower or "mayotte" in text_lower:
+        if (
+            "974" in text_lower
+            or "976" in text_lower
+            or "réunion" in text_lower
+            or "mayotte" in text_lower
+        ):
             return True, ["Potentiel SSI implicite"]
 
     return False, []
