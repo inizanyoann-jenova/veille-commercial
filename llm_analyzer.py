@@ -15,28 +15,84 @@ load_dotenv()
 
 class _LLMQuotaError(Exception):
     """Levée quand l'API LLM retourne une erreur de quota (429 / RESOURCE_EXHAUSTED)."""
+
     def __init__(self, retry_after: int | None = None):
-        self.retry_after = retry_after  # secondes avant de pouvoir réessayer, None si inconnu
+        self.retry_after = (
+            retry_after  # secondes avant de pouvoir réessayer, None si inconnu
+        )
+
 
 # ---------------------------------------------------------------------------
 # Listes de marques concurrentes
 # ---------------------------------------------------------------------------
 
 _MARQUES_SSI = [
-    "notifier", "hochiki", "apollo", "cerberus", "esser", "edwards", "kidde",
-    "aritech", "autronica", "fireclass", "finsecur", "morley", "advanced",
-    "nittan", "mircom", "napco", "c-tec", "tyco", "siemens", "bosch",
-    "honeywell", "johnson controls", "ge security", "est3",
-    "cooper", "gewiss", "daitem", "legrand", "sorhea",
+    "notifier",
+    "hochiki",
+    "apollo",
+    "cerberus",
+    "esser",
+    "edwards",
+    "kidde",
+    "aritech",
+    "autronica",
+    "fireclass",
+    "finsecur",
+    "morley",
+    "advanced",
+    "nittan",
+    "mircom",
+    "napco",
+    "c-tec",
+    "tyco",
+    "siemens",
+    "bosch",
+    "honeywell",
+    "johnson controls",
+    "ge security",
+    "est3",
+    "cooper",
+    "gewiss",
+    "daitem",
+    "legrand",
+    "sorhea",
 ]
 _MARQUES_VIDEO = [
-    "axis", "hikvision", "dahua", "hanwha", "avigilon", "genetec", "milestone",
-    "pelco", "vivotek", "mobotix", "verkada", "ubiquiti", "sony", "panasonic",
-    "bosch", "flir", "i-pro", "uniview", "reolink",
+    "axis",
+    "hikvision",
+    "dahua",
+    "hanwha",
+    "avigilon",
+    "genetec",
+    "milestone",
+    "pelco",
+    "vivotek",
+    "mobotix",
+    "verkada",
+    "ubiquiti",
+    "sony",
+    "panasonic",
+    "bosch",
+    "flir",
+    "i-pro",
+    "uniview",
+    "reolink",
 ]
 _MARQUES_ACCES = [
-    "hid", "lenel", "assa abloy", "dorma", "kaba", "paxton", "suprema",
-    "zkteco", "came", "bft", "cdvi", "fermax", "urmet", "aiphone",
+    "hid",
+    "lenel",
+    "assa abloy",
+    "dorma",
+    "kaba",
+    "paxton",
+    "suprema",
+    "zkteco",
+    "came",
+    "bft",
+    "cdvi",
+    "fermax",
+    "urmet",
+    "aiphone",
 ]
 _MARQUES_TOUTES = _MARQUES_SSI + _MARQUES_VIDEO + _MARQUES_ACCES
 
@@ -45,187 +101,501 @@ _MARQUES_TOUTES = _MARQUES_SSI + _MARQUES_VIDEO + _MARQUES_ACCES
 # ---------------------------------------------------------------------------
 
 _KW_MAINTENANCE = [
-    "maintenance", "entretien", "vérification", "verification", "contrat de maintenance",
-    "mco", "maintien en condition", "préventif", "correctif", "gmao",
-    "télémaintenance", "telemaintenance", "dépannage", "depannage",
-    "intervention sur site", "contrat de service", "vérification périodique",
-    "verification periodique", "passage annuel", "contrat annuel",
-    "visite de maintenance", "visite technique", "ronde technique",
-    "télésurveillance", "telesurveillance", "astreinte",
+    "maintenance",
+    "entretien",
+    "vérification",
+    "verification",
+    "contrat de maintenance",
+    "mco",
+    "maintien en condition",
+    "préventif",
+    "correctif",
+    "gmao",
+    "télémaintenance",
+    "telemaintenance",
+    "dépannage",
+    "depannage",
+    "intervention sur site",
+    "contrat de service",
+    "vérification périodique",
+    "verification periodique",
+    "passage annuel",
+    "contrat annuel",
+    "visite de maintenance",
+    "visite technique",
+    "ronde technique",
+    "télésurveillance",
+    "telesurveillance",
+    "astreinte",
 ]
 _KW_TRAVAUX = [
-    "installation", "fourniture et pose", "travaux", "mise en place",
-    "réalisation", "construction", "extension", "rénovation", "renovation",
-    "remplacement", "mise aux normes", "fourniture", "pose et raccordement",
-    "déploiement", "deploiement", "mise en conformité", "mise en conformite",
-    "création", "creation", "équipement", "equipement",
+    "installation",
+    "fourniture et pose",
+    "travaux",
+    "mise en place",
+    "réalisation",
+    "construction",
+    "extension",
+    "rénovation",
+    "renovation",
+    "remplacement",
+    "mise aux normes",
+    "fourniture",
+    "pose et raccordement",
+    "déploiement",
+    "deploiement",
+    "mise en conformité",
+    "mise en conformite",
+    "création",
+    "creation",
+    "équipement",
+    "equipement",
 ]
 _KW_PENALITES = [
-    "pénalité", "penalite", "pénalités de retard", "retenue de garantie",
-    "dommages et intérêts", "pfa", "p.f.a.", "délai contractuel",
-    "garantie décennale", "décennale", "responsabilité civile",
-    "clause résolutoire", "défaillance",
+    "pénalité",
+    "penalite",
+    "pénalités de retard",
+    "retenue de garantie",
+    "dommages et intérêts",
+    "pfa",
+    "p.f.a.",
+    "délai contractuel",
+    "garantie décennale",
+    "décennale",
+    "responsabilité civile",
+    "clause résolutoire",
+    "défaillance",
 ]
 
 # SSI — toute la chaîne technique : centrales, détecteurs, déclencheurs, SMSI, etc.
 _KW_SSI = [
-    r"\bssi\b", r"\bsmsi\b", r"\bsdi\b", r"\bdai\b",
-    "détection incendie", "detection incendie",
-    "alarme incendie", "désenfumage", "desenfumage",
-    "évacuation incendie", "evacuation incendie",
-    "centrale incendie", "tableau de signalisation incendie",
-    "détecteur incendie", "detecteur incendie",
-    "détecteur de fumée", "detecteur de fumee",
-    "détecteur optique", "détecteur thermique", "détecteur de chaleur",
-    "détecteur adressable", "detecteur adressable",
-    "déclencheur manuel", "declencheur manuel", r"\bdmc\b",
-    "diffuseur d'alarme", "diffuseur sonore", "sirène incendie",
-    "système de sécurité incendie", "systeme de securite incendie",
-    "système de mise en sécurité incendie", "systeme de mise en securite incendie",
-    "boucle incendie", "ligne de détection", "report d'alarme incendie",
-    "unité de signalisation", "équipement d'alarme", "equipement d'alarme",
-    r"\bsprinkler\b", "extinction automatique", "nf s 61",
-    r"\bcategorie a\b", r"\bcategorie b\b", r"\bcategorie c\b",
-    "catégorie a", "catégorie b", "catégorie c",
+    r"\bssi\b",
+    r"\bsmsi\b",
+    r"\bsdi\b",
+    r"\bdai\b",
+    "détection incendie",
+    "detection incendie",
+    "alarme incendie",
+    "désenfumage",
+    "desenfumage",
+    "évacuation incendie",
+    "evacuation incendie",
+    "centrale incendie",
+    "tableau de signalisation incendie",
+    "détecteur incendie",
+    "detecteur incendie",
+    "détecteur de fumée",
+    "detecteur de fumee",
+    "détecteur optique",
+    "détecteur thermique",
+    "détecteur de chaleur",
+    "détecteur adressable",
+    "detecteur adressable",
+    "déclencheur manuel",
+    "declencheur manuel",
+    r"\bdmc\b",
+    "diffuseur d'alarme",
+    "diffuseur sonore",
+    "sirène incendie",
+    "système de sécurité incendie",
+    "systeme de securite incendie",
+    "système de mise en sécurité incendie",
+    "systeme de mise en securite incendie",
+    "boucle incendie",
+    "ligne de détection",
+    "report d'alarme incendie",
+    "unité de signalisation",
+    "équipement d'alarme",
+    "equipement d'alarme",
+    r"\bsprinkler\b",
+    "extinction automatique",
+    "nf s 61",
+    r"\bcategorie a\b",
+    r"\bcategorie b\b",
+    r"\bcategorie c\b",
+    "catégorie a",
+    "catégorie b",
+    "catégorie c",
     # types d'alarme — retirés car trop génériques
     "commission de sécurité incendie",
 ]
 
 # CMSI / Désenfumage — extracteurs, volets, exutoires, etc.
 _KW_CMSI = [
-    r"\bcmsi\b", "désenfumage", "desenfumage", "désenfumer", "desenfumer",
-    "extraction de fumée", "extraction de fumee",
-    "évacuation de fumée", "evacuation de fumee",
-    "volet de désenfumage", "volet de desenfumage",
-    "exutoire", "extracteur de fumée", "extracteur de fumee",
-    "désenfumage naturel", "desenfumage naturel",
-    "désenfumage mécanique", "desenfumage mecanique",
-    "amenée d'air", "amenee d'air", "balayage d'air",
-    "commande de désenfumage", "commande de desenfumage",
-    "volet coupe-feu", "volet coupe feu", "clapet coupe-feu",
-    "porte coupe-feu", "porte coupe feu",
-    "compartimentage", "compartimentage au feu",
+    r"\bcmsi\b",
+    "désenfumage",
+    "desenfumage",
+    "désenfumer",
+    "desenfumer",
+    "extraction de fumée",
+    "extraction de fumee",
+    "évacuation de fumée",
+    "evacuation de fumee",
+    "volet de désenfumage",
+    "volet de desenfumage",
+    "exutoire",
+    "extracteur de fumée",
+    "extracteur de fumee",
+    "désenfumage naturel",
+    "desenfumage naturel",
+    "désenfumage mécanique",
+    "desenfumage mecanique",
+    "amenée d'air",
+    "amenee d'air",
+    "balayage d'air",
+    "commande de désenfumage",
+    "commande de desenfumage",
+    "volet coupe-feu",
+    "volet coupe feu",
+    "clapet coupe-feu",
+    "porte coupe-feu",
+    "porte coupe feu",
+    "compartimentage",
+    "compartimentage au feu",
 ]
 
 # Vidéosurveillance — caméras, enregistreurs, VMS, analytics
 _KW_VIDEO = [
-    "vidéosurveillance", "videosurveillance", r"\bcctv\b",
-    "caméras de sécurité", "cameras de securite",
-    "vidéo protection", "video protection", "télésurveillance vidéo",
-    "supervision vidéo", r"\bnvr\b", r"\bdvr\b", r"\bvms\b",
-    "caméra ip", "camera ip", "enregistreur vidéo", "enregistreur video",
-    r"\bptz\b", "caméra dôme", "camera dome", "caméra thermique",
-    "analytics vidéo", "analyse vidéo", "gestion vidéo",
-    "lecture de plaques", r"\blpr\b", "reconnaissance de plaques",
-    "caméra grand angle", "caméra panoramique",
-    "vidéo-protection", "vidéo-surveillance",
+    "vidéosurveillance",
+    "videosurveillance",
+    r"\bcctv\b",
+    "caméras de sécurité",
+    "cameras de securite",
+    "vidéo protection",
+    "video protection",
+    "télésurveillance vidéo",
+    "supervision vidéo",
+    r"\bnvr\b",
+    r"\bdvr\b",
+    r"\bvms\b",
+    "caméra ip",
+    "camera ip",
+    "enregistreur vidéo",
+    "enregistreur video",
+    r"\bptz\b",
+    "caméra dôme",
+    "camera dome",
+    "caméra thermique",
+    "analytics vidéo",
+    "analyse vidéo",
+    "gestion vidéo",
+    "lecture de plaques",
+    r"\blpr\b",
+    "reconnaissance de plaques",
+    "caméra grand angle",
+    "caméra panoramique",
+    "vidéo-protection",
+    "vidéo-surveillance",
 ]
 
 # Courants faibles — contrôle d'accès, interphonie, GTB, intrusion, badge
 _KW_COURANTS_FAIBLES = [
-    "courants faibles", "contrôle d'accès", "controle d'acces",
-    r"\binterphonie\b", r"\bgtb\b", r"\bgtc\b", "anti-intrusion",
-    r"\bbadge\b", "badgeuse", "lecteur de badge", "carte d'accès",
-    "digicode", "visiophone", "portier vidéo", "portier video",
-    "portier électronique", "portier electronique",
-    "alarme intrusion", "détection intrusion", "detection intrusion",
-    "gestion technique du bâtiment", "gestion technique du batiment",
-    "supervision bâtiment", "supervision batiment",
-    "câblage courants faibles", "cablage courants faibles",
-    "gestion technique aéroport", "gestion technique avancée",  # remplace \bgta\b trop ambigu
-    "télégestion", "telegestion",
+    "courants faibles",
+    "contrôle d'accès",
+    "controle d'acces",
+    r"\binterphonie\b",
+    r"\bgtb\b",
+    r"\bgtc\b",
+    "anti-intrusion",
+    r"\bbadge\b",
+    "badgeuse",
+    "lecteur de badge",
+    "carte d'accès",
+    "digicode",
+    "visiophone",
+    "portier vidéo",
+    "portier video",
+    "portier électronique",
+    "portier electronique",
+    "alarme intrusion",
+    "détection intrusion",
+    "detection intrusion",
+    "gestion technique du bâtiment",
+    "gestion technique du batiment",
+    "supervision bâtiment",
+    "supervision batiment",
+    "câblage courants faibles",
+    "cablage courants faibles",
+    "gestion technique aéroport",
+    "gestion technique avancée",  # remplace \bgta\b trop ambigu
+    "télégestion",
+    "telegestion",
 ]
 
 # QHSE / réglementation ERP
 _KW_QHSE = [
-    "qhse", "qualité hygiène sécurité", "audit incendie",
-    "formation sécurité incendie", "formation securite incendie",
-    "document unique", "commission de sécurité",
-    "registre de sécurité", "plan de prévention",
-    "astreinte incendie", "exercice d'évacuation",
-    "chef de sécurité incendie", "sécurité incendie réglementaire",
+    "qhse",
+    "qualité hygiène sécurité",
+    "audit incendie",
+    "formation sécurité incendie",
+    "formation securite incendie",
+    "document unique",
+    "commission de sécurité",
+    "registre de sécurité",
+    "plan de prévention",
+    "astreinte incendie",
+    "exercice d'évacuation",
+    "chef de sécurité incendie",
+    "sécurité incendie réglementaire",
 ]
 
 # ERP — bâtiments qui imposent légalement le SSI (Code de la construction)
 _KW_ERP = [
-    r"\berp\b", "établissement recevant du public", "etablissement recevant du public",
-    r"\bchu\b", r"\bchrs\b", r"\bchru\b", "centre hospitalier", r"\behpad\b", "maison de retraite",
-    "hôpital", "hopital", "clinique", "polyclinique",
-    "école", "ecole", "collège", "college", "lycée", "lycee",
-    "université", "universite", "campus universitaire",
-    "mairie", "hôtel de ville", "hotel de ville",
-    "préfecture", "prefecture", "sous-préfecture",
-    "tribunal", "palais de justice",
-    "musée", "musee", "bibliothèque", "bibliotheque",
-    "médiathèque", "mediatheque",
-    "centre commercial", "galerie marchande",
-    r"\bhôtel\b", r"\bhotel\b", "résidence hôtelière", "auberge",
-    "centre sportif", "gymnase", "piscine", r"\bstade\b",
-    "salle polyvalente", "salle des fêtes", "salle de spectacle",
-    "cinéma", "cinema", "théâtre", "theatre",
-    "bâtiment public", "batiment public", "infrastructure publique",
-    "immeuble de grande hauteur", r"\bigh\b",
-    "résidence universitaire", "foyer de jeunes", r"\bfji\b",
-    "centre pénitentiaire", "maison d'arrêt",
-    "aéroport", "aeroport", "gare", "port",
+    r"\berp\b",
+    "établissement recevant du public",
+    "etablissement recevant du public",
+    r"\bchu\b",
+    r"\bchrs\b",
+    r"\bchru\b",
+    "centre hospitalier",
+    r"\behpad\b",
+    "maison de retraite",
+    "hôpital",
+    "hopital",
+    "clinique",
+    "polyclinique",
+    "école",
+    "ecole",
+    "collège",
+    "college",
+    "lycée",
+    "lycee",
+    "université",
+    "universite",
+    "campus universitaire",
+    "mairie",
+    "hôtel de ville",
+    "hotel de ville",
+    "préfecture",
+    "prefecture",
+    "sous-préfecture",
+    "tribunal",
+    "palais de justice",
+    "musée",
+    "musee",
+    "bibliothèque",
+    "bibliotheque",
+    "médiathèque",
+    "mediatheque",
+    "centre commercial",
+    "galerie marchande",
+    r"\bhôtel\b",
+    r"\bhotel\b",
+    "résidence hôtelière",
+    "auberge",
+    "centre sportif",
+    "gymnase",
+    "piscine",
+    r"\bstade\b",
+    "salle polyvalente",
+    "salle des fêtes",
+    "salle de spectacle",
+    "cinéma",
+    "cinema",
+    "théâtre",
+    "theatre",
+    "bâtiment public",
+    "batiment public",
+    "infrastructure publique",
+    "immeuble de grande hauteur",
+    r"\bigh\b",
+    "résidence universitaire",
+    "foyer de jeunes",
+    r"\bfji\b",
+    "centre pénitentiaire",
+    "maison d'arrêt",
+    "aéroport",
+    "aeroport",
+    "gare",
+    "port",
 ]
 
 # Exclusions — marchés clairement hors périmètre DEF OI
 _KW_EXCLUSION = [
-    "gardiennage", "agent de sécurité", "agents de sécurité",
-    r"\bssiap\b", "surveillance humaine", "rondes de sécurité",
-    "sécurité civile", r"\bpompiers\b", "sapeurs-pompiers",
-    "génie civil", "genie civil", r"\bvrd\b",
-    "terrassement", "fouille", "excavation",
-    r"\bmaçonnerie\b", r"\bmaconnerie\b", "gros oeuvre",
-    "charpente métallique", "charpente bois",
-    "plomberie", "sanitaire", "réseau d'eau",
-    r"\bchauffage\b", r"\bcvc\b",  # attention : ne pas exclure si CMSI présent
-    r"\bhta\b", r"\bhtb\b", "haute tension",
-    "poste de transformation", "transformateur électrique",
-    "éclairage public", "eclairage public", "lampadaire",
-    "voirie", "bitumage", "enrobé",
-    "cuisines", "cuisine professionnelle", "équipement de cuisine",
-    "blanchisserie", "pressing",
-    "ascenseur", "monte-charge", "élévateur",  # sauf si avec courants faibles
+    "gardiennage",
+    "agent de sécurité",
+    "agents de sécurité",
+    r"\bssiap\b",
+    "surveillance humaine",
+    "rondes de sécurité",
+    "sécurité civile",
+    r"\bpompiers\b",
+    "sapeurs-pompiers",
+    "génie civil",
+    "genie civil",
+    r"\bvrd\b",
+    "terrassement",
+    "fouille",
+    "excavation",
+    r"\bmaçonnerie\b",
+    r"\bmaconnerie\b",
+    "gros oeuvre",
+    "charpente métallique",
+    "charpente bois",
+    "plomberie",
+    "sanitaire",
+    "réseau d'eau",
+    r"\bchauffage\b",
+    r"\bcvc\b",  # attention : ne pas exclure si CMSI présent
+    r"\bhta\b",
+    r"\bhtb\b",
+    "haute tension",
+    "poste de transformation",
+    "transformateur électrique",
+    "éclairage public",
+    "eclairage public",
+    "lampadaire",
+    "voirie",
+    "bitumage",
+    "enrobé",
+    "cuisines",
+    "cuisine professionnelle",
+    "équipement de cuisine",
+    "blanchisserie",
+    "pressing",
+    "ascenseur",
+    "monte-charge",
+    "élévateur",  # sauf si avec courants faibles
 ]
 
 _KW_TERRITOIRE_REUNION = [
-    "réunion", "reunion", "974",
+    "réunion",
+    "reunion",
+    "974",
     # Communes
-    "saint-denis", "saint-paul", "saint-pierre", "le tampon", "saint-louis",
-    "le port", "sainte-marie", "saint-benoît", "saint-benoit", "saint-joseph",
-    "saint-leu", "sainte-suzanne", "saint-andré", "saint-andre",
-    "bras-panon", "cilaos", "entre-deux", "l'étang-salé", "étang-salé",
-    "petite-île", "petite ile", "la plaine-des-palmistes",
-    "saint-philippe", "sainte-rose", "salazie", "les trois-bassins",
-    "trois bassins", "les avirons", "la possession", "l'île-en-bois",
-    "saint-gilles", "l'hermitage", "la saline", "grand bois",
-    "ile bourbon", "ile de la reunion",
+    "saint-denis",
+    "saint-paul",
+    "saint-pierre",
+    "le tampon",
+    "saint-louis",
+    "le port",
+    "sainte-marie",
+    "saint-benoît",
+    "saint-benoit",
+    "saint-joseph",
+    "saint-leu",
+    "sainte-suzanne",
+    "saint-andré",
+    "saint-andre",
+    "bras-panon",
+    "cilaos",
+    "entre-deux",
+    "l'étang-salé",
+    "étang-salé",
+    "petite-île",
+    "petite ile",
+    "la plaine-des-palmistes",
+    "saint-philippe",
+    "sainte-rose",
+    "salazie",
+    "les trois-bassins",
+    "trois bassins",
+    "les avirons",
+    "la possession",
+    "l'île-en-bois",
+    "saint-gilles",
+    "l'hermitage",
+    "la saline",
+    "grand bois",
+    "ile bourbon",
+    "ile de la reunion",
     # Codes postaux Réunion
-    "97400", "97410", "97411", "97412", "97413", "97414", "97416",
-    "97417", "97418", "97419", "97420", "97421", "97422", "97423",
-    "97424", "97425", "97426", "97427", "97428", "97429", "97430",
-    "97431", "97432", "97433", "97434", "97436", "97437", "97438",
-    "97439", "97440", "97441", "97442", "97450", "97460", "97470",
-    "97480", "97490",
+    "97400",
+    "97410",
+    "97411",
+    "97412",
+    "97413",
+    "97414",
+    "97416",
+    "97417",
+    "97418",
+    "97419",
+    "97420",
+    "97421",
+    "97422",
+    "97423",
+    "97424",
+    "97425",
+    "97426",
+    "97427",
+    "97428",
+    "97429",
+    "97430",
+    "97431",
+    "97432",
+    "97433",
+    "97434",
+    "97436",
+    "97437",
+    "97438",
+    "97439",
+    "97440",
+    "97441",
+    "97442",
+    "97450",
+    "97460",
+    "97470",
+    "97480",
+    "97490",
 ]
 _KW_TERRITOIRE_MAYOTTE = [
-    "mayotte", "976",
+    "mayotte",
+    "976",
     # Communes
-    "mamoudzou", "dzaoudzi", "pamandzi", "koungou", "bandraboua",
-    "bouéni", "boueni", "chiconi", "chirongui", "dembéni", "dembeni",
-    "kani-kéli", "kani-keli", "mtsamboro", "m'tsangamouji", "ouangani",
-    "sada", "tsingoni", "acoua", "petite-terre", "grande-terre",
+    "mamoudzou",
+    "dzaoudzi",
+    "pamandzi",
+    "koungou",
+    "bandraboua",
+    "bouéni",
+    "boueni",
+    "chiconi",
+    "chirongui",
+    "dembéni",
+    "dembeni",
+    "kani-kéli",
+    "kani-keli",
+    "mtsamboro",
+    "m'tsangamouji",
+    "ouangani",
+    "sada",
+    "tsingoni",
+    "acoua",
+    "petite-terre",
+    "grande-terre",
     # Codes postaux Mayotte
-    "97600", "97610", "97615", "97616", "97617", "97618", "97619",
-    "97620", "97625", "97630", "97640", "97650", "97660", "97670",
+    "97600",
+    "97610",
+    "97615",
+    "97616",
+    "97617",
+    "97618",
+    "97619",
+    "97620",
+    "97625",
+    "97630",
+    "97640",
+    "97650",
+    "97660",
+    "97670",
     "97680",
 ]
 _KW_TERRITOIRE_IO = [
-    "madagascar", "antananarivo", "tamatave", "toamasina",
-    "maurice", "mauritius", "île maurice", "ile maurice", "port-louis",
-    "comores", "comoros", "moroni", "anjouan", "mohéli", "moheli",
+    "madagascar",
+    "antananarivo",
+    "tamatave",
+    "toamasina",
+    "maurice",
+    "mauritius",
+    "île maurice",
+    "ile maurice",
+    "port-louis",
+    "comores",
+    "comoros",
+    "moroni",
+    "anjouan",
+    "mohéli",
+    "moheli",
 ]
 
 
@@ -269,7 +639,9 @@ def _local_analyze(text: str) -> dict:
         # Éviction O(N) remplacée : on purge toutes les entrées expirées en une passe,
         # et seulement si on dépasse le seuil après purge, on retire la plus ancienne.
         if len(_local_cache) > _LOCAL_CACHE_MAX:
-            expired = [k for k, (_, ts) in _local_cache.items() if now - ts >= _LOCAL_CACHE_TTL]
+            expired = [
+                k for k, (_, ts) in _local_cache.items() if now - ts >= _LOCAL_CACHE_TTL
+            ]
             for k in expired:
                 del _local_cache[k]
             if len(_local_cache) > _LOCAL_CACHE_MAX:
@@ -283,6 +655,7 @@ def _count_keyword_matches(text: str, keyword_list: list) -> int:
     t = f" {text.lower()} "
     return sum(1 for kw in keyword_list if _match(kw, t))
 
+
 def _calculate_market_type(text: str) -> str:
     """Détermine le type de marché (Maintenance, Travaux, Inconnu)."""
     score_maint = _count_keyword_matches(text, _KW_MAINTENANCE)
@@ -295,11 +668,13 @@ def _calculate_market_type(text: str) -> str:
     else:
         return "Inconnu"
 
+
 def _find_competitor_brands(text: str) -> list:
     """Identifie les marques concurrentes mentionnées dans le texte."""
     t = f" {text.lower()} "
-    marques = [m for m in _MARQUES_TOUTES if re.search(r'\b' + re.escape(m) + r'\b', t)]
+    marques = [m for m in _MARQUES_TOUTES if re.search(r"\b" + re.escape(m) + r"\b", t)]
     return list(dict.fromkeys(marques))
+
 
 def _detect_penalties(text: str) -> str | None:
     """Détecte les clauses de pénalités dans le texte."""
@@ -308,54 +683,73 @@ def _detect_penalties(text: str) -> str | None:
 
     if penalites_trouvees:
         match = re.search(
-            r'(pénalité|penalite|retenue)[^.]{0,80}(\d[\d\s]*[€%])',
-            text, re.IGNORECASE
+            r"(pénalité|penalite|retenue)[^.]{0,80}(\d[\d\s]*[€%])", text, re.IGNORECASE
         )
-        return (f"Pénalités détectées : {match.group(0)[:120]}" if match
-                else f"Clauses de pénalités/garantie ({', '.join(penalites_trouvees[:3])})")
+        return (
+            f"Pénalités détectées : {match.group(0)[:120]}"
+            if match
+            else f"Clauses de pénalités/garantie ({', '.join(penalites_trouvees[:3])})"
+        )
     return None
+
 
 def _calculate_technical_scores(text: str) -> dict:
     """Calcule les scores techniques pour chaque domaine."""
     return {
-        'ssi': _count_keyword_matches(text, _KW_SSI),
-        'cmsi': _count_keyword_matches(text, _KW_CMSI),
-        'vid': _count_keyword_matches(text, _KW_VIDEO),
-        'cf': _count_keyword_matches(text, _KW_COURANTS_FAIBLES),
-        'qhse': _count_keyword_matches(text, _KW_QHSE),
-        'erp': _count_keyword_matches(text, _KW_ERP),
-        'excl': _count_keyword_matches(text, _KW_EXCLUSION)
+        "ssi": _count_keyword_matches(text, _KW_SSI),
+        "cmsi": _count_keyword_matches(text, _KW_CMSI),
+        "vid": _count_keyword_matches(text, _KW_VIDEO),
+        "cf": _count_keyword_matches(text, _KW_COURANTS_FAIBLES),
+        "qhse": _count_keyword_matches(text, _KW_QHSE),
+        "erp": _count_keyword_matches(text, _KW_ERP),
+        "excl": _count_keyword_matches(text, _KW_EXCLUSION),
     }
+
 
 def _calculate_technical_signal(scores: dict) -> int:
     """Calcule le signal technique global."""
-    return scores['ssi'] + scores['cmsi'] + scores['vid'] + scores['cf']
+    return scores["ssi"] + scores["cmsi"] + scores["vid"] + scores["cf"]
 
-def _calculate_relevance_score(scores: dict, technical_signal: int, market_type: str, brands: list, text: str) -> int:
+
+def _calculate_relevance_score(
+    scores: dict, technical_signal: int, market_type: str, brands: list, text: str
+) -> int:
     """Calcule le score de pertinence DEF OI."""
     score = 0
 
     # Bloc technique (0–55) : SSI/CMSI primaires, Vidéo/CF secondaires
-    if scores['ssi'] >= 3:        score += 55
-    elif scores['ssi'] == 2:      score += 50
-    elif scores['ssi'] == 1:      score += 40
-    if scores['cmsi'] >= 2:       score += 30   # CMSI signal primaire (si SSI absent)
-    elif scores['cmsi'] == 1:     score += 20   # CMSI signal primaire (si SSI absent)
-    if scores['vid'] >= 2:        score += 35
-    elif scores['vid'] == 1:      score += 28
-    if scores['cf'] >= 1:         score += 20
-    if scores['qhse'] >= 1:       score += 10
+    if scores["ssi"] >= 3:
+        score += 55
+    elif scores["ssi"] == 2:
+        score += 50
+    elif scores["ssi"] == 1:
+        score += 40
+    if scores["cmsi"] >= 2:
+        score += 30  # CMSI signal primaire (si SSI absent)
+    elif scores["cmsi"] == 1:
+        score += 20  # CMSI signal primaire (si SSI absent)
+    if scores["vid"] >= 2:
+        score += 35
+    elif scores["vid"] == 1:
+        score += 28
+    if scores["cf"] >= 1:
+        score += 20
+    if scores["qhse"] >= 1:
+        score += 10
     score = min(score, 55)  # plafond technique
 
     # Bloc géographique (0–30)
     t_lower = f" {text.lower()} "
-    if any(_match(kw, t_lower) for kw in _KW_TERRITOIRE_REUNION):  score += 30
-    elif any(_match(kw, t_lower) for kw in _KW_TERRITOIRE_MAYOTTE): score += 28
-    elif any(_match(kw, t_lower) for kw in _KW_TERRITOIRE_IO):      score += 15
+    if any(_match(kw, t_lower) for kw in _KW_TERRITOIRE_REUNION):
+        score += 30
+    elif any(_match(kw, t_lower) for kw in _KW_TERRITOIRE_MAYOTTE):
+        score += 28
+    elif any(_match(kw, t_lower) for kw in _KW_TERRITOIRE_IO):
+        score += 15
 
     # Bonus ERP (0–10) : bâtiment à obligation réglementaire SSI
-    if scores['erp'] > 0 and technical_signal > 0:
-        score += min(scores['erp'] * 4, 10)
+    if scores["erp"] > 0 and technical_signal > 0:
+        score += min(scores["erp"] * 4, 10)
 
     # Bonus maintenance (0–10)
     if market_type == "Maintenance":
@@ -366,11 +760,12 @@ def _calculate_relevance_score(scores: dict, technical_signal: int, market_type:
         score += min(len(brands) * 2, 5)
 
     # Pénalité exclusion : si signaux hors périmètre ET signal technique faible
-    if scores['excl'] > 0 and technical_signal < 2:
-        malus = min(scores['excl'] * 12, 30)
+    if scores["excl"] > 0 and technical_signal < 2:
+        malus = min(scores["excl"] * 12, 30)
         score = max(5, score - malus)
 
     return min(score, 100)
+
 
 def _determine_territory(text: str) -> str:
     """Détermine le territoire local."""
@@ -384,86 +779,134 @@ def _determine_territory(text: str) -> str:
     else:
         return "Non précisé"
 
+
 def _generate_technical_justification(scores: dict, technical_signal: int) -> list:
     """Génère la justification technique."""
     parts = []
 
     # SSI
-    if scores['ssi'] >= 3:
-        parts.append(f"Marché SSI fortement qualifié ({scores['ssi']} références techniques détectées : centrale, détecteurs, déclencheurs, alarme) — cœur de métier DEF OI, offre à préparer")
-    elif scores['ssi'] == 2:
-        parts.append(f"Marché SSI bien identifié ({scores['ssi']} indices techniques) — cœur de métier DEF OI")
-    elif scores['ssi'] == 1:
-        parts.append("Signal SSI/incendie présent — cœur de métier DEF OI, vérifier la profondeur dans le CCTP")
+    if scores["ssi"] >= 3:
+        parts.append(
+            f"Marché SSI fortement qualifié ({scores['ssi']} références techniques détectées : centrale, détecteurs, déclencheurs, alarme) — cœur de métier DEF OI, offre à préparer"
+        )
+    elif scores["ssi"] == 2:
+        parts.append(
+            f"Marché SSI bien identifié ({scores['ssi']} indices techniques) — cœur de métier DEF OI"
+        )
+    elif scores["ssi"] == 1:
+        parts.append(
+            "Signal SSI/incendie présent — cœur de métier DEF OI, vérifier la profondeur dans le CCTP"
+        )
 
     # CMSI
-    if scores['cmsi'] >= 2:
-        parts.append(f"CMSI/désenfumage clairement qualifié ({scores['cmsi']} références) — compétence rare, peu de concurrents locaux qualifiés")
-    elif scores['cmsi'] == 1:
-        parts.append("CMSI/désenfumage mentionné — spécialité DEF OI, avantage concurrentiel local")
+    if scores["cmsi"] >= 2:
+        parts.append(
+            f"CMSI/désenfumage clairement qualifié ({scores['cmsi']} références) — compétence rare, peu de concurrents locaux qualifiés"
+        )
+    elif scores["cmsi"] == 1:
+        parts.append(
+            "CMSI/désenfumage mentionné — spécialité DEF OI, avantage concurrentiel local"
+        )
 
     # Vidéo
-    if scores['vid'] >= 2:
-        parts.append(f"Vidéosurveillance bien identifiée ({scores['vid']} références : caméras IP, NVR, VMS) — dans le portefeuille DEF OI")
-    elif scores['vid'] == 1:
-        parts.append("Composante vidéosurveillance détectée — expertise DEF OI, souvent couplée au SSI sur les ERP")
+    if scores["vid"] >= 2:
+        parts.append(
+            f"Vidéosurveillance bien identifiée ({scores['vid']} références : caméras IP, NVR, VMS) — dans le portefeuille DEF OI"
+        )
+    elif scores["vid"] == 1:
+        parts.append(
+            "Composante vidéosurveillance détectée — expertise DEF OI, souvent couplée au SSI sur les ERP"
+        )
 
     # Courants faibles
-    if scores['cf'] >= 1:
-        parts.append(f"Courants faibles ({scores['cf']} signal(s) : contrôle d'accès, interphonie, GTB) — prestation complémentaire du portefeuille DEF OI")
+    if scores["cf"] >= 1:
+        parts.append(
+            f"Courants faibles ({scores['cf']} signal(s) : contrôle d'accès, interphonie, GTB) — prestation complémentaire du portefeuille DEF OI"
+        )
 
     # QHSE
-    if scores['qhse'] >= 1:
-        parts.append("Signal QHSE/réglementaire incendie — opportunité d'accompagnement ERP (audit, formation, mise en conformité)")
+    if scores["qhse"] >= 1:
+        parts.append(
+            "Signal QHSE/réglementaire incendie — opportunité d'accompagnement ERP (audit, formation, mise en conformité)"
+        )
 
     # ERP
-    if scores['erp'] > 0 and technical_signal > 0:
-        parts.append(f"Type de bâtiment ERP détecté ({scores['erp']} indice(s)) — obligation réglementaire SSI catégorie A/B ; DEF OI a l'expertise et les certifications requises")
-    elif scores['erp'] > 0 and technical_signal == 0:
-        parts.append(f"Bâtiment ERP détecté mais aucun domaine technique DEF OI explicite — potentiel SSI latent, vérifier le CCTP")
+    if scores["erp"] > 0 and technical_signal > 0:
+        parts.append(
+            f"Type de bâtiment ERP détecté ({scores['erp']} indice(s)) — obligation réglementaire SSI catégorie A/B ; DEF OI a l'expertise et les certifications requises"
+        )
+    elif scores["erp"] > 0 and technical_signal == 0:
+        parts.append(
+            "Bâtiment ERP détecté mais aucun domaine technique DEF OI explicite — potentiel SSI latent, vérifier le CCTP"
+        )
 
-    if technical_signal == 0 and scores['erp'] == 0:
-        parts.append("Aucun domaine métier DEF OI (SSI/CMSI/Vidéo/Courants faibles) ni bâtiment ERP détecté dans le texte — pertinence technique faible")
+    if technical_signal == 0 and scores["erp"] == 0:
+        parts.append(
+            "Aucun domaine métier DEF OI (SSI/CMSI/Vidéo/Courants faibles) ni bâtiment ERP détecté dans le texte — pertinence technique faible"
+        )
 
     return parts
 
-def _generate_exclusion_justification(scores: dict, technical_signal: int, text: str) -> list:
+
+def _generate_exclusion_justification(
+    scores: dict, technical_signal: int, text: str
+) -> list:
     """Génère la justification pour les pénalités d'exclusion."""
     parts = []
-    if scores['excl'] > 0 and technical_signal < 2:
+    if scores["excl"] > 0 and technical_signal < 2:
         t = f" {text.lower()} "
         excl_hits = [kw for kw in _KW_EXCLUSION if _match(kw, t)][:3]
-        parts.append(f"Signaux hors périmètre DEF OI détectés ({', '.join(excl_hits)}) — risque de confusion avec gardiennage/génie civil/électricité générale ; score pénalisé")
+        parts.append(
+            f"Signaux hors périmètre DEF OI détectés ({', '.join(excl_hits)}) — risque de confusion avec gardiennage/génie civil/électricité générale ; score pénalisé"
+        )
     return parts
+
 
 def _generate_geographical_justification(territory: str) -> list:
     """Génère la justification géographique."""
     parts = []
     if territory == "La Réunion":
-        parts.append("La Réunion (974) : territoire principal DEF OI — présence locale, réseau établi, connaissance des donneurs d'ordre publics, avantage décisif sur les concurrents métropolitains")
+        parts.append(
+            "La Réunion (974) : territoire principal DEF OI — présence locale, réseau établi, connaissance des donneurs d'ordre publics, avantage décisif sur les concurrents métropolitains"
+        )
     elif territory == "Mayotte":
-        parts.append("Mayotte (976) : territoire principal DEF OI — marché peu concurrentiel, DEF OI parmi les rares opérateurs locaux qualifiés SSI/CMSI")
+        parts.append(
+            "Mayotte (976) : territoire principal DEF OI — marché peu concurrentiel, DEF OI parmi les rares opérateurs locaux qualifiés SSI/CMSI"
+        )
     elif territory == "Océan Indien":
-        parts.append("Zone Océan Indien : axe de développement stratégique DEF OI — peu de concurrents locaux certifiés, opportunité de positionnement régional")
+        parts.append(
+            "Zone Océan Indien : axe de développement stratégique DEF OI — peu de concurrents locaux certifiés, opportunité de positionnement régional"
+        )
     else:
-        parts.append("Territoire non localisé dans la zone Océan Indien — réduire la priorité ; confirmer le lien géographique avant d'engager des ressources")
+        parts.append(
+            "Territoire non localisé dans la zone Océan Indien — réduire la priorité ; confirmer le lien géographique avant d'engager des ressources"
+        )
     return parts
+
 
 def _generate_market_type_justification(market_type: str) -> list:
     """Génère la justification pour le type de marché."""
     parts = []
     if market_type == "Maintenance":
-        parts.append("Contrat de maintenance = CA récurrent et prévisible, taux de marge élevé, fidélisation client sur plusieurs années")
+        parts.append(
+            "Contrat de maintenance = CA récurrent et prévisible, taux de marge élevé, fidélisation client sur plusieurs années"
+        )
     elif market_type == "Travaux":
-        parts.append("Marché travaux (installation/rénovation) = revenus ponctuels mais ouvre la porte à un contrat de maintenance annuel si DEF OI remporte")
+        parts.append(
+            "Marché travaux (installation/rénovation) = revenus ponctuels mais ouvre la porte à un contrat de maintenance annuel si DEF OI remporte"
+        )
     return parts
+
 
 def _generate_brands_justification(brands: list) -> list:
     """Génère la justification pour les marques concurrentes."""
     parts = []
     if brands:
-        parts.append(f"Marques citées dans le DCE : {', '.join(brands[:4])} — étudier la compatibilité technique ou la possibilité de substitution agréée")
+        parts.append(
+            f"Marques citées dans le DCE : {', '.join(brands[:4])} — étudier la compatibilité technique ou la possibilité de substitution agréée"
+        )
     return parts
+
 
 def _local_analyze_impl(text: str) -> dict:
     """Analyse locale optimisée du texte pour déterminer la pertinence DEF OI."""
@@ -473,17 +916,23 @@ def _local_analyze_impl(text: str) -> dict:
     penalties = _detect_penalties(text)
     technical_scores = _calculate_technical_scores(text)
     technical_signal = _calculate_technical_signal(technical_scores)
-    relevance_score = _calculate_relevance_score(technical_scores, technical_signal, market_type, brands, text)
+    relevance_score = _calculate_relevance_score(
+        technical_scores, technical_signal, market_type, brands, text
+    )
     territory = _determine_territory(text)
 
     # Génération des justifications
     justification_parts = []
 
     # Justification technique
-    justification_parts.extend(_generate_technical_justification(technical_scores, technical_signal))
+    justification_parts.extend(
+        _generate_technical_justification(technical_scores, technical_signal)
+    )
 
     # Justification d'exclusion
-    justification_parts.extend(_generate_exclusion_justification(technical_scores, technical_signal, text))
+    justification_parts.extend(
+        _generate_exclusion_justification(technical_scores, technical_signal, text)
+    )
 
     # Justification géographique
     justification_parts.extend(_generate_geographical_justification(territory))
@@ -506,24 +955,32 @@ def _local_analyze_impl(text: str) -> dict:
         "justification_score": ". ".join(justification_parts) + ".",
         "_source": "local",
         # compteurs bruts — utilisés dans _render_strategic_analysis
-        "_nb_ssi": technical_scores['ssi'],
-        "_nb_cmsi": technical_scores['cmsi'],
-        "_nb_vid": technical_scores['vid'],
-        "_nb_cf": technical_scores['cf'],
-        "_nb_erp": technical_scores['erp'],
-        "_nb_excl": technical_scores['excl'],
+        "_nb_ssi": technical_scores["ssi"],
+        "_nb_cmsi": technical_scores["cmsi"],
+        "_nb_vid": technical_scores["vid"],
+        "_nb_cf": technical_scores["cf"],
+        "_nb_erp": technical_scores["erp"],
+        "_nb_excl": technical_scores["excl"],
     }
+
 
 def _build_domains_list(scores: dict, market_type: str) -> list:
     """Construire la liste des domaines concernés."""
     domaines = []
-    if scores['ssi'] > 0:   domaines.append("SSI")
-    if scores['cmsi'] > 0:  domaines.append("CMSI")
-    if scores['vid'] > 0:   domaines.append("Vidéosurveillance")
-    if scores['cf'] > 0:    domaines.append("Courants faibles")
-    if scores['qhse'] > 0:  domaines.append("QHSE")
-    if scores['erp'] > 0:   domaines.append("ERP")
-    if market_type == "Maintenance": domaines.append("Maintenance")
+    if scores["ssi"] > 0:
+        domaines.append("SSI")
+    if scores["cmsi"] > 0:
+        domaines.append("CMSI")
+    if scores["vid"] > 0:
+        domaines.append("Vidéosurveillance")
+    if scores["cf"] > 0:
+        domaines.append("Courants faibles")
+    if scores["qhse"] > 0:
+        domaines.append("QHSE")
+    if scores["erp"] > 0:
+        domaines.append("ERP")
+    if market_type == "Maintenance":
+        domaines.append("Maintenance")
     return domaines
 
 
@@ -531,8 +988,10 @@ def _build_domains_list(scores: dict, market_type: str) -> list:
 # Score combiné
 # ---------------------------------------------------------------------------
 
-def compute_combined_score(llm_score: int, local_score: int,
-                            llm_available: bool) -> int:
+
+def compute_combined_score(
+    llm_score: int, local_score: int, llm_available: bool
+) -> int:
     """Pondère : 70 % LLM + 30 % local si LLM disponible, sinon 100 % local."""
     if llm_available:
         return round(llm_score * 0.70 + local_score * 0.30)
@@ -631,6 +1090,7 @@ def _get_mistral_client():
     if _mistral_client is None:
         try:
             from mistralai.client import Mistral
+
             _mistral_client = Mistral(api_key=api_key)
         except Exception:
             return None
@@ -687,7 +1147,9 @@ def _mistral_analyze(text: str) -> dict | None:
         if status == 429:
             retry_after = None
             try:
-                retry_after = int(getattr(exc, "headers", {}).get("retry-after", 0)) or None
+                retry_after = (
+                    int(getattr(exc, "headers", {}).get("retry-after", 0)) or None
+                )
             except Exception:
                 pass
             raise _LLMQuotaError(retry_after=retry_after)
@@ -704,16 +1166,26 @@ def _mistral_analyze(text: str) -> dict | None:
 
 # Whitelist de domaines autorisés pour fetch_dce_content
 _ALLOWED_DCE_DOMAINS = {
-    "boamp.fr", "marchessecurises.com", "tendersgo.com",
-    "instao.com", "aws-achat.com", "achatpublic.com",
-    "marcheonline.fr", "marchespublicsinfo.fr"
+    "boamp.fr",
+    "marchessecurises.com",
+    "tendersgo.com",
+    "instao.com",
+    "aws-achat.com",
+    "achatpublic.com",
+    "marcheonline.fr",
+    "marchespublicsinfo.fr",
 }
 
 # Domains à ignorer (retournent du contenu non utile ou dynamique)
 _SKIP_DCE_DOMAINS = {
-    "marchessecurises.com", "instao.com", "tendersgo.com", "aws-achat.com",
-    "achatpublic.com", "boamp.fr"  # BOAMP retourne du JS dynamique peu utile
+    "marchessecurises.com",
+    "instao.com",
+    "tendersgo.com",
+    "aws-achat.com",
+    "achatpublic.com",
+    "boamp.fr",  # BOAMP retourne du JS dynamique peu utile
 }
+
 
 def fetch_dce_content(url: str) -> str | None:
     """
@@ -745,6 +1217,7 @@ def fetch_dce_content(url: str) -> str | None:
     # Validation du format URL
     try:
         from urllib.parse import urlparse
+
         parsed = urlparse(url)
         if not all([parsed.scheme, parsed.netloc]):
             _log.debug("fetch_dce_content: URL malformée (%s)", url)
@@ -775,14 +1248,16 @@ def fetch_dce_content(url: str) -> str | None:
             return None
 
     except Exception as e:
-        _log.warning("fetch_dce_content: Erreur de validation URL (%s): %s", url, str(e))
+        _log.warning(
+            "fetch_dce_content: Erreur de validation URL (%s): %s", url, str(e)
+        )
         return None
 
     try:
         import requests as _req
 
         _MAX_DCE_BYTES = 2_000_000  # 2 MB max avant lecture
-        _MAX_URL_LENGTH = 2048     # Limite de longueur pour l'URL
+        _MAX_URL_LENGTH = 2048  # Limite de longueur pour l'URL
 
         # Vérifier la longueur de l'URL
         if len(url) > _MAX_URL_LENGTH:
@@ -798,17 +1273,26 @@ def fetch_dce_content(url: str) -> str | None:
             stream=True,
         ) as resp:
             if resp.status_code != 200:
-                _log.debug("fetch_dce_content: Status HTTP %d pour %s", resp.status_code, url)
+                _log.debug(
+                    "fetch_dce_content: Status HTTP %d pour %s", resp.status_code, url
+                )
                 return None
 
             ct = resp.headers.get("content-type", "").lower()
-            if not any(t in ct for t in ("text/html", "text/plain", "application/xhtml")):
-                _log.debug("fetch_dce_content: Content-Type non HTML (%s) — skipped", ct[:60])
+            if not any(
+                t in ct for t in ("text/html", "text/plain", "application/xhtml")
+            ):
+                _log.debug(
+                    "fetch_dce_content: Content-Type non HTML (%s) — skipped", ct[:60]
+                )
                 return None
 
             content_length = int(resp.headers.get("content-length", 0) or 0)
             if content_length > _MAX_DCE_BYTES:
-                _log.debug("fetch_dce_content: Content-Length trop grand (%d bytes) — skipped", content_length)
+                _log.debug(
+                    "fetch_dce_content: Content-Length trop grand (%d bytes) — skipped",
+                    content_length,
+                )
                 return None
 
             # Lecture chunk par chunk pour respecter la limite même sans Content-Length
@@ -817,7 +1301,10 @@ def fetch_dce_content(url: str) -> str | None:
             for chunk in resp.iter_content(chunk_size=65536):
                 size += len(chunk)
                 if size > _MAX_DCE_BYTES:
-                    _log.debug("fetch_dce_content: corps > %d bytes — lecture interrompue", _MAX_DCE_BYTES)
+                    _log.debug(
+                        "fetch_dce_content: corps > %d bytes — lecture interrompue",
+                        _MAX_DCE_BYTES,
+                    )
                     return None
                 chunks.append(chunk)
 
@@ -826,7 +1313,8 @@ def fetch_dce_content(url: str) -> str | None:
 
         # Supprimer scripts et styles pour éviter les attaques XSS
         raw = re.sub(
-            r"<(script|style)[^>]*>.*?</\1>", " ",
+            r"<(script|style)[^>]*>.*?</\1>",
+            " ",
             raw,
             flags=re.IGNORECASE | re.DOTALL,
         )
@@ -836,7 +1324,9 @@ def fetch_dce_content(url: str) -> str | None:
 
         # Vérifier que le texte extrait est suffisamment long
         if len(text) <= 150:
-            _log.debug("fetch_dce_content: Contenu trop court (%d caractères)", len(text))
+            _log.debug(
+                "fetch_dce_content: Contenu trop court (%d caractères)", len(text)
+            )
             return None
 
         result = text[:6000]
@@ -844,7 +1334,11 @@ def fetch_dce_content(url: str) -> str | None:
         return result
 
     except Exception as e:
-        _log.warning("fetch_dce_content: Exception lors de la récupération de %s: %s", url, str(e))
+        _log.warning(
+            "fetch_dce_content: Exception lors de la récupération de %s: %s",
+            url,
+            str(e),
+        )
         return None
 
 
@@ -852,14 +1346,18 @@ def fetch_dce_content(url: str) -> str | None:
 # Analyse automatique en masse (local uniquement — sans quota)
 # ---------------------------------------------------------------------------
 
+
 def auto_analyze_pending(db) -> int:
     """Analyse tous les marchés sans llm_analysis. Moteur local uniquement."""
     from sqlalchemy import text as _text
     from models import Tender
+
     # SQLite stocke parfois 'null' (JSON null) au lieu de SQL NULL — on filtre les deux
-    pending = db.query(Tender).filter(
-        _text("llm_analysis IS NULL OR llm_analysis = 'null'")
-    ).all()
+    pending = (
+        db.query(Tender)
+        .filter(_text("llm_analysis IS NULL OR llm_analysis = 'null'"))
+        .all()
+    )
     for t in pending:
         result = _local_analyze(f"{t.title or ''} {t.description or ''}")
         t.llm_analysis = result
@@ -890,7 +1388,7 @@ def auto_analyze_claude(
     pending = (
         db.query(Tender)
         .filter(
-            Tender.is_blacklisted == False,
+            Tender.is_blacklisted.is_(False),
             _text(
                 "llm_analysis IS NULL OR llm_analysis = 'null' "
                 "OR json_extract(llm_analysis, '$._source') = 'local'"
@@ -942,9 +1440,15 @@ def auto_analyze_claude(
         )
         llm_result["score_pertinence"] = combined_score
         llm_result.setdefault("tag_pertinence", _score_to_tag(combined_score))
-        llm_result.setdefault("domaines_concernes", local_result.get("domaines_concernes", []))
-        llm_result.setdefault("justification_score", local_result.get("justification_score", ""))
-        llm_result.setdefault("territoire_ia", local_result.get("territoire_ia", "Non précisé"))
+        llm_result.setdefault(
+            "domaines_concernes", local_result.get("domaines_concernes", [])
+        )
+        llm_result.setdefault(
+            "justification_score", local_result.get("justification_score", "")
+        )
+        llm_result.setdefault(
+            "territoire_ia", local_result.get("territoire_ia", "Non précisé")
+        )
 
         t.llm_analysis = llm_result
         t.relevance_score = combined_score
@@ -954,10 +1458,15 @@ def auto_analyze_claude(
             _date_str = llm_result.get("date_publication")
             if _date_str and _date_str != "null":
                 from scraper_utils import parse_date as _parse_date
+
                 _parsed = _parse_date(_date_str)
                 if _parsed:
                     t.publication_date = _parsed
-                    _log.info("auto_analyze_claude: date extraite par LLM pour '%s' → %s", (t.title or t.id)[:40], _parsed.date())
+                    _log.info(
+                        "auto_analyze_claude: date extraite par LLM pour '%s' → %s",
+                        (t.title or t.id)[:40],
+                        _parsed.date(),
+                    )
 
         nb_done += 1
 
@@ -983,6 +1492,7 @@ auto_analyze_gemini = auto_analyze_claude  # alias rétrocompat
 # ---------------------------------------------------------------------------
 # Point d'entrée public
 # ---------------------------------------------------------------------------
+
 
 def analyze_tender(text: str, source_url: str | None = None) -> dict:
     """
@@ -1010,9 +1520,15 @@ def analyze_tender(text: str, source_url: str | None = None) -> dict:
         )
         llm_result["score_pertinence"] = combined_score
         llm_result.setdefault("tag_pertinence", _score_to_tag(combined_score))
-        llm_result.setdefault("domaines_concernes", local_result.get("domaines_concernes", []))
-        llm_result.setdefault("justification_score", local_result.get("justification_score", ""))
-        llm_result.setdefault("territoire_ia", local_result.get("territoire_ia", "Non précisé"))
+        llm_result.setdefault(
+            "domaines_concernes", local_result.get("domaines_concernes", [])
+        )
+        llm_result.setdefault(
+            "justification_score", local_result.get("justification_score", "")
+        )
+        llm_result.setdefault(
+            "territoire_ia", local_result.get("territoire_ia", "Non précisé")
+        )
         return llm_result
 
     return local_result
