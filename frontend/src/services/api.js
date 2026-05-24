@@ -87,6 +87,9 @@ export const resetDb = () =>
 export const saveMistralKey = (api_key) =>
   api.post('/settings/mistral-key', { api_key }).then((r) => r.data)
 
+export const getMistralStatus = () =>
+  api.get('/settings/mistral-status').then((r) => r.data)
+
 export const archiveOld = (days = 30) =>
   api.post('/admin/archive-old', null, { params: { days } }).then((r) => r.data)
 
