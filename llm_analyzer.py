@@ -1538,8 +1538,13 @@ def analyze_tender(text: str, source_url: str | None = None) -> dict:
 
 
 _STRUCTURED_SYSTEM = (
-    "Tu es un expert en marchés publics SSI, CMSI, désenfumage, vidéosurveillance "
-    "et courants faibles pour les DOM (La Réunion 974, Mayotte 976). "
+    "Tu es un expert en marchés publics pour DEF Océan Indien, spécialisé en SSI, CMSI, "
+    "désenfumage, vidéosurveillance et courants faibles. "
+    "ZONE PRIORITAIRE : La Réunion (974) et Mayotte (976). "
+    "ZONE SECONDAIRE : Madagascar, Maurice, Comores. "
+    "EXCLURE (recommandation=NON) si et seulement si : gardiennage, agents de sécurité, "
+    "génie civil pur, VRD, électricité HT/BT seule, plomberie, extincteurs seuls sans SSI. "
+    "En cas de doute sur le périmètre technique, préférer OUI. "
     "Tu retournes UNIQUEMENT un objet JSON valide, sans texte avant ni après."
 )
 
@@ -1552,7 +1557,7 @@ _STRUCTURED_USER_TPL = """Analyse ce marché et retourne ce JSON strict :
   "keywords_techniques": ["ERP type J", "SSI catégorie A", "..."],
   "acheteur_type": "Commune" | "Établissement scolaire" | "Hôpital" | "Administration" | "Privé" | "Autre",
   "niveau_concurrence": "Faible" | "Moyen" | "Élevé",
-  "recommandation": "GO" | "NON",
+  "recommandation": "OUI" | "NON",
   "score_confiance": <entier 0-100>,
   "justification": "<1-2 phrases>"
 }}
