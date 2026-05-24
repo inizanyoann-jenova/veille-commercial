@@ -304,7 +304,7 @@ def load_urgences(db, score_go: int = 65, days_ahead: int = 30) -> list[dict]:
             "jours_restants": (t.deadline.replace(tzinfo=None) - today).days,
             "source": t.source,
             "url": t.url,
-            "description": (t.description or "")[:300] if t.description else None,
+            "description": t.description[:300] if t.description else None,
             "secteur": t.secteur,
             "amount": t.amount,
             "llm_resume": (t.llm_analysis or {}).get("resume") if t.llm_analysis else None,

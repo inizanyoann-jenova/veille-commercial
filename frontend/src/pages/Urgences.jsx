@@ -43,7 +43,7 @@ export default function Urgences() {
                 key={u.id}
                 title={u.title}
                 jours_restants={jours}
-                score={u.relevance_score}
+                score={u.relevance_score ?? u.score}
                 source={u.source}
                 url={u.url}
                 description={u.description}
