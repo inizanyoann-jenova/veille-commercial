@@ -1001,7 +1001,7 @@ def analyze_one(tender_id: str, db: Session = Depends(get_db)):
 # ── POST /api/collect ─────────────────────────────────────────────────────────
 
 
-def _dict_to_tender(item: dict) -> Tender:
+def _dict_to_tender(item: dict, source_category: str = "Public") -> Tender:
     """Convertit un dict retourné par un scraper en objet Tender."""
     from datetime import datetime as _ddt, date as _date
 
@@ -1027,7 +1027,10 @@ def _dict_to_tender(item: dict) -> Tender:
     text = f"{name} {item.get('description') or ''}"
     score = 50 if is_relevant_def(text) else 0
 
-    return Tender(
+    secteur = item.get("secteur") or source_category or "Public"
+    type_opp = item.get("type_opportunite")
+
+    t = Tender(
         id=tid,
         title=name,
         source=source,
@@ -1040,7 +1043,11 @@ def _dict_to_tender(item: dict) -> Tender:
         status="À qualifier",
         is_blacklisted=False,
         tags=[],
+        secteur=secteur,
     )
+    if type_opp:
+        t.type_opportunite = type_opp
+    return t
 
 
 @app.post("/api/collect", summary="Lancer la collecte (toutes sources ou liste)")
@@ -1095,7 +1102,7 @@ def collect(body: CollectRequest):
             insert_db = SessionLocal()
             try:
                 for item in items:
-                    t = _dict_to_tender(item)
+                    t = _dict_to_tender(item, source_category=source.category)
                     if insert_if_new(insert_db, t, known_ids):
                         nb_new += 1
                 insert_db.commit()
