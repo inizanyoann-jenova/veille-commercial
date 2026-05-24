@@ -7,6 +7,7 @@ Vérifie pour chaque source :
 
 Usage : run_all_health_checks() -> dict[str, HealthResult]
 """
+
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -45,7 +46,12 @@ _SOURCE_MARKERS: list[dict] = [
         "marker_type": "json_key",
         "marker_value": "notices",
         "method": "post",
-        "body": {"query": "FT~SSI", "fields": ["notice-title"], "limit": 1, "paginationMode": "ITERATION"},
+        "body": {
+            "query": "FT~SSI",
+            "fields": ["notice-title"],
+            "limit": 1,
+            "paginationMode": "ITERATION",
+        },
     },
     {
         "name": "AFD — Agence Française de Développement",
@@ -107,16 +113,26 @@ def check_source(
     """Vérifie une source : HTTP 200 + marqueur structurel."""
     try:
         if method == "post":
-            resp = requests.post(url, json=body or {}, timeout=TIMEOUT, headers=_HEADERS, allow_redirects=True)
+            resp = requests.post(
+                url,
+                json=body or {},
+                timeout=TIMEOUT,
+                headers=_HEADERS,
+                allow_redirects=True,
+            )
         else:
-            resp = requests.get(url, timeout=TIMEOUT, headers=_HEADERS, allow_redirects=True)
+            resp = requests.get(
+                url, timeout=TIMEOUT, headers=_HEADERS, allow_redirects=True
+            )
 
         http_status = resp.status_code
         _ok_statuses = allow_status or [200]
 
         if resp.status_code >= 400 and resp.status_code not in _ok_statuses:
             return HealthResult(
-                name=name, ok=False, http_status=http_status,
+                name=name,
+                ok=False,
+                http_status=http_status,
                 error=f"HTTP {resp.status_code}",
             )
         if resp.status_code in (allow_status or []) and resp.status_code >= 400:
@@ -128,19 +144,25 @@ def check_source(
                 data = resp.json()
                 if marker_value not in data:
                     return HealthResult(
-                        name=name, ok=False, http_status=http_status,
+                        name=name,
+                        ok=False,
+                        http_status=http_status,
                         error=f"Marqueur JSON '{marker_value}' absent — structure du site changée ?",
                     )
             except Exception:
                 return HealthResult(
-                    name=name, ok=False, http_status=http_status,
+                    name=name,
+                    ok=False,
+                    http_status=http_status,
                     error="Réponse non JSON — structure du site changée ?",
                 )
 
         elif marker_type == "html_text":
             if marker_value not in resp.text:
                 return HealthResult(
-                    name=name, ok=False, http_status=http_status,
+                    name=name,
+                    ok=False,
+                    http_status=http_status,
                     error=f"Marqueur HTML '{marker_value}' absent — structure du site changée ?",
                 )
 
@@ -172,6 +194,7 @@ def run_all_health_checks() -> dict[str, HealthResult]:
 def persist_health_results(db, results: dict[str, HealthResult]) -> None:
     """Persiste les résultats dans la table sources (champs ping existants)."""
     from source_registry import Source
+
     for name, result in results.items():
         source = db.query(Source).filter(Source.name == name).first()
         if not source:
