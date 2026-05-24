@@ -7,6 +7,7 @@ import {
   getDuplicates, resolveDuplicate, detectDuplicates, archiveOld, resetDb,
   getCredentials, saveCredential, deleteCredential, testCredential,
   saveMistralKey,
+  getMistralStatus,
 } from '../services/api'
 
 export const useTenders = (params) =>
@@ -222,3 +223,10 @@ export const useSaveMistralKey = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['mistral-status'] }),
   })
 }
+
+export const useMistralStatus = () =>
+  useQuery({
+    queryKey: ['mistral-status'],
+    queryFn: getMistralStatus,
+    staleTime: 30_000,
+  })
