@@ -13,6 +13,7 @@ import {
   useDeleteCredential,
   useTestCredential,
   useSaveMistralKey,
+  useMistralStatus,
 } from '../hooks/useTenders'
 
 const SITE_LOGOS = {
@@ -495,6 +496,7 @@ function IntegrationsTab() {
   const [apiKey, setApiKey] = useState('')
   const [showKey, setShowKey] = useState(false)
   const { mutate: save, isPending, isSuccess, isError, error, reset } = useSaveMistralKey()
+  const { data: mistralStatus } = useMistralStatus()
 
   const handleSave = () => {
     save(apiKey.trim(), {
@@ -504,9 +506,16 @@ function IntegrationsTab() {
 
   return (
     <div className="space-y-6">
-      <p className="font-sans text-sm text-ocean-muted">
-        Configurez la clé API Mistral pour activer l'analyse IA des marchés.
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="font-sans text-sm text-ocean-muted">
+          Configurez la clé API Mistral pour activer l'analyse IA des marchés.
+        </p>
+        {mistralStatus !== undefined && (
+          mistralStatus.configured
+            ? <span className="font-mono text-xs text-ocean-teal bg-ocean-teal/10 px-2 py-0.5 rounded-full">✅ Clé active</span>
+            : <span className="font-mono text-xs text-ocean-gold bg-ocean-gold/10 px-2 py-0.5 rounded-full">⚠️ Aucune clé configurée</span>
+        )}
+      </div>
 
       <div className="space-y-3">
         <h3 className="font-mono text-xs font-semibold text-ocean-muted uppercase tracking-widest">
