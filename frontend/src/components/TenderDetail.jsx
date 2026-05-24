@@ -77,6 +77,16 @@ function TenderDetailHeader({ tender }) {
         <span>Secteur : <strong className="text-ocean-text/80">{tender.secteur || '—'}</strong></span>
         <span>Source : <strong className="text-ocean-text/80">{tender.source || '—'}</strong></span>
       </div>
+      {tender.url && (
+        <a
+          href={tender.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-xs font-mono text-ocean-cyan hover:text-ocean-teal underline underline-offset-2 transition-colors"
+        >
+          Voir l'annonce ↗
+        </a>
+      )}
     </div>
   )
 }
