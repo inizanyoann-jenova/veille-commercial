@@ -150,4 +150,5 @@ def _normalise(raw: dict, rid: str = "") -> dict:
         "demandeur": demandeur,
         "num_dau": raw.get("NUM_DAU") or "",
         "description": description,
+        "type_opportunite": "Permis Construire",
     }
