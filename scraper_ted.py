@@ -1,14 +1,17 @@
-import hashlib
-import logging
+"""
+TED (Tenders Electronic Daily — Journal Officiel UE) — appels d'offres
+Océan Indien : La Réunion, Mayotte, Madagascar, Maurice, Comores.
+Method: REST API POST avec pagination par token (TED v3).
+"""
+
 import os
-from datetime import datetime, timedelta
+import requests
+from datetime import datetime, timedelta, timezone
 
-from database import SessionLocal, init_db, start_scraper_run, finish_scraper_run
-from filters import classify_relevance
-from models import Tender
-from scraper_utils import parse_date, retry_post, load_existing_ids, insert_if_new, now_utc
-
-_log = logging.getLogger(__name__)
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; research-bot/1.0)",
+    "Content-Type": "application/json",
+}
 
 TED_API_URL = "https://api.ted.europa.eu/v3/notices/search"
 
@@ -25,8 +28,7 @@ _ERP = (
     " OR FT~lycee OR FT~college OR FT~universite OR FT~gymnase"
     " OR FT~stade OR FT~mairie OR FT~tribunal OR FT~aeroport OR FT~gare"
 )
-# Codes CPV SSI : alarme incendie, matériel incendie, maintenance sécu,
-# anti-intrusion, contrôle d'accès, prévention incendie
+# Codes CPV SSI : alarme incendie, matériel, maintenance, anti-intrusion, contrôle accès
 _CPV = (
     "PC=45312100 OR PC=35111300 OR PC=50610000"
     " OR PC=45312200 OR PC=42961000 OR PC=35111000"
@@ -42,127 +44,133 @@ _MAYOTTE_GEO = (
 
 QUERIES = {
     "La Réunion": f"FT~974 AND ({_PUBLIC_SEARCH})",
-    "Mayotte":    f"({_MAYOTTE_GEO}) AND ({_PUBLIC_SEARCH})",
+    "Mayotte": f"({_MAYOTTE_GEO}) AND ({_PUBLIC_SEARCH})",
     "Madagascar": f"FT~Madagascar AND ({_PUBLIC_SEARCH})",
-    "Maurice":    f"FT~Mauritius AND ({_PUBLIC_SEARCH})",
-    "Comores":    f"FT~Comoros AND ({_PUBLIC_SEARCH})",
+    "Maurice": f"FT~Mauritius AND ({_PUBLIC_SEARCH})",
+    "Comores": f"FT~Comoros AND ({_PUBLIC_SEARCH})",
 }
 
-_FIELDS = ["notice-title", "publication-number", "deadline-receipt-tender-date-lot", "description-glo"]
+_FIELDS = [
+    "notice-title",
+    "publication-number",
+    "deadline-receipt-tender-date-lot",
+    "description-glo",
+]
 
 
 def _extract_fr(field_value) -> str:
+    """Extract French text from multilingual TED field (fallback to English)."""
     if not field_value:
         return ""
     if isinstance(field_value, list):
         return " ".join(_extract_fr(item) for item in field_value if item).strip()
     if isinstance(field_value, dict):
-        return (field_value.get("fra") or field_value.get("eng")
-                or next(iter(field_value.values()), "")) or ""
+        return (
+            field_value.get("fra")
+            or field_value.get("eng")
+            or next(iter(field_value.values()), "")
+        ) or ""
     return str(field_value)
 
 
-def _fetch_query(db, query: str, existing_ids: set, date_from: str) -> tuple[int, int]:
-    inserted = 0
-    nb_found = 0
-    limit    = 100
+def _parse_ted_date(raw) -> str:
+    """Parse TED date field to ISO string."""
+    if not raw:
+        return ""
+    val = raw if isinstance(raw, str) else str(raw)
+    try:
+        return datetime.fromisoformat(val[:10]).date().isoformat()
+    except ValueError:
+        return val
 
-    # Filtre date glissante — évite de re-scraper l'historique à chaque run
-    full_query = f"({query}) AND PD>={date_from}"
+
+def _fetch_zone(query: str, date_from: str) -> list[dict]:
+    """Paginate TED API for one zone query and return normalised results."""
+    results = []
+    limit = 100
     token: str | None = None
+
+    # TED PD>= exige YYYYMMDD sans tirets
+    full_query = f"({query}) AND PD>={date_from}"
+
     while True:
         payload: dict = {
-            "query":          full_query,
-            "fields":         _FIELDS,
-            "limit":          limit,
+            "query": full_query,
+            "fields": _FIELDS,
+            "limit": limit,
             "paginationMode": "ITERATION",
-            "scope":          "ACTIVE",
+            "scope": "ACTIVE",
         }
         if token:
             payload["iterationNextToken"] = token
 
-        r       = retry_post(TED_API_URL, json=payload, rate_delay=1.5)
-        data    = r.json()
+        try:
+            resp = requests.post(TED_API_URL, headers=HEADERS, json=payload, timeout=30)
+        except requests.RequestException:
+            break
+
+        if resp.status_code != 200:
+            break
+
+        data = resp.json()
         notices = data.get("notices", [])
         if not notices:
             break
 
-        nb_found += len(notices)
-
         for notice in notices:
-            pub_num     = notice.get("publication-number") or ""
-            title       = _extract_fr(notice.get("notice-title"))
-            description = _extract_fr(notice.get("description-glo"))
-
-            relevant, extra_tags = classify_relevance(f"{title} {description}")
-            if not relevant:
-                continue
-
-            tender_id = (f"TED-{pub_num}" if pub_num
-                         else f"TED-{hashlib.md5(title.encode()).hexdigest()[:12]}")
-
-            links  = notice.get("links", {})
-            url_fr = ((links.get("html") or {}).get("FRA")
-                      or f"https://ted.europa.eu/fr/notice/{pub_num}/html")
-
-            t = Tender(
-                id=tender_id,
-                title=title or f"Avis TED {pub_num}",
-                description=description,
-                source=url_fr,
-                publication_date=None,
-                date_extraction=now_utc(),
-                deadline=parse_date(notice.get("deadline-receipt-tender-date-lot")),
-                status="À qualifier",
-                relevance_score=0,
-                is_maintenance=False,
-                llm_analysis=None,
-                tags=extra_tags,
-            )
-            if insert_if_new(db, t, existing_ids):
-                inserted += 1
+            results.append(_normalise(notice))
 
         token = data.get("iterationNextToken")
         if not token or len(notices) < limit:
             break
 
-    return nb_found, inserted
+    return results
 
 
-def fetch_ted_tenders(zones: list[str] | None = None) -> int:
-    init_db()
-    db       = SessionLocal()
-    nb_found = 0
-    inserted = 0
-    _run_id  = start_scraper_run(db, "TED Europe")
-
+def fetch() -> list[dict]:
+    """
+    Returns TED EU tenders for Indian Ocean zones.
+    Each item: name, url, source, date_found + domain-specific fields.
+    """
     window_days = int(os.getenv("SCRAPER_WINDOW_DAYS", "90"))
-    date_from   = (datetime.now() - timedelta(days=window_days)).strftime("%Y%m%d")  # TED PD>= exige YYYYMMDD sans tirets
+    # TED date format : YYYYMMDD sans tirets
+    date_from = (datetime.now(timezone.utc) - timedelta(days=window_days)).strftime(
+        "%Y%m%d"
+    )
 
-    selected = {k: v for k, v in QUERIES.items() if zones is None or k in zones}
+    results = []
+    for zone, query in QUERIES.items():
+        zone_results = _fetch_zone(query, date_from)
+        for item in zone_results:
+            item["zone"] = zone
+        results.extend(zone_results)
 
-    try:
-        existing_ids = load_existing_ids(db)
-        for zone, query in selected.items():
-            _log.info("TED : collecte zone '%s'", zone)
-            found, new = _fetch_query(db, query, existing_ids, date_from)
-            nb_found += found
-            inserted += new
-        if inserted:
-            db.commit()
-        finish_scraper_run(db, _run_id, nb_found=nb_found, nb_new=inserted)
-        _log.info("TED : %d trouvés, %d marché(s) inséré(s)", nb_found, inserted)
-    except Exception as exc:
-        _log.exception("TED : erreur collecte")
-        finish_scraper_run(db, _run_id, nb_found=0, nb_new=0, error=str(exc))
-        raise
-    finally:
-        db.close()
-
-    return inserted
+    return results
 
 
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    count = fetch_ted_tenders()
-    _log.info("TED terminé — %d marché(s) inséré(s)", count)
+def _normalise(notice: dict) -> dict:
+    """Convert raw TED notice to standard schema."""
+    pub_num = notice.get("publication-number") or ""
+    title = _extract_fr(notice.get("notice-title")) or f"Avis TED {pub_num}"
+    description = _extract_fr(notice.get("description-glo"))
+
+    links = notice.get("links", {})
+    url_fr = (links.get("html") or {}).get("FRA") or (
+        f"https://ted.europa.eu/fr/notice/{pub_num}/html"
+        if pub_num
+        else "https://ted.europa.eu"
+    )
+
+    deadline = _parse_ted_date(notice.get("deadline-receipt-tender-date-lot"))
+
+    return {
+        "name": title,
+        "url": url_fr,
+        "source": "TED Europe",
+        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "publication_date": "",
+        "deadline": deadline,
+        "description": description,
+        "ted_id": pub_num,
+        "zone": "",  # renseigné par fetch()
+    }
