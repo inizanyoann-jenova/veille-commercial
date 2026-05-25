@@ -6,9 +6,10 @@ import {
 } from '../hooks/useTenders'
 
 const NAV_ITEMS = [
-  { to: '/', icon: '📋', label: 'Pipeline', end: true },
+  { to: '/', icon: '📋', label: 'Marchés', end: true },
+  { to: '/pipeline', icon: '🎯', label: 'Pipeline' },
   { to: '/analytics', icon: '📊', label: 'Analytics' },
-  { to: '/direction', icon: '🎯', label: 'Direction' },
+  { to: '/direction', icon: '🏆', label: 'Direction' },
   { to: '/urgences', icon: '🔔', label: 'Urgences', badge: true },
   { to: '/guide', icon: '📖', label: 'Guide' },
 ]
@@ -125,8 +126,8 @@ function CollectSection() {
 
   const results = collectResult?.results ?? []
   const totalNew = results.reduce((sum, r) => sum + (r.nb_new ?? 0), 0)
-  const aiAnalyzed = Math.min(totalNew, 10)
-  const aiPending = Math.max(0, totalNew - 10)
+  const aiAnalyzed = totalNew
+  const aiPending = 0
   const showResults = !!collectResult && !collecting
 
   return (
