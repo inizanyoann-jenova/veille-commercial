@@ -54,7 +54,7 @@ from llm_analyzer import (  # noqa: E402
     _match,
     analyze_tender,
     analyze_tender_structured,
-    auto_analyze_claude,
+    auto_analyze_mistral,
     auto_analyze_pending,
     reset_mistral_client,
 )
@@ -1292,7 +1292,7 @@ def _run_collect_job(job_id: str, source_names: Optional[list[str]]) -> None:
             .all()
         }
 
-        auto_analyze_claude(analysis_db)
+        auto_analyze_mistral(analysis_db)
         analysis_db.expire_all()
 
         # Envoyer alertes pour les nouveaux GO
@@ -1359,7 +1359,7 @@ def analyze_pending(background_tasks: BackgroundTasks):
         db = SessionLocal()
         try:
             auto_analyze_pending(db)
-            auto_analyze_claude(db)
+            auto_analyze_mistral(db)
         finally:
             db.close()
 
