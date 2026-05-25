@@ -1373,7 +1373,7 @@ def auto_analyze_pending(db) -> int:
 _LLM_BATCH_SIZE = int(os.getenv("LLM_BATCH_SIZE", "10"))
 
 
-def auto_analyze_claude(
+def auto_analyze_mistral(
     db,
     max_per_run: int = _LLM_BATCH_SIZE,
     delay: float = 1.0,  # 1s entre requêtes — respecte les limites de l'API
@@ -1430,7 +1430,7 @@ def auto_analyze_claude(
             return nb_done, retry
         except _LLMAuthError:
             # Clé invalide : inutile de continuer sur le reste du batch
-            _log.warning("auto_analyze_claude: clé Mistral invalide (401/403) — arrêt immédiat")
+            _log.warning("auto_analyze_mistral: clé Mistral invalide (401/403) — arrêt immédiat")
             if nb_done > 0:
                 db.commit()
             if progress_cb:
@@ -1439,7 +1439,7 @@ def auto_analyze_claude(
 
         if llm_result is None:
             _log.warning(
-                "auto_analyze_claude: marché '%s' — Mistral a retourné None (clé absente, JSON invalide ou erreur réseau)",
+                "auto_analyze_mistral: marché '%s' — Mistral a retourné None (clé absente, JSON invalide ou erreur réseau)",
                 (t.title or t.id)[:60],
             )
             if i < len(pending) - 1:
@@ -1476,7 +1476,7 @@ def auto_analyze_claude(
                 if _parsed:
                     t.publication_date = _parsed
                     _log.info(
-                        "auto_analyze_claude: date extraite par LLM pour '%s' → %s",
+                        "auto_analyze_mistral: date extraite par LLM pour '%s' → %s",
                         (t.title or t.id)[:40],
                         _parsed.date(),
                     )
@@ -1506,7 +1506,7 @@ def auto_analyze_claude(
     return nb_done, -1
 
 
-auto_analyze_gemini = auto_analyze_claude  # alias rétrocompat
+auto_analyze_gemini = auto_analyze_mistral  # alias rétrocompat
 
 
 # ---------------------------------------------------------------------------
