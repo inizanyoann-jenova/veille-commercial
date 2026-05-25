@@ -8,6 +8,7 @@ import {
   getCredentials, saveCredential, deleteCredential, testCredential,
   saveMistralKey,
   getMistralStatus,
+  generateScraper, deleteSource,
 } from '../services/api'
 
 export const useTenders = (params) =>
@@ -230,3 +231,19 @@ export const useMistralStatus = () =>
     queryFn: getMistralStatus,
     staleTime: 30_000,
   })
+
+export const useGenerateScraper = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: generateScraper,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sources'] }),
+  })
+}
+
+export const useDeleteSource = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: deleteSource,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sources'] }),
+  })
+}
