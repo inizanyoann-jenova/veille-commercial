@@ -8,6 +8,8 @@ import os
 import requests
 from datetime import datetime, timedelta, timezone
 
+from scraper_utils import retry_get
+
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; research-bot/1.0)",
 }
@@ -70,11 +72,8 @@ def fetch() -> list[dict]:
             }
 
             try:
-                resp = requests.get(AFD_API, headers=HEADERS, params=params, timeout=15)
+                resp = retry_get(AFD_API, headers=HEADERS, params=params, timeout=15)
             except requests.RequestException:
-                break
-
-            if resp.status_code != 200:
                 break
 
             records = resp.json().get("results", [])
