@@ -39,7 +39,7 @@ from database import (  # noqa: E402
 )
 from models import Credential, DuplicateCandidate, ScraperRun, Tender  # noqa: E402
 from source_registry import list_sources, add_source, toggle_enabled  # noqa: E402
-from health_check import run_all_health_checks  # noqa: E402
+from health_check import run_all_health_checks, persist_health_results  # noqa: E402
 from export_excel import generate_executive_report  # noqa: E402
 from fiche_logic import _compute_fiche_data  # noqa: E402
 
@@ -778,6 +778,7 @@ def get_pipeline(db: Session = Depends(get_db)):
                 "amount": t.amount,
                 "deadline": _ser_dt(t.deadline),
                 "score": t.relevance_score or 0,
+                "status": t.status,
             }
             for t in tenders
         ]
@@ -1327,8 +1328,12 @@ def admin_archive_old(
 
 
 @app.get("/api/health", summary="État des sources externes")
-def health():
+def health(db: Session = Depends(get_db)):
     results = run_all_health_checks()
+    try:
+        persist_health_results(db, results)
+    except Exception:
+        pass  # Ne pas bloquer la réponse si la persistance échoue
     return {
         "status": "ok",
         "sources": {
