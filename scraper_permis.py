@@ -8,6 +8,8 @@ import os
 import requests
 from datetime import datetime, timedelta, timezone
 
+from scraper_utils import retry_get
+
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; research-bot/1.0)",
 }
@@ -51,16 +53,13 @@ def _fetch_dataset(rid: str, label: str, date_from: str) -> list[dict]:
             "DATE_REELLE_AUTORISATION": f"gte:{date_from}",
         }
         try:
-            resp = requests.get(
+            resp = retry_get(
                 f"{DIDO_BASE}/datafiles/{rid}/rows",
                 headers=HEADERS,
                 params=params,
                 timeout=15,
             )
         except requests.RequestException:
-            break
-
-        if resp.status_code != 200:
             break
 
         records = resp.json().get("data", [])
