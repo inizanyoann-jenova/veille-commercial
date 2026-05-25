@@ -7,7 +7,8 @@ Method: RSS feed parsing via feedparser.
 
 import feedparser
 from datetime import datetime, timezone
-from email.utils import parsedate_to_datetime
+
+from scraper_utils import parse_rss_date
 
 FLUX_PRESSE = [
     ("La Réunion", "Le JIR", "https://www.lejir.com/feed/"),
@@ -108,23 +109,6 @@ def _is_relevant(title: str, summary: str) -> bool:
     return any(mot in text for mot in MOTS_CLES_PERTINENTS)
 
 
-def _parse_date(entry) -> str:
-    """Extract and return publication date as ISO string."""
-    for attr in ("published", "updated"):
-        val = getattr(entry, attr, None)
-        if val:
-            try:
-                return parsedate_to_datetime(val).date().isoformat()
-            except Exception:
-                try:
-                    parsed = entry.get(f"{attr}_parsed")
-                    if parsed:
-                        return datetime(*parsed[:6]).date().isoformat()
-                except Exception:
-                    pass
-    return ""
-
-
 def _collect_feed(territoire: str, nom: str, feed_url: str, type_opp: str) -> list[dict]:
     """Parse one RSS feed and return relevant items."""
     try:
@@ -171,7 +155,7 @@ def _normalise(entry, territoire: str, nom: str, feed_url: str, type_opp: str) -
         "url": link,
         "source": nom,
         "date_found": datetime.now(timezone.utc).date().isoformat(),
-        "publication_date": _parse_date(entry),
+        "publication_date": parse_rss_date(entry),
         "deadline": "",
         "territoire": territoire,
         "description": summary[:500],
