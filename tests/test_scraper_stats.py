@@ -69,6 +69,7 @@ def test_scraper_stats_avg_duration(db):
     from models import ScraperRun
 
     run_id = start_scraper_run(db, "ted")
+    finish_scraper_run(db, run_id, nb_found=5, nb_new=3)
     run = db.query(ScraperRun).filter(ScraperRun.id == run_id).first()
     run.finished_at = run.started_at + timedelta(seconds=42)
     db.commit()
