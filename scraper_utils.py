@@ -118,6 +118,8 @@ def insert_if_new(db, tender, existing_ids: set) -> bool:
         except (ValueError, TypeError):
             return False
 
+    if hasattr(pub, "tzinfo") and pub.tzinfo is not None:
+        pub = pub.replace(tzinfo=None)
     cutoff = _dt.now() - _td(days=_INSERT_MAX_AGE_DAYS)
     if pub < cutoff:
         return False
