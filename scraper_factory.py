@@ -287,6 +287,8 @@ def _validate_syntax(code: str) -> bool:
 
 def _test_scraper_module(module_name: str, timeout: int = 30) -> list:
     sys.modules.pop(module_name, None)
+    if ROOT_DIR not in sys.path:
+        sys.path.insert(0, ROOT_DIR)
     mod = importlib.import_module(module_name)
     func = getattr(mod, "fetch")
     if not callable(func):
