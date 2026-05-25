@@ -1120,7 +1120,8 @@ def _run_collect_job(job_id: str, source_names: Optional[list[str]]) -> None:
     # Nettoyage : ne garder que les 50 jobs les plus récents
     if len(_COLLECT_JOBS) > 50:
         done_keys = [k for k, v in _COLLECT_JOBS.items() if v.get("status") != "running" and k != job_id]
-        for k in done_keys[:len(done_keys) - 49]:
+        to_evict = max(0, len(_COLLECT_JOBS) - 50)
+        for k in done_keys[:to_evict]:
             _COLLECT_JOBS.pop(k, None)
 
     db = SessionLocal()
