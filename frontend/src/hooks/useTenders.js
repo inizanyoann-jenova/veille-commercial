@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useState, useEffect } from 'react'
 import {
   getTenders, getTender, getKpisPublic, getKpisCa, getKpisPriv,
   getPipeline, getUrgences, getScraperRuns, getSources, getChartData,
@@ -9,6 +10,7 @@ import {
   saveMistralKey,
   getMistralStatus,
   generateScraper, deleteSource,
+  getCollectStatus,
 } from '../services/api'
 
 export const useTenders = (params) =>
@@ -63,14 +65,45 @@ export const useChartData = () =>
 
 export const useCollectMutation = () => {
   const qc = useQueryClient()
-  return useMutation({
-    mutationFn: collect,
-    onSuccess: () => {
+  const [jobId, setJobId] = useState(null)
+  const [jobDone, setJobDone] = useState(null)
+
+  const { data: jobStatus } = useQuery({
+    queryKey: ['collect-status', jobId],
+    queryFn: () => getCollectStatus(jobId),
+    enabled: !!jobId,
+    refetchInterval: (query) => {
+      const d = query.state.data
+      if (!d || d.status === 'running') return 3000
+      return false
+    },
+    staleTime: 0,
+  })
+
+  useEffect(() => {
+    if (jobStatus && jobStatus.status !== 'running') {
+      setJobDone(jobStatus)
+      setJobId(null)
       qc.invalidateQueries({ queryKey: ['scraper-runs'] })
       qc.invalidateQueries({ queryKey: ['kpis'] })
       qc.invalidateQueries({ queryKey: ['tenders'] })
+    }
+  }, [jobStatus, qc])
+
+  const { mutate: startCollect, isPending: isStarting } = useMutation({
+    mutationFn: (source_names) => collect(source_names),
+    onSuccess: (data) => {
+      setJobDone(null)
+      setJobId(data.job_id)
     },
   })
+
+  return {
+    mutate: startCollect,
+    isPending: isStarting || !!jobId,
+    data: jobDone,
+    reset: () => { setJobId(null); setJobDone(null) },
+  }
 }
 
 export const useUpdateStatus = () => {
