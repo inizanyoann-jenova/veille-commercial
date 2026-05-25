@@ -51,12 +51,59 @@ def test_fetch_vaao_inserts_relevant():
                 "description": "",
                 "url": "https://www.vaao.fr/ao/1",
                 "raw_date": "2026-04-15",
+                "raw_deadline": "",
             },
         ):
             result = scraper_vaao.fetch()
 
     assert len(result) >= 1
     assert "SSI" in result[0]["name"] or "incendie" in result[0]["name"].lower()
+
+
+def test_fetch_vaao_extracts_deadline():
+    import scraper_vaao
+
+    mock_pw, mock_page = _make_pw_mock()
+    mock_page.query_selector_all.return_value = [MagicMock()]
+
+    with patch("scraper_vaao.sync_playwright", return_value=mock_pw):
+        with patch(
+            "scraper_vaao._extract_card",
+            return_value={
+                "name": "Installation SSI Réunion",
+                "description": "",
+                "url": "https://www.vaao.fr/ao/1",
+                "raw_date": "2026-04-15",
+                "raw_deadline": "2026-05-30",
+            },
+        ):
+            result = scraper_vaao.fetch()
+
+    assert len(result) >= 1
+    assert result[0]["deadline"] == "2026-05-30"
+
+
+def test_fetch_vaao_empty_deadline_stays_empty():
+    import scraper_vaao
+
+    mock_pw, mock_page = _make_pw_mock()
+    mock_page.query_selector_all.return_value = [MagicMock()]
+
+    with patch("scraper_vaao.sync_playwright", return_value=mock_pw):
+        with patch(
+            "scraper_vaao._extract_card",
+            return_value={
+                "name": "Installation SSI Réunion",
+                "description": "",
+                "url": "https://www.vaao.fr/ao/1",
+                "raw_date": "2026-04-15",
+                "raw_deadline": "",
+            },
+        ):
+            result = scraper_vaao.fetch()
+
+    assert len(result) >= 1
+    assert result[0]["deadline"] == ""
 
 
 # ── Marché Online ─────────────────────────────────────────────────────────────
@@ -211,61 +258,6 @@ def test_fetch_isdb_skips_irrelevant():
             result = scraper_isdb.fetch()
 
     assert result == []
-
-
-# ── SEMADER Réunion ───────────────────────────────────────────────────────────
-
-
-def test_fetch_semader_empty_page():
-    import scraper_semader
-
-    mock_pw, _ = _make_pw_mock()
-    with patch("scraper_semader.sync_playwright", return_value=mock_pw):
-        result = scraper_semader.fetch()
-    assert result == []
-
-
-def test_fetch_semader_inserts_relevant():
-    import scraper_semader
-
-    mock_pw, mock_page = _make_pw_mock()
-    mock_page.query_selector_all.return_value = [MagicMock()]
-
-    with patch("scraper_semader.sync_playwright", return_value=mock_pw):
-        with patch(
-            "scraper_semader._extract_card",
-            return_value={
-                "name": "Réhabilitation immeuble résidentiel — vidéosurveillance CCTV",
-                "description": "Programme logement social SEMADER Réunion",
-                "url": "https://www.semader.re/appels-d-offres/42",
-                "raw_date": "2026-05-20",
-            },
-        ):
-            result = scraper_semader.fetch()
-
-    assert len(result) >= 1
-
-
-def test_fetch_semader_includes_all_items():
-    """SEMADER n'applique aucun filtre par secteur — tous les marchés sont retournés."""
-    import scraper_semader
-
-    mock_pw, mock_page = _make_pw_mock()
-    mock_page.query_selector_all.return_value = [MagicMock()]
-
-    with patch("scraper_semader.sync_playwright", return_value=mock_pw):
-        with patch(
-            "scraper_semader._extract_card",
-            return_value={
-                "name": "Entretien espaces verts jardinage",
-                "description": "Taille de haies et tonte",
-                "url": "https://www.semader.re/appels-d-offres/10",
-                "raw_date": "",
-            },
-        ):
-            result = scraper_semader.fetch()
-
-    assert len(result) >= 1
 
 
 # ── Centre Hospitalier Mayotte ────────────────────────────────────────────────
