@@ -9,6 +9,7 @@ import importlib
 import logging
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed as _as_completed
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -52,6 +53,7 @@ from llm_analyzer import (  # noqa: E402
     _KW_COURANTS_FAIBLES,
     _match,
     analyze_tender,
+    analyze_tender_structured,
     auto_analyze_claude,
     auto_analyze_pending,
     reset_mistral_client,
@@ -69,6 +71,21 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 
 # ── Jobs de collecte asynchrone ───────────────────────────────────────────────
 _COLLECT_JOBS: dict[str, dict] = {}
+
+# Scrapers utilisant Playwright (navigateur headless) — doivent rester séquentiels
+# car Playwright n'est pas thread-safe et partage un état de navigateur.
+_PLAYWRIGHT_MODULES: frozenset[str] = frozenset({
+    "scraper_nukema",
+    "scraper_vaao",
+    "scraper_marchespublicsinfo",
+    "scraper_marcheonline",
+    "scraper_marchessecurises",
+    "scraper_tendersgo",
+    "scraper_chm",
+    "scraper_dept974",
+    "scraper_instao",
+    "scraper_isdb",
+})
 
 # ── Constantes métier ─────────────────────────────────────────────────────────
 
@@ -1039,6 +1056,13 @@ def analyze_one(tender_id: str, db: Session = Depends(get_db)):
         t.llm_analysis = result
         t.relevance_score = result.get("score_pertinence", 0)
         t.is_maintenance = result.get("type_marche", "").lower() == "maintenance"
+        structured = analyze_tender_structured(
+            title=t.title or "",
+            description=t.description or "",
+            amount=t.amount,
+        )
+        if structured:
+            t.llm_structured = structured
         db.commit()
     return _tender_to_dict(t)
 
@@ -1066,7 +1090,8 @@ def _dict_to_tender(item: dict, source_category: str = "Public") -> Tender:
         except (ValueError, TypeError):
             return None
 
-    fingerprint = f"{source}|{name}|{pub_raw}"
+    url_hint = (item.get("url") or "")[:80]
+    fingerprint = f"{source}|{name}|{pub_raw}|{url_hint}"
     tid = hashlib.md5(fingerprint.encode()).hexdigest()[:16]
 
     text = f"{name} {item.get('description') or ''}"
@@ -1133,6 +1158,21 @@ def _run_collect_job(job_id: str, source_names: Optional[list[str]]) -> None:
             s for s in sources
             if not s.is_manual and s.scraper_module and s.enabled and s.is_validated
         ]
+        # Éviter de lancer le même scraper_module plusieurs fois (ex: UNDP + ADB + devbanks
+        # pointent tous sur scraper_devbanks). On garde la première source par module.
+        if not source_names:
+            seen_modules: set[str] = set()
+            deduped = []
+            for s in sources:
+                if s.scraper_module not in seen_modules:
+                    deduped.append(s)
+                    seen_modules.add(s.scraper_module)
+                else:
+                    _log.info(
+                        "Collecte : module '%s' déjà inclus via '%s' — source '%s' ignorée",
+                        s.scraper_module, next(x.name for x in deduped if x.scraper_module == s.scraper_module), s.name,
+                    )
+            sources = deduped
     finally:
         db.close()
 
@@ -1152,7 +1192,41 @@ def _run_collect_job(job_id: str, source_names: Optional[list[str]]) -> None:
 
     results: list[dict] = []
 
-    for source in sources:
+    # ── Phase 1 : lancement des scrapers ─────────────────────────────────────
+    # Les scrapers HTTP sont lancés en parallèle (ThreadPoolExecutor).
+    # Les scrapers Playwright restent séquentiels (navigateur non thread-safe).
+    # Les deux phases retournent (source, items_ou_vide, exception_ou_None).
+
+    http_sources = [s for s in sources if s.scraper_module not in _PLAYWRIGHT_MODULES]
+    playwright_sources = [s for s in sources if s.scraper_module in _PLAYWRIGHT_MODULES]
+
+    def _do_fetch(src) -> tuple:
+        try:
+            mod = importlib.import_module(src.scraper_module)
+            fn = getattr(mod, src.scraper_func)
+            return src, fn() or [], None
+        except Exception as exc:
+            _log.critical(
+                "SCRAPER FAILURE [%s] — %s: %s",
+                src.name, type(exc).__name__, exc, exc_info=True,
+            )
+            return src, [], exc
+
+    # Résultats : liste de (source, items, exc)
+    fetch_results: list[tuple] = []
+
+    if http_sources:
+        _log.info("Collecte HTTP : %d scrapers en parallèle (max_workers=5)", len(http_sources))
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {executor.submit(_do_fetch, s): s for s in http_sources}
+            for future in _as_completed(futures):
+                fetch_results.append(future.result())
+
+    for s in playwright_sources:
+        fetch_results.append(_do_fetch(s))
+
+    # ── Phase 2 : insertion séquentielle (SQLite + known_ids non thread-safe) ─
+    for source, items, fetch_exc in fetch_results:
         run_id = None
         run_db = SessionLocal()
         try:
@@ -1160,41 +1234,32 @@ def _run_collect_job(job_id: str, source_names: Optional[list[str]]) -> None:
         finally:
             run_db.close()
 
-        try:
-            mod = importlib.import_module(source.scraper_module)
-            func = getattr(mod, source.scraper_func)
-            items: list[dict] = func() or []
-            nb_found = len(items)
-            nb_new = 0
-            nb_rejected_no_date = 0
-            insert_db = SessionLocal()
-            try:
-                for item in items:
-                    t = _dict_to_tender(item, source_category=source.category)
-                    if t.publication_date is None:
-                        nb_rejected_no_date += 1
-                    elif insert_if_new(insert_db, t, known_ids):
-                        nb_new += 1
-                insert_db.commit()
-                finish_scraper_run(insert_db, run_id, nb_found=nb_found, nb_new=nb_new)
-            except Exception:
-                insert_db.rollback()
-                raise
-            finally:
-                insert_db.close()
-            results.append({
-                "source": source.name,
-                "status": "ok",
-                "nb_found": nb_found,
-                "nb_new": nb_new,
-                "nb_rejected_no_date": nb_rejected_no_date,
-            })
+        if fetch_exc is not None:
+            if run_id is not None:
+                err_db = SessionLocal()
+                try:
+                    finish_scraper_run(err_db, run_id, nb_found=0, nb_new=0, error=str(fetch_exc))
+                finally:
+                    err_db.close()
+            results.append({"source": source.name, "status": "error", "error": type(fetch_exc).__name__})
+            continue
 
+        nb_found = len(items)
+        nb_new = 0
+        nb_rejected_no_date = 0
+        insert_db = SessionLocal()
+        try:
+            for item in items:
+                t = _dict_to_tender(item, source_category=source.category)
+                if t.publication_date is None:
+                    nb_rejected_no_date += 1
+                elif insert_if_new(insert_db, t, known_ids):
+                    nb_new += 1
+            insert_db.commit()
+            finish_scraper_run(insert_db, run_id, nb_found=nb_found, nb_new=nb_new)
         except Exception as exc:
-            _log.critical(
-                "SCRAPER FAILURE [%s] — %s: %s",
-                source.name, type(exc).__name__, exc, exc_info=True,
-            )
+            insert_db.rollback()
+            _log.critical("INSERT FAILURE [%s] — %s", source.name, exc, exc_info=True)
             if run_id is not None:
                 err_db = SessionLocal()
                 try:
@@ -1202,6 +1267,16 @@ def _run_collect_job(job_id: str, source_names: Optional[list[str]]) -> None:
                 finally:
                     err_db.close()
             results.append({"source": source.name, "status": "error", "error": type(exc).__name__})
+            continue
+        finally:
+            insert_db.close()
+        results.append({
+            "source": source.name,
+            "status": "ok",
+            "nb_found": nb_found,
+            "nb_new": nb_new,
+            "nb_rejected_no_date": nb_rejected_no_date,
+        })
 
     # Analyse automatique post-collecte + alertes GO >= SCORE_ALERT
     analysis_db = None
@@ -1217,7 +1292,7 @@ def _run_collect_job(job_id: str, source_names: Optional[list[str]]) -> None:
             .all()
         }
 
-        auto_analyze_claude(analysis_db, max_per_run=9999)
+        auto_analyze_claude(analysis_db)
         analysis_db.expire_all()
 
         # Envoyer alertes pour les nouveaux GO
@@ -1284,7 +1359,7 @@ def analyze_pending(background_tasks: BackgroundTasks):
         db = SessionLocal()
         try:
             auto_analyze_pending(db)
-            auto_analyze_claude(db, max_per_run=9999)
+            auto_analyze_claude(db)
         finally:
             db.close()
 
@@ -1429,27 +1504,44 @@ def generate_scraper(body: GenerateScraperRequest, db: Session = Depends(get_db)
 # ── DELETE /api/sources/{source_id} ─────────────────────────────────────────
 
 
-@app.delete("/api/sources/{source_id}", summary="Supprimer une source personnalisée")
+@app.delete("/api/sources/{source_id}", summary="Supprimer une source")
 def delete_source_endpoint(source_id: int, db: Session = Depends(get_db)):
-    from source_registry import remove_auto_source
+    from models import Source as _Source
 
-    result = remove_auto_source(db, source_id)
-    if result is None:
+    src = db.query(_Source).filter(_Source.id == source_id).first()
+    if src is None:
         raise HTTPException(status_code=404, detail="Source introuvable")
-    if result is False:
-        raise HTTPException(
-            status_code=403, detail="Seules les sources générées automatiquement peuvent être supprimées"
-        )
-    import sys as _sys
 
-    _sys.modules.pop(result, None)
-    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    filepath = os.path.join(root_dir, f"{result}.py")
-    try:
-        os.remove(filepath)
-    except FileNotFoundError:
-        pass
-    return {"deleted": True}
+    # Source manuelle (pas de scraper associé) → suppression directe
+    if src.scraper_module is None:
+        db.delete(src)
+        db.commit()
+        return {"ok": True}
+
+    # Scraper auto-généré (scraper_custom_*) → suppression + nettoyage fichier
+    if src.scraper_module.startswith("scraper_custom_"):
+        module_name = src.scraper_module
+        db.delete(src)
+        db.commit()
+        import sys as _sys
+        _sys.modules.pop(module_name, None)
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        filepath = os.path.join(root_dir, f"{module_name}.py")
+        try:
+            os.remove(filepath)
+        except FileNotFoundError:
+            pass
+        return {"deleted": True}
+
+    # Scraper intégré (boamp, decp, ted…) → interdit
+    raise HTTPException(
+        status_code=400,
+        detail="Les sources intégrées ne peuvent pas être supprimées",
+    )
+
+
+# Alias pour compatibilité avec les tests unitaires qui appellent la fonction directement
+delete_source = delete_source_endpoint
 
 
 # ── PATCH /api/sources/{id}/toggle ───────────────────────────────────────────
