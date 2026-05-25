@@ -436,3 +436,58 @@ def reset_tenders_db(db) -> int:
     db.commit()
     _log.info("reset_tenders_db : %d tenders supprimés", nb_tenders)
     return nb_tenders
+
+
+def get_scraper_stats(db, days: int = 30) -> list[dict]:
+    """Statistiques d'exécution des scrapers pour les N derniers jours.
+    Retourne une liste triée par source_name."""
+    from models import ScraperRun
+
+    cutoff = _dt.now(_tz.utc).replace(tzinfo=None) - _td(days=days)
+    runs = (
+        db.query(ScraperRun)
+        .filter(ScraperRun.started_at >= cutoff)
+        .all()
+    )
+
+    aggregated: dict[str, dict] = {}
+    for r in runs:
+        name = r.source_name
+        if name not in aggregated:
+            aggregated[name] = {
+                "runs_30j": 0,
+                "runs_ok": 0,
+                "runs_empty": 0,
+                "total_duration_s": 0.0,
+                "runs_with_duration": 0,
+                "last_run_at": None,
+            }
+        agg = aggregated[name]
+        agg["runs_30j"] += 1
+        if r.status == "ok":
+            agg["runs_ok"] += 1
+            if (r.nb_new or 0) == 0:
+                agg["runs_empty"] += 1
+        if r.finished_at and r.started_at:
+            duration = (r.finished_at - r.started_at).total_seconds()
+            agg["total_duration_s"] += duration
+            agg["runs_with_duration"] += 1
+        if r.finished_at:
+            if agg["last_run_at"] is None or r.finished_at > agg["last_run_at"]:
+                agg["last_run_at"] = r.finished_at
+
+    result = []
+    for name in sorted(aggregated):
+        agg = aggregated[name]
+        n_dur = agg["runs_with_duration"]
+        avg_dur = round(agg["total_duration_s"] / n_dur, 1) if n_dur > 0 else None
+        last_at = agg["last_run_at"]
+        result.append({
+            "source_name": name,
+            "runs_30j": agg["runs_30j"],
+            "runs_ok": agg["runs_ok"],
+            "runs_empty": agg["runs_empty"],
+            "avg_duration_s": avg_dur,
+            "last_run_at": last_at.isoformat() if last_at else None,
+        })
+    return result
