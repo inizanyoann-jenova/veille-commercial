@@ -28,12 +28,11 @@ def test_fetch_decp_returns_relevant_record():
         "results": [
             {
                 "id": "DECP-TEST-001",
-                "objetmarche": "Maintenance SSI alarme incendie La Réunion",
-                "nomacheteur": "CHU Réunion",
-                "datenotification": "2025-03-01",
+                "objet": "Maintenance SSI alarme incendie La Réunion",
+                "acheteur_id": "CHU Réunion",
+                "datenotification": "2026-03-01",
                 "montant": 50000,
-                "urlpublication": "https://data.economie.gouv.fr/test",
-                "codedepartementexecution": "974",
+                "lieuexecution_code": "97400",
             }
         ],
         "total_count": 1,
@@ -55,10 +54,10 @@ def test_fetch_decp_includes_erp_via_construction_filter():
         "results": [
             {
                 "id": "DECP-ERP-001",
-                "objetmarche": "Construction d'un nouveau collège à La Réunion",
-                "nomacheteur": "Département de La Réunion",
+                "objet": "Construction d'un nouveau college a La Reunion",
+                "acheteur_id": "Département de La Réunion",
                 "datenotification": "2026-05-01",
-                "codedepartementexecution": "974",
+                "lieuexecution_code": "97400",
             }
         ],
         "total_count": 1,
@@ -71,7 +70,7 @@ def test_fetch_decp_includes_erp_via_construction_filter():
 
     where_clause = req.call_args.kwargs["params"]["where"]
     assert "construction" in where_clause
-    assert "collège" in where_clause
+    assert "college" in where_clause  # API DECP sans accent
     assert len(result) == 1
 
 
@@ -186,7 +185,8 @@ def test_decp_window_defaults_to_30_days():
         scraper_decp.fetch()
 
     where_clause = req.call_args.kwargs["params"]["where"]
-    expected_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    # DECP utilise 90 jours par défaut (lag publication ~6 semaines)
+    expected_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
     assert expected_date in where_clause
 
 
