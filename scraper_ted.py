@@ -43,8 +43,11 @@ _MAYOTTE_GEO = (
 )
 
 QUERIES = {
-    "La Réunion": f"FT~974 AND ({_PUBLIC_SEARCH})",
-    "Mayotte": f"({_MAYOTTE_GEO}) AND ({_PUBLIC_SEARCH})",
+    # ND (NUTS code) cible précisément La Réunion (FRY1) — évite les faux positifs
+    # sur tout document contenant "974" dans un champ quelconque
+    "La Réunion": f"ND=FRY1 AND ({_PUBLIC_SEARCH})",
+    # FRY5 = Mayotte (NUTS 2021) + variantes textuelles pour couverture maximale
+    "Mayotte": f"(ND=FRY5 OR ({_MAYOTTE_GEO})) AND ({_PUBLIC_SEARCH})",
     "Madagascar": f"FT~Madagascar AND ({_PUBLIC_SEARCH})",
     "Maurice": f"FT~Mauritius AND ({_PUBLIC_SEARCH})",
     "Comores": f"FT~Comoros AND ({_PUBLIC_SEARCH})",
