@@ -910,6 +910,15 @@ def get_scraper_runs(
     ]
 
 
+# ── GET /api/scraper-stats ────────────────────────────────────────────────────
+
+
+@app.get("/api/scraper-stats", summary="Statistiques de collecte par source (30j)")
+def get_scraper_stats_endpoint(db: Session = Depends(get_db)):
+    from database import get_scraper_stats
+    return get_scraper_stats(db)
+
+
 # ── GET /api/sources ──────────────────────────────────────────────────────────
 
 
