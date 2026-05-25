@@ -166,7 +166,7 @@ export default function TendersTable({
                 <th className="text-left px-4 py-3 font-medium">Titre</th>
                 <th className="text-left px-4 py-3 font-medium">Domaine</th>
                 <th className="text-left px-4 py-3 font-medium">Territoire</th>
-                <th className="text-left px-4 py-3 font-medium">Deadline</th>
+                <th className="text-left px-4 py-3 font-medium">Date</th>
                 <th className="text-left px-4 py-3 font-medium">Score</th>
                 <th className="text-left px-4 py-3 font-medium">GO/NO-GO</th>
                 <th className="text-left px-4 py-3 font-medium">Statut</th>
@@ -190,7 +190,11 @@ export default function TendersTable({
                   <td className="px-4 py-3 font-sans text-xs text-ocean-text/80">{t.domaine || '—'}</td>
                   <td className="px-4 py-3 font-sans text-xs text-ocean-text/80">{t.territoire || '—'}</td>
                   <td className="px-4 py-3 font-sans text-xs text-ocean-text/80 whitespace-nowrap">
-                    {formatDate(t.deadline)}
+                    {t.deadline
+                      ? <span title="Date limite de remise">{formatDate(t.deadline)}</span>
+                      : t.publication_date
+                        ? <span className="text-ocean-muted" title="Date de publication">{formatDate(t.publication_date)}</span>
+                        : '—'}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
