@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useCallback, useEffect } from 'react'
 import { useTenders, useAnalyzeTender } from '../hooks/useTenders'
 
 const STATUTS = ['Tous', 'À qualifier', 'En cours', 'Soumis', 'Gagné', 'Perdu']
@@ -68,12 +68,39 @@ export default function TendersTable({
   onGonogoChange,
   onRowClick,
 }) {
-  const { data: tenders = [], isLoading, isError } = useTenders({ status, secteur })
+  const LIMIT = 200
+  const [offset, setOffset] = useState(0)
+  const [allTenders, setAllTenders] = useState([])
+
+  useEffect(() => {
+    setOffset(0)
+    setAllTenders([])
+  }, [status, secteur])
+
+  const { data: page = [], isLoading, isFetching, isError } = useTenders({
+    status,
+    secteur,
+    limit: LIMIT,
+    offset,
+  })
+
+  useEffect(() => {
+    setAllTenders((prev) => {
+      if (page.length === 0 && offset === 0) return []
+      if (offset === 0) return page
+      const existingIds = new Set(prev.map((t) => t.id))
+      return [...prev, ...page.filter((t) => !existingIds.has(t.id))]
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page])
+
+  const hasMore = !isFetching && page.length === LIMIT
+
   const [analyzingIds, setAnalyzingIds] = useState(new Set())
   const { mutate: triggerAnalysis } = useAnalyzeTender()
 
   const filtered = useMemo(() => {
-    let result = tenders
+    let result = allTenders
     if (gonogo && gonogo !== 'Tous') {
       if (gonogo === 'GO') result = result.filter((t) => t.gonogo === 'GO')
       else if (gonogo === 'Étudier') result = result.filter((t) => t.gonogo === 'Étudier')
@@ -84,7 +111,7 @@ export default function TendersTable({
     return result.filter((t) =>
       `${t.title} ${t.domaine} ${t.territoire}`.toLowerCase().includes(q)
     )
-  }, [tenders, searchText, gonogo])
+  }, [allTenders, searchText, gonogo])
 
   const handleAnalyze = useCallback((id) => {
     setAnalyzingIds((prev) => new Set([...prev, id]))
@@ -238,6 +265,17 @@ export default function TendersTable({
               ))}
             </tbody>
           </table>
+          {hasMore && (
+            <div className="flex justify-center py-3 border-t border-ocean-border">
+              <button
+                onClick={() => setOffset((o) => o + LIMIT)}
+                disabled={isFetching}
+                className="px-4 py-2 bg-ocean-cyan/10 border border-ocean-cyan/20 text-ocean-cyan font-sans text-sm rounded-lg hover:bg-ocean-cyan/18 disabled:opacity-50 transition-colors"
+              >
+                {isFetching ? 'Chargement…' : 'Charger 200 de plus'}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
