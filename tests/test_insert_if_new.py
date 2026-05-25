@@ -80,3 +80,24 @@ def test_insert_if_new_rejects_invalid_date_string(db):
     result = insert_if_new(db, t, known)
     assert result is False
     assert "T-005" not in known
+
+
+def test_insert_if_new_accepts_aware_datetime(db):
+    """Un datetime timezone-aware récent doit être inséré, pas rejeté silencieusement."""
+    from datetime import timezone
+    pub = datetime.now(timezone.utc) - timedelta(days=5)
+    t = _make_tender(id="T-006", publication_date=pub)
+    known: set = set()
+    result = insert_if_new(db, t, known)
+    assert result is True, "datetime aware rejeté alors qu'il est récent"
+    assert "T-006" in known
+
+
+def test_insert_if_new_rejects_old_aware_datetime(db):
+    """Un datetime timezone-aware trop ancien doit être rejeté."""
+    from datetime import timezone
+    pub = datetime.now(timezone.utc) - timedelta(days=365)
+    t = _make_tender(id="T-007", publication_date=pub)
+    known: set = set()
+    result = insert_if_new(db, t, known)
+    assert result is False
