@@ -86,6 +86,7 @@ export const useCollectMutation = () => {
       setJobDone(jobStatus)
       setJobId(null)
       qc.invalidateQueries({ queryKey: ['scraper-runs'] })
+      qc.invalidateQueries({ queryKey: ['scraper-stats'] })
       qc.invalidateQueries({ queryKey: ['kpis'] })
       qc.invalidateQueries({ queryKey: ['tenders'] })
     }
