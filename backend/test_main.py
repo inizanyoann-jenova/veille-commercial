@@ -172,7 +172,7 @@ def test_collect_returns_200_partial_on_mixed_results():
         patch("main.start_scraper_run", return_value=1),
         patch("main.finish_scraper_run"),
         patch("main.auto_analyze_pending"),
-        patch("main.auto_analyze_claude"),
+        patch("main.auto_analyze_mistral"),
         patch("importlib.import_module", side_effect=mock_import),
     ):
         client = TestClient(m.app)
@@ -209,7 +209,7 @@ def test_collect_returns_200_ok_when_all_succeed():
         patch("main.start_scraper_run", return_value=1),
         patch("main.finish_scraper_run"),
         patch("main.auto_analyze_pending"),
-        patch("main.auto_analyze_claude"),
+        patch("main.auto_analyze_mistral"),
         patch("importlib.import_module", return_value=MagicMock()),
     ):
         client = TestClient(m.app)
@@ -244,7 +244,7 @@ def test_collect_returns_500_when_all_sources_fail():
         patch("main.start_scraper_run", return_value=1),
         patch("main.finish_scraper_run"),
         patch("main.auto_analyze_pending"),
-        patch("main.auto_analyze_claude"),
+        patch("main.auto_analyze_mistral"),
         patch("importlib.import_module", side_effect=RuntimeError("crash")),
     ):
         client = TestClient(m.app, raise_server_exceptions=False)
