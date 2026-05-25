@@ -101,6 +101,12 @@ def fetch() -> list[dict]:
                 "limit": limit,
                 "offset": offset,
                 "order_by": "dateparution DESC",
+                # Champs enrichis : nature, procédure, acheteur pour améliorer l'analyse LLM
+                "select": (
+                    "idweb,url_avis,objet,dateparution,datelimitereponse,"
+                    "descripteur_libelle,famille_libelle,nature_libelle,"
+                    "procedure_libelle,nomacheteur,code_departement"
+                ),
             }
 
             try:
@@ -137,14 +143,26 @@ def _normalise(raw: dict, dept: str = "") -> dict:
     )
 
     descripteurs = raw.get("descripteur_libelle") or []
-    description = (
-        " ".join(descripteurs) if isinstance(descripteurs, list) else str(descripteurs)
-    )
     cpv = (
         ", ".join(descripteurs)
         if isinstance(descripteurs, list)
         else str(descripteurs or "")
     )
+
+    # Description enrichie : CPV + métadonnées BOAMP pour améliorer l'analyse LLM
+    desc_parts = []
+    if isinstance(descripteurs, list) and descripteurs:
+        desc_parts.append("CPV : " + ", ".join(descripteurs))
+    for field, label in (
+        ("nature_libelle", "Nature"),
+        ("famille_libelle", "Type"),
+        ("procedure_libelle", "Procédure"),
+        ("nomacheteur", "Acheteur"),
+    ):
+        val = raw.get(field) or ""
+        if val:
+            desc_parts.append(f"{label} : {val}")
+    description = " | ".join(desc_parts) if desc_parts else cpv
 
     # publication_date en ISO pour lecture IA
     raw_date = raw.get("dateparution") or ""
