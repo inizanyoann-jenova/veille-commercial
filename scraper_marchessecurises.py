@@ -7,6 +7,8 @@ Credentials: MARCHESSECURISES_LOGIN et MARCHESSECURISES_PASSWORD.
 import os
 from datetime import datetime, timezone
 
+from scraper_utils import parse_date as _parse_date
+
 from playwright.sync_api import sync_playwright
 
 _LOGIN_URL = "https://www.marches-securises.fr/entreprise/?page=connexion"
@@ -158,7 +160,8 @@ def _extract_card(card) -> dict:
     title = text("td.objet, .objet, td:nth-child(2)")
     description = text("td.pa, .organisme-acheteur, td:nth-child(3)")
     url = href("a")
-    date = text("td.date, .date-limite, td:last-child")
+    date = text("td.date-publication, td.date, td:nth-child(4)")
+    deadline = text("td.date-limite, .date-limite, td:last-child")
 
     if url and not url.startswith("http"):
         url = f"{_BASE}{url}"
@@ -168,18 +171,17 @@ def _extract_card(card) -> dict:
         "description": description,
         "url": url or _SEARCH_URL,
         "raw_date": date,
+        "raw_deadline": deadline,
     }
 
 
 def _normalise(raw: dict) -> dict:
     """Convert extracted card data to standard schema."""
-    raw_date = raw.get("raw_date") or ""
-    try:
-        publication_date = (
-            datetime.fromisoformat(raw_date[:10]).date().isoformat() if raw_date else ""
-        )
-    except ValueError:
-        publication_date = raw_date
+    pub_dt = _parse_date(raw.get("raw_date") or "")
+    publication_date = pub_dt.date().isoformat() if pub_dt else ""
+
+    dl_dt = _parse_date(raw.get("raw_deadline") or "")
+    deadline = dl_dt.date().isoformat() if dl_dt else ""
 
     return {
         "name": raw.get("name", ""),
@@ -187,6 +189,6 @@ def _normalise(raw: dict) -> dict:
         "source": "Marchés Sécurisés",
         "date_found": datetime.now(timezone.utc).date().isoformat(),
         "publication_date": publication_date,
-        "deadline": "",
+        "deadline": deadline,
         "description": raw.get("description", ""),
     }
