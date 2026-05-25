@@ -79,6 +79,21 @@ function Block({ icon, title, children }) {
   )
 }
 
+function KeywordGroup({ title, keywords }) {
+  return (
+    <div className="space-y-1.5">
+      <p className="font-mono text-xs font-semibold text-ocean-muted uppercase">{title}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {keywords.map((kw) => (
+          <span key={kw} className="font-mono text-xs px-2 py-0.5 bg-ocean-cyan/8 border border-ocean-cyan/15 rounded text-ocean-cyan/80">
+            {kw}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function Guide() {
   return (
     <div className="p-6 max-w-3xl space-y-10">
@@ -96,7 +111,7 @@ export default function Guide() {
           rows={[
             ['📋 Pipeline', "Tableau principal des marchés avec filtres, scores et analyse IA. Point d'entrée quotidien."],
             ['📊 Analytics', 'Graphiques : publications par semaine, répartition par territoire et domaine, top sources, CA.'],
-            ['🎯 Direction', 'Kanban des marchés GO : de la qualification jusqu\'au résultat (Gagné / Perdu).'],
+            ['🎯 Direction', "Kanban des marchés GO : de la qualification jusqu'au résultat (Gagné / Perdu)."],
             ['🔔 Urgences', 'Marchés GO avec échéance < 30 jours. Badge rouge en sidebar si des urgences existent.'],
             ['📖 Guide', 'Ce document.'],
             ['⚙️ Paramètres', 'Identifiants, clé Mistral, apparence, doublons, export Excel.'],
@@ -117,7 +132,7 @@ export default function Guide() {
           <Li>Les sources grisées avec 🔒 nécessitent des identifiants non encore configurés (voir Paramètres → Connexion).</Li>
           <Li>Cliquez sur <strong>⟳ Lancer la collecte</strong>. L'opération peut prendre plusieurs minutes.</Li>
           <Li>Après la collecte, un résumé par source s'affiche : nombre de marchés trouvés et nouveaux insérés.</Li>
-          <Li>Une analyse IA (Mistral) se déclenche automatiquement sur <strong>tous</strong> les nouveaux marchés après chaque collecte.</Li>
+          <Li>Une analyse IA (Mistral) se déclenche automatiquement sur les nouveaux marchés après chaque collecte.</Li>
         </ul>
 
         <div className="bg-ocean-gold/8 border border-ocean-gold/20 rounded-lg px-4 py-3">
@@ -126,6 +141,158 @@ export default function Guide() {
             certaines sources authentifiées sont désactivées. Cliquez sur le lien <em>configurer ↗</em> pour aller dans Paramètres → Connexion.
           </p>
         </div>
+      </section>
+
+      {/* ── COMMENT FONCTIONNE LA DÉTECTION ────────────────────────────────── */}
+      <section>
+        <H2>Comment fonctionne la détection des marchés</H2>
+        <P>
+          Avant même d'attribuer un score, le système doit décider si un marché collecté est
+          potentiellement pertinent pour DEF OI. Ce filtrage se fait en deux passes successives.
+        </P>
+
+        <H3>Passe 1 — Exclusions absolues</H3>
+        <P>
+          Si le texte contient l'un de ces termes, le marché est écarté immédiatement, quelle que soit la suite :
+        </P>
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          {['gardiennage', 'agents de sécurité', 'ssiap', 'maître-chien', 'espaces verts', 'voirie', 'assainissement', 'livres scolaires', 'offre d\'emploi'].map((kw) => (
+            <span key={kw} className="font-mono text-xs px-2 py-0.5 bg-ocean-coral/8 border border-ocean-coral/20 rounded text-ocean-coral/80">{kw}</span>
+          ))}
+        </div>
+        <P>Ces exclusions évitent les faux positifs évidents (gardiennage, sécurité humaine, fournitures scolaires, etc.).</P>
+
+        <H3>Passe 2 — Mots-clés d'inclusion (125 termes)</H3>
+        <P>
+          Si le marché n'est pas exclu, le système cherche l'un des 125 mots-clés métier DEF OI.
+          Un seul match suffit pour qualifier le marché comme pertinent.
+        </P>
+        <div className="space-y-4 mb-4">
+          <KeywordGroup
+            title="🔥 SSI — détection & équipements"
+            keywords={['ssi', 'système de sécurité incendie', 'alarme incendie', 'sécurité incendie', 'centrale incendie', 'détection incendie', 'détecteur de fumée', 'détecteur thermique', 'déclencheur manuel', 'diffuseur sonore', 'porte coupe-feu', 'compartimentage', 'extinction incendie', 'sprinkler', 'ria', 'baas', 'bloc autonome alarme']}
+          />
+          <KeywordGroup
+            title="💨 CMSI — désenfumage"
+            keywords={['cmsi', 'désenfumage', 'centrale de mise en sécurité', 'volet de désenfumage', 'trappe de désenfumage', 'exutoire de fumée', 'extracteur de fumée', 'désenfumage naturel', 'désenfumage mécanique', 'denfc', 'dmfc']}
+          />
+          <KeywordGroup
+            title="📷 Vidéo — CCTV & contrôle d'accès"
+            keywords={['cctv', 'vidéosurveillance', 'vidéoprotection', 'caméra ip', 'caméra thermique', 'télésurveillance', 'nvr', 'dvr', "contrôle d'accès", 'lecteur de badge', 'interphonie', 'visiophone', 'portier vidéo', 'alarme intrusion', 'sécurité électronique']}
+          />
+          <KeywordGroup
+            title="⚡ Courants faibles & GTB"
+            keywords={['courants faibles', 'gtb', 'gtc', 'bms', 'vdi', 'câblage structuré', 'voix données images', 'gestion technique bâtiment', 'building management', 'domotique', 'tableau de communication']}
+          />
+          <KeywordGroup
+            title="🔧 Maintenance & réglementaire"
+            keywords={['mco', 'mco ssi', 'maintenance ssi', 'contrat de maintenance', 'maintenance préventive', 'maintien en condition opérationnelle', 'vérification annuelle', 'vérification réglementaire', 'mise en conformité', 'dta', 'télémaintenance']}
+          />
+        </div>
+
+        <H3>Passe 3 — Signal implicite (construction + ERP)</H3>
+        <P>
+          Si aucun mot-clé direct n'est trouvé mais que le texte mentionne à la fois un <strong>projet de
+          construction</strong> (travaux, réhabilitation, chantier…) <strong>et</strong> un type de bâtiment ERP
+          (hôpital, école, ehpad, crèche, mairie, piscine, hôtel, musée…), le marché est conservé avec le
+          tag <Chip color="gold">Potentiel SSI implicite</Chip>. Ces bâtiments ont une obligation réglementaire SSI/CMSI.
+        </P>
+        <P>
+          Tout projet de construction dans le <strong>974 ou 976</strong> (La Réunion ou Mayotte) est également
+          conservé même sans ERP identifié, car DEF OI est le principal opérateur local qualifié.
+        </P>
+      </section>
+
+      {/* ── SCORING ────────────────────────────────────────────────────────── */}
+      <section>
+        <H2>Scores de pertinence et GO/NO-GO</H2>
+        <P>
+          Une fois un marché détecté, il reçoit un score de pertinence de <strong>0 à 100</strong>.
+          Ce score fonctionne différemment selon que l'analyse IA Mistral a été effectuée ou non.
+        </P>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+          <div className="bg-ocean-panel border border-ocean-gold/30 rounded-xl p-4 space-y-2">
+            <p className="font-mono text-xs font-semibold text-ocean-gold uppercase">Sans analyse IA</p>
+            <p className="font-sans text-xs text-ocean-text/70 leading-relaxed">
+              Score initial = <strong className="text-ocean-text">50</strong> (marché pertinent détecté par mots-clés)
+              ou <strong className="text-ocean-text">0</strong> (hors périmètre).
+              C'est un score provisoire binaire — il indique seulement que le marché a passé le filtre.
+              Le panneau "Détail du score" affiche une décomposition estimée (domaine, territoire, titre)
+              mais celle-ci est indicative tant que l'IA n'a pas analysé le texte complet.
+            </p>
+            <p className="font-mono text-xs text-ocean-gold">Icône ▶ dans le tableau = non encore analysé</p>
+          </div>
+          <div className="bg-ocean-panel border border-ocean-teal/30 rounded-xl p-4 space-y-2">
+            <p className="font-mono text-xs font-semibold text-ocean-teal uppercase">Avec analyse IA (Mistral)</p>
+            <p className="font-sans text-xs text-ocean-text/70 leading-relaxed">
+              Mistral lit le <strong className="text-ocean-text">texte complet</strong> du marché (titre + description complète)
+              et retourne un score de <strong className="text-ocean-text">0 à 100</strong> basé sur le contenu réel,
+              pas seulement sur des mots-clés. C'est ce score qui s'affiche et qui détermine le GO/NO-GO.
+              L'IA produit aussi une analyse qualitative : type de travaux, budget, concurrents, recommandation.
+            </p>
+            <p className="font-mono text-xs text-ocean-teal">Icône ✓ dans le tableau = analysé par IA</p>
+          </div>
+        </div>
+
+        <H3>Décomposition du score (panneau détail)</H3>
+        <P>
+          La fiche marché affiche une décomposition en 4 composantes pour expliquer d'où vient le score.
+          Ces composantes sont recalculées à partir du domaine détecté, du territoire et du contenu du titre.
+        </P>
+        <Table
+          headers={['Composante', 'Max', 'Ce que ça mesure']}
+          rows={[
+            ['Pertinence métier', '45', "SSI direct = 45 · CMSI/Vidéo = 40 · Courants faibles = 30 · Signal implicite = 5"],
+            ['Proximité géographique', '30', "La Réunion / Mayotte = 30 · Madagascar / Maurice = 22 · Comores = 18 · France = 10"],
+            ['Mots-clés dans le titre', '15', "3+ mots-clés métier dans le titre = 15 · 2 = 10 · 1 = 6 · aucun = 0"],
+            ['Maintenance / Récurrence', '10', "10 si le marché est identifié comme un contrat de maintenance, sinon 0"],
+          ]}
+        />
+        <div className="bg-ocean-gold/8 border border-ocean-gold/20 rounded-lg px-4 py-3 mb-4">
+          <p className="font-sans text-xs text-ocean-gold leading-relaxed">
+            <strong>À noter :</strong> sans analyse IA, le score affiché (50 ou 0) peut différer de la somme des composantes
+            affichées dans le panneau détail. Après analyse Mistral, c'est le score IA qui fait foi — la décomposition
+            reste un repère visuel utile pour comprendre pourquoi un marché a été retenu.
+          </p>
+        </div>
+
+        <H3>Seuils GO/NO-GO</H3>
+        <Table
+          headers={['Score', 'Recommandation', 'Que faire ?']}
+          rows={[
+            ['≥ 65', '🟢 GO', "Dans notre cœur de métier sur territoire prioritaire. Basculer en « En cours », ouvrir une affaire, télécharger le DCE."],
+            ['35 – 64', '🟡 Étudier', "Potentiellement intéressant. Lire l'analyse IA, vérifier le CCTP, décision GO/NO-GO à remonter sous 48 h."],
+            ['< 35', '🔴 Passer', 'Hors périmètre ou faible probabilité. Archiver sans mobiliser de ressources commerciales.'],
+          ]}
+        />
+
+        <H3>Analyse IA — ce que Mistral produit</H3>
+        <P>
+          Quand Mistral analyse un marché, il lit tout le texte disponible et produit un rapport structuré visible
+          dans la section <strong>Analyse IA</strong> de la fiche marché :
+        </P>
+        <Table
+          headers={['Champ IA', 'Description']}
+          rows={[
+            ['Score de pertinence', 'Note 0–100 basée sur le contenu complet. Remplace le score provisoire 50/0.'],
+            ['Type de travaux', 'Installation neuve, réhabilitation, maintenance, fourniture, mixte…'],
+            ['Budget estimé', 'Estimation du montant si non précisé dans le marché.'],
+            ['Type acheteur', 'Collectivité, établissement de santé, bailleur social, entreprise privée…'],
+            ['Niveau de concurrence', 'Estimation du nombre et type de concurrents probables sur ce marché.'],
+            ['Concurrents nommés', 'Marques ou entreprises citées dans le DCE (Notifier, Hikvision, Tyco…).'],
+            ['Recommandation', 'GO / NON — jugement global de Mistral sur l\'opportunité pour DEF OI.'],
+            ['Justification', 'Explication synthétique du raisonnement IA.'],
+          ]}
+        />
+
+        <H3>Déclencher l'analyse IA manuellement</H3>
+        <ul className="space-y-1.5 mb-4">
+          <Li>Dans le tableau Pipeline, le bouton <strong>▶ Analyser</strong> apparaît sur les marchés non encore analysés.</Li>
+          <Li>Dans la fiche marché, le bouton d'analyse est disponible en bas si le marché n'a pas encore été traité par Mistral.</Li>
+          <Li>Le bouton <strong>Analyser les en attente</strong> (Paramètres → Intégrations) relance l'analyse sur tous les marchés sans score IA.</Li>
+          <Li>Sans clé Mistral configurée, aucune analyse IA n'est possible — le score reste à 50 ou 0.</Li>
+        </ul>
       </section>
 
       {/* ── PIPELINE / DASHBOARD ───────────────────────────────────────────── */}
@@ -148,7 +315,7 @@ export default function Guide() {
           headers={['Filtre', 'Options', 'Effet']}
           rows={[
             ['Statut', 'Tous / À qualifier / En cours / Soumis / Gagné / Perdu', 'Affiche uniquement les marchés du statut choisi.'],
-            ['Secteur', 'Public / Privé / International', 'Bascule entre marchés publics, signaux privés et appels d\'offres internationaux.'],
+            ['Secteur', 'Public / Privé / International', "Bascule entre marchés publics, signaux privés et appels d'offres internationaux."],
             ['GO/NO-GO', 'Tous / GO / Étudier / Passer', 'Filtre par recommandation de pertinence calculée depuis le score.'],
             ['Recherche', 'Texte libre', 'Filtre en temps réel sur le titre, le domaine et le territoire.'],
           ]}
@@ -162,11 +329,11 @@ export default function Guide() {
             ['Domaine', 'SSI, CMSI, Vidéosurveillance, Courants faibles — détecté automatiquement dans le titre.'],
             ['Territoire', 'La Réunion, Mayotte, France métropole, International, etc.'],
             ['Deadline', "Date limite de remise de l'offre."],
-            ['Score', 'Note de pertinence de 0 à 100 calculée par l\'IA.'],
+            ['Score', 'Note de pertinence de 0 à 100. Provisoire (50) avant analyse IA, définitif après.'],
             ['GO/NO-GO', '🟢 GO ≥ 65 · 🟡 Étudier 35–64 · 🔴 Passer < 35'],
             ['Statut', 'Statut actuel dans le cycle de vie du marché.'],
-            ['Source', 'Nom de la plateforme source — cliquable pour ouvrir l\'annonce originale.'],
-            ['IA', '✓ Analysé (IA faite) · ▶ Analyser (déclencher manuellement) · barre de chargement en cours.'],
+            ['Source', "Nom de la plateforme source — cliquable pour ouvrir l'annonce originale."],
+            ['IA', '✓ Analysé · ▶ Analyser (déclencher manuellement) · barre de chargement en cours.'],
           ]}
         />
       </section>
@@ -174,17 +341,17 @@ export default function Guide() {
       {/* ── FICHE DETAIL ───────────────────────────────────────────────────── */}
       <section>
         <H2>Fiche marché (détail)</H2>
-        <P>Cliquez sur une ligne du tableau pour ouvrir le panneau de détail sur la droite.</P>
+        <P>Cliquez sur une ligne du tableau pour ouvrir le panneau de détail.</P>
 
         <H3>Informations affichées</H3>
         <ul className="space-y-1.5 mb-4">
           <Li>Badge GO/NO-GO + score/100 en haut de la fiche.</Li>
           <Li>Deadline avec compteur J-X coloré (rouge si ≤ 7 jours, orange si ≤ 30 jours).</Li>
           <Li>Montant estimé du marché, secteur, source.</Li>
-          <Li>Lien direct vers l'annonce originale (<strong>Voir l'annonce</strong>).</Li>
-          <Li>Résumé de l'analyse IA Mistral : type de marché, domaines couverts, recommandation.</Li>
-          <Li>Scores détaillés (pertinence territoriale, sectorielle, etc.) sous forme de barres.</Li>
-          <Li>Champ notes libre pour annoter le marché.</Li>
+          <Li>Lien direct vers l'annonce originale (<strong>Voir l'annonce ↗</strong>).</Li>
+          <Li>Plan d'action commercial contextuel selon le score et l'urgence.</Li>
+          <Li>Décomposition du score en 4 barres (pertinence métier, géographie, titre, maintenance).</Li>
+          <Li>Bloc Analyse IA si Mistral a traité le marché : type de travaux, budget, concurrents, recommandation.</Li>
         </ul>
 
         <H3>Actions disponibles</H3>
@@ -193,33 +360,9 @@ export default function Guide() {
             <strong>Changer le statut</strong> — menu déroulant (À qualifier → En cours → Soumis → Gagné / Perdu).
           </Li>
           <Li>
-            <strong>Déclencher l'analyse IA</strong> — si le bouton ▶ Analyser est visible, cliquez pour lancer Mistral sur ce marché spécifiquement.
-          </Li>
-          <Li>
             <strong>Étoile (favori)</strong> — sauvegardez un marché pour le retrouver facilement.
           </Li>
         </ul>
-      </section>
-
-      {/* ── SCORES ─────────────────────────────────────────────────────────── */}
-      <section>
-        <H2>Scores de pertinence et GO/NO-GO</H2>
-        <P>
-          Chaque marché reçoit un score de 0 à 100 calculé par l'analyse IA Mistral, croisant
-          domaine technique, territoire et type de marché. Ce score détermine automatiquement la recommandation GO/NO-GO.
-        </P>
-        <Table
-          headers={['Score', 'Recommandation', 'Que faire ?']}
-          rows={[
-            ['≥ 65', '🟢 GO', "Marché dans notre cœur de métier sur territoire prioritaire. À traiter en priorité. Basculez en « En cours » et passez en Direction."],
-            ['35 – 64', '🟡 Étudier', "Potentiellement intéressant. Lisez l'analyse IA et décidez si cela mérite une réponse."],
-            ['< 35', '🔴 Passer', 'Hors périmètre ou faible probabilité de succès. Archivez.'],
-          ]}
-        />
-        <P>
-          Le filtre GO/NO-GO dans le tableau permet d'afficher uniquement les marchés d'une catégorie pour traiter
-          rapidement les GO en priorité.
-        </P>
       </section>
 
       {/* ── STATUTS ────────────────────────────────────────────────────────── */}
@@ -257,10 +400,6 @@ export default function Guide() {
             </div>
           ))}
         </div>
-        <P>
-          Chaque carte affiche le titre, le montant estimé, la deadline et le score.
-          Le changement de statut se fait directement par les boutons d'action sur la carte.
-        </P>
       </section>
 
       {/* ── URGENCES ───────────────────────────────────────────────────────── */}
@@ -269,10 +408,6 @@ export default function Guide() {
         <P>
           La page Urgences liste les marchés GO (score ≥ 65) dont l'échéance est dans moins de 30 jours.
           Le badge rouge en sidebar indique combien d'urgences sont en cours.
-        </P>
-        <P>
-          Chaque carte affiche : le badge <strong>J-X</strong> (jours restants, coloré selon l'urgence),
-          le score, le secteur, le montant, un résumé IA, et un lien direct vers l'annonce.
         </P>
         <Table
           headers={['Couleur J-X', 'Signification']}
@@ -292,9 +427,9 @@ export default function Guide() {
           <Li><strong>Total collecté</strong> et <strong>Sources actives</strong> — volume global de la base.</Li>
           <Li><strong>CA gagné</strong> — somme des montants des marchés remportés.</Li>
           <Li><strong>CA pipeline</strong> — somme des montants En cours + Soumis (potentiel commercial).</Li>
-          <Li><strong>Publications / semaine</strong> — histogramme des 30 dernières semaines pour détecter les pics d'activité.</Li>
-          <Li><strong>Par territoire</strong> — donut La Réunion / Mayotte / autres, pour évaluer la concentration géographique.</Li>
-          <Li><strong>Par domaine</strong> — SSI, CMSI, Vidéo, Courants faibles — barres horizontales.</Li>
+          <Li><strong>Publications / semaine</strong> — histogramme des 30 dernières semaines.</Li>
+          <Li><strong>Par territoire</strong> — donut La Réunion / Mayotte / autres.</Li>
+          <Li><strong>Par domaine</strong> — SSI, CMSI, Vidéo, Courants faibles.</Li>
           <Li><strong>Top 5 sources</strong> — les plateformes qui génèrent le plus de marchés pertinents.</Li>
         </ul>
       </section>
@@ -318,18 +453,19 @@ export default function Guide() {
 
         <H3>Intégrations — clé API Mistral</H3>
         <P>
-          L'analyse IA utilise Mistral. Sans clé valide, les marchés ne sont pas analysés automatiquement.
+          L'analyse IA utilise Mistral. Sans clé valide, les marchés ne sont pas analysés automatiquement
+          et le score reste provisoire (50 ou 0).
         </P>
         <ul className="space-y-1.5 mb-4">
           <Li>Collez votre clé API Mistral dans le champ prévu.</Li>
           <Li>Cliquez <strong>Sauvegarder</strong> — la clé est écrite dans le fichier <code>.env</code> et rechargée à chaud, sans redémarrer le serveur.</Li>
           <Li>Le badge <Chip color="teal">● Clé active</Chip> / <Chip color="coral">● Non configurée</Chip> indique l'état en temps réel.</Li>
+          <Li>Une fois la clé configurée, cliquez <strong>Analyser les en attente</strong> pour traiter tous les marchés non encore scorés par l'IA.</Li>
         </ul>
 
         <H3>Apparence</H3>
         <ul className="space-y-1.5 mb-4">
           <Li><strong>Curseur de luminosité</strong> — ajuste la clarté globale de l'interface. Le réglage est sauvegardé dans le navigateur.</Li>
-          <Li><strong>Couleurs du thème</strong> — personnalisez les teintes principales (Ocean Deep par défaut).</Li>
         </ul>
 
         <H3>Doublons</H3>
@@ -368,7 +504,6 @@ export default function Guide() {
         </div>
         <p className="font-sans text-xs text-ocean-muted mt-3">
           Les sources avec 🔒 dans la sidebar nécessitent des identifiants configurés dans Paramètres → Connexion.
-          Les sources désactivées peuvent être réactivées dans Paramètres → Sources.
         </p>
       </section>
 
@@ -379,15 +514,15 @@ export default function Guide() {
           {[
             {
               step: '1 — Collecte',
-              desc: 'Depuis la sidebar, cliquez ⟳ Lancer la collecte. Patientez jusqu\'au résumé. Tous les nouveaux marchés sont analysés par Mistral automatiquement.',
+              desc: "Depuis la sidebar, cliquez ⟳ Lancer la collecte. Patientez jusqu'au résumé. Les nouveaux marchés sont analysés par Mistral automatiquement si la clé est configurée.",
             },
             {
               step: '2 — Triage GO',
-              desc: 'Dans Pipeline, filtrez sur GO/NO-GO = GO. Parcourez les marchés en À qualifier. Pour chaque GO pertinent, passez en En cours.',
+              desc: "Dans Pipeline, filtrez sur GO/NO-GO = GO. Parcourez les marchés en À qualifier. Pour chaque GO pertinent, passez en En cours.",
             },
             {
               step: '3 — Lecture fiches',
-              desc: "Cliquez sur un marché En cours pour lire l'analyse IA. Vérifiez le délai (J-X), le montant, le domaine. Annotez dans le champ Notes si besoin.",
+              desc: "Cliquez sur un marché En cours pour lire l'analyse IA. Vérifiez le délai (J-X), le montant, le domaine, les concurrents éventuels.",
             },
             {
               step: '4 — Direction',
@@ -417,7 +552,6 @@ export default function Guide() {
         <ul className="space-y-1.5">
           <Li>API REST documentée : <code className="font-mono text-ocean-cyan text-xs">http://localhost:8000/docs</code></Li>
           <Li>La colonne <strong>Source</strong> dans le tableau est un lien cliquable vers l'annonce originale.</Li>
-          <Li>Le titre dans la fiche marché est un lien direct vers l'annonce source.</Li>
           <Li>Le badge 🔔 en sidebar indique le nombre de marchés GO urgents (échéance &lt; 30 j).</Li>
         </ul>
       </section>
