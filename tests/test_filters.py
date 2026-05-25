@@ -264,7 +264,7 @@ def test_classify_renovation_mairie_retourne_tag_implicite():
 def test_classify_ssi_substring_non_pertinent():
     """'ssi' comme sous-chaîne (ex: 'concession') ne doit pas déclencher de match."""
     ok, tags = classify_relevance(
-        "Concession autoroutière sans lien avec la sécurité incendie"
+        "Concession autoroutière péage maintenance signalisation routière"
     )
     assert ok is False
     assert tags == []
