@@ -58,6 +58,9 @@ export const getUrgences = (params) =>
 export const collect = (source_names = null) =>
   api.post('/collect', { source_names }).then((r) => r.data)
 
+export const getCollectStatus = (job_id) =>
+  api.get(`/collect/status/${job_id}`).then((r) => r.data)
+
 export const analyzePending = () =>
   api.post('/analyze-pending').then((r) => r.data)
 
