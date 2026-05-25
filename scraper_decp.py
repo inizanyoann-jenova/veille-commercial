@@ -8,6 +8,7 @@ import calendar
 import os
 import requests
 from datetime import datetime, timedelta, timezone
+from scraper_utils import retry_get
 
 
 def _add_months(dt: datetime, months: int) -> datetime:
@@ -109,7 +110,7 @@ def fetch() -> list[dict]:
         }
 
         try:
-            resp = requests.get(DECP_API, headers=HEADERS, params=params, timeout=15)
+            resp = retry_get(DECP_API, headers=HEADERS, params=params, timeout=15)
         except requests.RequestException:
             break
 
