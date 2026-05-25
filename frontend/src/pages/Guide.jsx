@@ -124,16 +124,61 @@ export default function Guide() {
         <H2>Collecte des marchés</H2>
         <P>
           La collecte se lance depuis le bloc <strong>Collecte</strong> en bas de la sidebar, visible depuis toutes les pages.
+          Elle interroge en parallèle toutes les sources sélectionnées et insère les nouveaux marchés en base.
+          Le backend retourne immédiatement un <strong>identifiant de job</strong> et exécute les scrapers en arrière-plan ;
+          la sidebar interroge l'état toutes les 2 secondes et met à jour le résumé en temps réel jusqu'à la fin.
         </P>
 
-        <H3>Comment ça marche</H3>
-        <ul className="space-y-1.5 mb-4">
-          <Li>Les sources actives sont listées sous forme de cases à cocher. Décochez celles que vous voulez exclure.</Li>
-          <Li>Les sources grisées avec 🔒 nécessitent des identifiants non encore configurés (voir Paramètres → Connexion).</Li>
-          <Li>Cliquez sur <strong>⟳ Lancer la collecte</strong>. L'opération peut prendre plusieurs minutes.</Li>
-          <Li>Après la collecte, un résumé par source s'affiche : nombre de marchés trouvés et nouveaux insérés.</Li>
-          <Li>Une analyse IA (Mistral) se déclenche automatiquement sur les nouveaux marchés après chaque collecte.</Li>
-        </ul>
+        <H3>Pipeline de collecte — étape par étape</H3>
+        <ol className="space-y-3 mb-4">
+          {[
+            {
+              n: '1',
+              title: 'Appel des scrapers',
+              desc: "Chaque source active exécute sa fonction fetch() qui retourne une liste de marchés bruts (titre, URL, date de publication, description, deadline). Les sources nécessitant une connexion (Nukema, Instao…) utilisent un navigateur automatique Playwright avec les identifiants chiffrés.",
+            },
+            {
+              n: '2',
+              title: 'Déduplication par empreinte MD5',
+              desc: "Avant insertion, un identifiant unique est calculé : MD5(source + titre + date_publication). Si cet ID existe déjà en base, le marché est ignoré silencieusement — il n'est pas re-inséré même si son contenu a changé.",
+            },
+            {
+              n: '3',
+              title: 'Rejet sans date de publication',
+              desc: "Un marché sans date de publication est systématiquement rejeté et compté dans nb_rejected_no_date. Cette règle évite d'insérer des marchés expirés ou mal parsés dont on ne saurait pas dater l'ancienneté.",
+            },
+            {
+              n: '4',
+              title: 'Score initial (50 ou 0)',
+              desc: "À l'insertion, le système applique le filtre par mots-clés (voir section ci-dessous). Si le marché est pertinent pour DEF OI, relevance_score = 50. Sinon = 0. Ce score provisoire sera écrasé par Mistral si une clé est configurée.",
+            },
+            {
+              n: '5',
+              title: 'Analyse IA post-collecte',
+              desc: "Après l'insertion des nouveaux marchés, deux passes d'analyse se déclenchent automatiquement : Mistral analyse les marchés sans score IA (jusqu'à LLM_BATCH_SIZE par collecte, défaut 10). L'analyse produit le score définitif 0-100 et le rapport structuré.",
+            },
+          ].map(({ n, title, desc }) => (
+            <li key={n} className="flex gap-4">
+              <span className="font-mono text-xs font-bold text-ocean-cyan bg-ocean-cyan/10 border border-ocean-cyan/20 rounded-lg px-2 py-1 h-fit flex-shrink-0 mt-0.5">
+                {n}
+              </span>
+              <div>
+                <p className="font-sans text-sm font-semibold text-ocean-text mb-0.5">{title}</p>
+                <p className="font-sans text-sm text-ocean-text/80 leading-relaxed">{desc}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+
+        <H3>Résumé affiché après collecte</H3>
+        <Table
+          headers={['Compteur', 'Signification']}
+          rows={[
+            ['Trouvés', 'Nombre total de marchés retournés par le scraper de cette source.'],
+            ['Nouveaux', "Marchés effectivement insérés en base (inconnus et avec date valide)."],
+            ['Rejetés sans date', "Marchés ignorés car la date de publication était absente ou non parsable."],
+          ]}
+        />
 
         <div className="bg-ocean-gold/8 border border-ocean-gold/20 rounded-lg px-4 py-3">
           <p className="font-sans text-xs text-ocean-gold leading-relaxed">
@@ -207,38 +252,85 @@ export default function Guide() {
       <section>
         <H2>Scores de pertinence et GO/NO-GO</H2>
         <P>
-          Une fois un marché détecté, il reçoit un score de pertinence de <strong>0 à 100</strong>.
-          Ce score fonctionne différemment selon que l'analyse IA Mistral a été effectuée ou non.
+          Chaque marché possède un score de <strong>0 à 100</strong> qui évolue en trois phases successives,
+          du plus rudimentaire au plus précis.
         </P>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+        <H3>Phase 1 — Score initial à l'insertion (50 ou 0)</H3>
+        <P>
+          Dès qu'un marché est inséré en base, le système applique le filtre par mots-clés décrit dans
+          la section précédente. Si le texte contient un mot-clé d'inclusion (sans mot d'exclusion), le
+          marché reçoit <strong>relevance_score = 50</strong>. Sinon <strong>0</strong>.
+          C'est un score binaire provisoire — il confirme uniquement que le marché a passé le filtre automatique,
+          pas sa qualité réelle.
+        </P>
+        <div className="bg-ocean-gold/8 border border-ocean-gold/20 rounded-lg px-4 py-3 mb-4">
+          <p className="font-sans text-xs text-ocean-gold leading-relaxed">
+            Avec un score de 50, le marché apparaît en <strong>🟡 Étudier</strong> (35–64).
+            Ce n'est pas un signal fort : presque tous les marchés filtrés démarrent à 50.
+            C'est l'analyse Mistral qui affine ce chiffre.
+          </p>
+        </div>
+
+        <H3>Phase 2 — Score Mistral (0 à 100, définitif)</H3>
+        <P>
+          Quand Mistral analyse un marché, il lit <strong>titre + description complète</strong> et retourne
+          un <code>score_pertinence</code> de 0 à 100 basé sur le contenu réel.
+          Ce score <strong>écrase</strong> le 50 initial dans <code>relevance_score</code> et devient la valeur affichée.
+          C'est ce score qui détermine le GO/NO-GO.
+        </P>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
           <div className="bg-ocean-panel border border-ocean-gold/30 rounded-xl p-4 space-y-2">
             <p className="font-mono text-xs font-semibold text-ocean-gold uppercase">Sans analyse IA</p>
             <p className="font-sans text-xs text-ocean-text/70 leading-relaxed">
-              Score initial = <strong className="text-ocean-text">50</strong> (marché pertinent détecté par mots-clés)
-              ou <strong className="text-ocean-text">0</strong> (hors périmètre).
-              C'est un score provisoire binaire — il indique seulement que le marché a passé le filtre.
-              Le panneau "Détail du score" affiche une décomposition estimée (domaine, territoire, titre)
-              mais celle-ci est indicative tant que l'IA n'a pas analysé le texte complet.
+              Score = <strong className="text-ocean-text">50</strong> ou <strong className="text-ocean-text">0</strong>.
+              Le panneau "Détail du score" affiche une décomposition (domaine, territoire, titre) calculée à la volée
+              pour donner un repère visuel, mais ce n'est pas ce chiffre qui détermine le score stocké.
             </p>
             <p className="font-mono text-xs text-ocean-gold">Icône ▶ dans le tableau = non encore analysé</p>
           </div>
           <div className="bg-ocean-panel border border-ocean-teal/30 rounded-xl p-4 space-y-2">
-            <p className="font-mono text-xs font-semibold text-ocean-teal uppercase">Avec analyse IA (Mistral)</p>
+            <p className="font-mono text-xs font-semibold text-ocean-teal uppercase">Après analyse Mistral</p>
             <p className="font-sans text-xs text-ocean-text/70 leading-relaxed">
-              Mistral lit le <strong className="text-ocean-text">texte complet</strong> du marché (titre + description complète)
-              et retourne un score de <strong className="text-ocean-text">0 à 100</strong> basé sur le contenu réel,
-              pas seulement sur des mots-clés. C'est ce score qui s'affiche et qui détermine le GO/NO-GO.
-              L'IA produit aussi une analyse qualitative : type de travaux, budget, concurrents, recommandation.
+              Score Mistral <strong className="text-ocean-text">0–100</strong> enregistré en base.
+              La décomposition en 4 barres reste affichée pour expliquer le contexte, mais c'est
+              le score Mistral qui fait foi pour le GO/NO-GO.
             </p>
             <p className="font-mono text-xs text-ocean-teal">Icône ✓ dans le tableau = analysé par IA</p>
           </div>
         </div>
 
-        <H3>Décomposition du score (panneau détail)</H3>
+        <H3>Phase 3 — Score adaptatif (apprentissage sur vos décisions)</H3>
         <P>
-          La fiche marché affiche une décomposition en 4 composantes pour expliquer d'où vient le score.
-          Ces composantes sont recalculées à partir du domaine détecté, du territoire et du contenu du titre.
+          En parallèle, le système apprend de vos décisions passées (GO, Perdu) pour calculer un
+          <strong> score adaptatif</strong> complémentaire, recalculé automatiquement chaque semaine.
+        </P>
+        <ul className="space-y-1.5 mb-4">
+          <Li>
+            <strong>Données d'entraînement :</strong> le système lit tous les marchés en statut
+            Soumis/Gagné (positifs) et Perdu (négatifs). Il faut au moins <strong>10 décisions</strong> au total pour que le calcul s'active.
+          </Li>
+          <Li>
+            <strong>Méthode :</strong> chaque mot significatif du titre et de la description est tokenisé.
+            Le système calcule la fréquence de chaque token dans les marchés positifs vs négatifs.
+            Un token fréquent dans les GO et rare dans les Perdus a un poids positif — et inversement.
+          </Li>
+          <Li>
+            <strong>Score final :</strong> la somme pondérée des tokens de chaque marché non décidé est normalisée
+            en 0–100 via une formule sigmoïde. Ce score adaptatif est visible dans l'API (<code>adaptive_score</code>)
+            et reflète la similarité textuelle avec vos marchés remportés.
+          </Li>
+          <Li>
+            Plus vous enregistrez de résultats (Gagné / Perdu), plus le score adaptatif devient pertinent
+            pour votre activité spécifique à La Réunion et Mayotte.
+          </Li>
+        </ul>
+
+        <H3>Décomposition affichée dans la fiche (repère visuel)</H3>
+        <P>
+          La fiche marché affiche 4 barres pour expliquer d'où vient la pertinence estimée.
+          Ces barres sont <strong>recalculées à l'affichage</strong> depuis le domaine et territoire détectés —
+          elles n'impactent pas le score stocké, elles servent à comprendre pourquoi un marché a été retenu.
         </P>
         <Table
           headers={['Composante', 'Max', 'Ce que ça mesure']}
@@ -249,13 +341,6 @@ export default function Guide() {
             ['Maintenance / Récurrence', '10', "10 si le marché est identifié comme un contrat de maintenance, sinon 0"],
           ]}
         />
-        <div className="bg-ocean-gold/8 border border-ocean-gold/20 rounded-lg px-4 py-3 mb-4">
-          <p className="font-sans text-xs text-ocean-gold leading-relaxed">
-            <strong>À noter :</strong> sans analyse IA, le score affiché (50 ou 0) peut différer de la somme des composantes
-            affichées dans le panneau détail. Après analyse Mistral, c'est le score IA qui fait foi — la décomposition
-            reste un repère visuel utile pour comprendre pourquoi un marché a été retenu.
-          </p>
-        </div>
 
         <H3>Seuils GO/NO-GO</H3>
         <Table
@@ -281,7 +366,7 @@ export default function Guide() {
             ['Type acheteur', 'Collectivité, établissement de santé, bailleur social, entreprise privée…'],
             ['Niveau de concurrence', 'Estimation du nombre et type de concurrents probables sur ce marché.'],
             ['Concurrents nommés', 'Marques ou entreprises citées dans le DCE (Notifier, Hikvision, Tyco…).'],
-            ['Recommandation', 'GO / NON — jugement global de Mistral sur l\'opportunité pour DEF OI.'],
+            ['Recommandation', "GO / NON — jugement global de Mistral sur l'opportunité pour DEF OI."],
             ['Justification', 'Explication synthétique du raisonnement IA.'],
           ]}
         />
@@ -471,7 +556,13 @@ export default function Guide() {
         <H3>Doublons</H3>
         <ul className="space-y-1.5 mb-4">
           <Li>Cliquez <strong>Détecter les doublons</strong> pour lancer l'analyse de similarité entre marchés.</Li>
-          <Li>Les paires détectées s'affichent avec un score de similarité.</Li>
+          <Li>
+            L'algorithme calcule une empreinte <strong>SimHash 64 bits</strong> sur le titre de chaque marché,
+            puis utilise un <strong>bucketing LSH 4 bandes</strong> pour regrouper les candidats proches sans comparer toutes les paires.
+            Deux marchés sont signalés doublons si leur <strong>distance de Hamming ≤ 12</strong> (titres quasi-identiques)
+            ou ≤ 20 (titres similaires).
+          </Li>
+          <Li>Les paires détectées s'affichent avec le score de similarité et les deux titres côte à côte.</Li>
           <Li><strong>Conserver</strong> résout la paire sans action · <strong>Ignorer</strong> la marque comme résolue.</Li>
         </ul>
 
@@ -488,7 +579,7 @@ export default function Guide() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {[
             { cat: '🏛️ Marchés publics France', sources: ['BOAMP', 'DECP', 'TED (Europe)', 'Marchés Publics Info', 'Marchés Sécurisés', 'Marché Online'] },
-            { cat: '🏝️ Sources locales Océan Indien', sources: ['Département 974', 'SEMADER', 'NUKEMA', 'VAAO', 'CHM (Mayotte)', 'Instao', 'Tenders Go'] },
+            { cat: '🏝️ Sources locales Océan Indien', sources: ['Département 974', 'NUKEMA', 'VAAO', 'CHM (Mayotte)', 'Instao', 'Tenders Go'] },
             { cat: '🌍 Banques de développement', sources: ['AFD', 'Banque Mondiale / IDA', 'BID (Amériques)', 'ISDB (islamique)'] },
             { cat: '🏗️ Signaux privés', sources: ['Permis de construire', 'Presse économique locale'] },
           ].map(({ cat, sources }) => (
@@ -514,7 +605,7 @@ export default function Guide() {
           {[
             {
               step: '1 — Collecte',
-              desc: "Depuis la sidebar, cliquez ⟳ Lancer la collecte. Patientez jusqu'au résumé. Les nouveaux marchés sont analysés par Mistral automatiquement si la clé est configurée.",
+              desc: "Depuis la sidebar, cliquez ⟳ Lancer la collecte. La collecte tourne en arrière-plan (job asynchrone) — la sidebar affiche la progression en temps réel et un résumé apparaît à la fin. Les nouveaux marchés sont analysés par Mistral automatiquement si la clé est configurée.",
             },
             {
               step: '2 — Triage GO',
