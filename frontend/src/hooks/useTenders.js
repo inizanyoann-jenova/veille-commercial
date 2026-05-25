@@ -72,6 +72,7 @@ export const useCollectMutation = () => {
     queryKey: ['collect-status', jobId],
     queryFn: () => getCollectStatus(jobId),
     enabled: !!jobId,
+    retry: 0,
     refetchInterval: (query) => {
       const d = query.state.data
       if (!d || d.status === 'running') return 3000
