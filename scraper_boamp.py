@@ -116,9 +116,6 @@ def fetch() -> list[dict]:
             except Exception:
                 break
 
-            if resp.status_code != 200:
-                break
-
             records = resp.json().get("results", [])
             if not records:
                 break
