@@ -1202,8 +1202,15 @@ def _run_collect_job(job_id: str, source_names: Optional[list[str]]) -> None:
     nb_err = sum(1 for r in results if r["status"] == "error")
     final_status = "error" if nb_ok == 0 and nb_err > 0 else "partial" if nb_err > 0 else "done"
 
+    nb_inserted = sum(r.get("nb_new", 0) for r in results)
+    nb_rejected = sum(r.get("nb_rejected_no_date", 0) for r in results)
+    errors = [r.get("error") for r in results if r.get("status") == "error"]
+
     _COLLECT_JOBS[job_id] = {
         "status": final_status,
+        "nb_inserted": nb_inserted,
+        "nb_rejected": nb_rejected,
+        "errors": errors,
         "nb_ok": nb_ok,
         "nb_error": nb_err,
         "results": results,
