@@ -6,7 +6,6 @@ Note: login sur actu.nukema.com, consultation sur marches-publics.nukema.com
       (cookies non partagés cross-subdomain — auth peut échouer silencieusement).
 """
 
-import os
 from datetime import datetime, timezone
 
 from playwright.sync_api import sync_playwright
@@ -47,8 +46,9 @@ def fetch() -> list[dict]:
     Credentials optional. If cross-subdomain auth fails, collection continues unauthenticated.
     Each item: name, url, source, date_found + domain-specific fields.
     """
-    email = os.getenv("NUKEMA_EMAIL", "")
-    password = os.getenv("NUKEMA_PASSWORD", "")
+    from credential_manager import CredentialManager
+    creds = CredentialManager.get("nukema")
+    email, password = (creds[0], creds[1]) if creds else ("", "")
     results = []
 
     with sync_playwright() as pw:
@@ -113,6 +113,10 @@ def _extract_card(card, base_url: str = "") -> dict:
     description = text(".card-text, .description, .organisme")
     url = href("a")
     date = text(".date, .card-date, time")
+    deadline = text(
+        ".date-limite, .date-echeance, .deadline, .remise-offres, "
+        ".card-deadline, .consultation-deadline, time[datetime]"
+    )
 
     if url and not url.startswith("http"):
         url = f"{_BASE}{url}"
@@ -122,6 +126,7 @@ def _extract_card(card, base_url: str = "") -> dict:
         "description": description,
         "url": url or base_url,
         "raw_date": date,
+        "raw_deadline": deadline,
     }
 
 
@@ -135,12 +140,22 @@ def _normalise(raw: dict) -> dict:
     except ValueError:
         publication_date = raw_date
 
+    raw_deadline = raw.get("raw_deadline") or ""
+    try:
+        deadline = (
+            datetime.fromisoformat(raw_deadline[:10]).date().isoformat()
+            if raw_deadline
+            else ""
+        )
+    except ValueError:
+        deadline = raw_deadline
+
     return {
         "name": raw.get("name", ""),
         "url": raw.get("url", _BASE),
         "source": "Nukema",
         "date_found": datetime.now(timezone.utc).date().isoformat(),
         "publication_date": publication_date,
-        "deadline": "",
+        "deadline": deadline,
         "description": raw.get("description", ""),
     }
