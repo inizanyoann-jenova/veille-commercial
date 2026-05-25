@@ -106,8 +106,8 @@ def test_prive_hopital_actualite_rejetee():
 
 
 def test_prive_exclusion_gardiennage():
-    """Exclusion absolue gardiennage → NON pertinent même avec SSI."""
-    assert is_prive_relevant("Marché de gardiennage et SSI pour la mairie") is False
+    """SSI présent → pertinent, même si 'gardiennage' dans le texte."""
+    assert is_prive_relevant("Marché de gardiennage et SSI pour la mairie") is True
 
 
 def test_prive_rentre_scolaire_rejetee():
@@ -244,9 +244,9 @@ def test_classify_erp_sans_chantier_retourne_false():
 
 
 def test_classify_exclusion_gardiennage_retourne_false():
+    # SSI inclusion overrides gardiennage exclusion (nouvelle règle Sprint 2)
     ok, tags = classify_relevance("Marché de gardiennage et SSI pour la mairie")
-    assert ok is False
-    assert tags == []
+    assert ok is True
 
 
 def test_classify_hors_sujet_retourne_false():
@@ -396,5 +396,30 @@ def test_classify_contrat_maintenance_ssi():
 def test_classify_verification_annuelle():
     ok, tags = classify_relevance(
         "Vérification annuelle des installations de sécurité incendie"
+    )
+    assert ok is True
+
+
+# ── Sprint 2 : exclusion contextuelle ────────────────────────────────────────
+
+
+def test_classify_inclusion_overrides_exclusion():
+    """Un mot SSI direct dans le texte doit primer sur un mot d'exclusion."""
+    ok, tags = classify_relevance("Marché de gardiennage et SSI pour la mairie")
+    assert ok is True
+    assert tags == []
+
+
+def test_classify_pure_exclusion_without_inclusion_still_blocked():
+    """Sans mot d'inclusion direct, le mot d'exclusion doit toujours bloquer."""
+    ok, tags = classify_relevance("Marché de gardiennage pour la mairie")
+    assert ok is False
+    assert tags == []
+
+
+def test_classify_cctv_overrides_agents_securite():
+    """CCTV présent → pertinent, même si 'agents de sécurité' dans le texte."""
+    ok, tags = classify_relevance(
+        "Fourniture et installation CCTV — lot agents de sécurité inclus"
     )
     assert ok is True
