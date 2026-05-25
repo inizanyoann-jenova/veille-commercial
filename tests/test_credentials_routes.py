@@ -90,8 +90,9 @@ def test_get_credentials_public_site_has_no_login_url():
             resp = _client.get("/api/credentials")
     finally:
         _m.app.dependency_overrides.clear()
-    vaao = next(d for d in resp.json() if d["site"] == "vaao")
-    assert vaao["has_login_url"] is False
+    # dept974 est dans _SITES_PUBLIC (pas de login Playwright configuré)
+    dept974 = next(d for d in resp.json() if d["site"] == "dept974")
+    assert dept974["has_login_url"] is False
 
 
 def test_get_credentials_env_overrides_db():
@@ -144,8 +145,9 @@ def test_delete_credential_unknown_site():
 
 def test_test_credential_public_site_skips_playwright():
     """Sites without login URL return ok=True immediately."""
+    # dept974 est dans _SITES_PUBLIC — pas de login Playwright configuré
     resp = _client.post(
-        "/api/credentials/vaao/test", json={"email": "u@u.com", "password": "p"}
+        "/api/credentials/dept974/test", json={"email": "u@u.com", "password": "p"}
     )
     assert resp.status_code == 200
     body = resp.json()
