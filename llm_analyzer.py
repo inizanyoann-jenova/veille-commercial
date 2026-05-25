@@ -22,6 +22,10 @@ class _LLMQuotaError(Exception):
         )
 
 
+class _LLMAuthError(Exception):
+    """Levée quand l'API Mistral retourne une erreur d'authentification (401/403)."""
+
+
 # ---------------------------------------------------------------------------
 # Listes de marques concurrentes
 # ---------------------------------------------------------------------------
@@ -663,10 +667,11 @@ def _calculate_market_type(text: str) -> str:
 
     if score_maint > score_trav:
         return "Maintenance"
-    elif score_trav > 0:
+    elif score_trav > score_maint:
         return "Travaux"
-    else:
-        return "Inconnu"
+    elif score_maint > 0:
+        return "Mixte"
+    return "Inconnu"
 
 
 def _find_competitor_brands(text: str) -> list:
@@ -1155,7 +1160,7 @@ def _mistral_analyze(text: str) -> dict | None:
             raise _LLMQuotaError(retry_after=retry_after)
         if status in (401, 403):
             _log.warning("Clé API Mistral invalide ou permissions insuffisantes")
-            return None
+            raise _LLMAuthError()
         _log.warning("Mistral analyse échouée (erreur inattendue) : %s", str(exc)[:200])
         return None
 
@@ -1166,12 +1171,6 @@ def _mistral_analyze(text: str) -> dict | None:
 
 # Whitelist de domaines autorisés pour fetch_dce_content
 _ALLOWED_DCE_DOMAINS = {
-    "boamp.fr",
-    "marchessecurises.com",
-    "tendersgo.com",
-    "instao.com",
-    "aws-achat.com",
-    "achatpublic.com",
     "marcheonline.fr",
     "marchespublicsinfo.fr",
 }
@@ -1355,7 +1354,10 @@ def auto_analyze_pending(db) -> int:
     # SQLite stocke parfois 'null' (JSON null) au lieu de SQL NULL — on filtre les deux
     pending = (
         db.query(Tender)
-        .filter(_text("llm_analysis IS NULL OR llm_analysis = 'null'"))
+        .filter(
+            Tender.is_blacklisted.is_(False),
+            _text("llm_analysis IS NULL OR llm_analysis = 'null'"),
+        )
         .all()
     )
     for t in pending:
@@ -1426,6 +1428,14 @@ def auto_analyze_claude(
                 progress_cb(len(pending), len(pending), "")
             retry = qe.retry_after if qe.retry_after is not None else 60
             return nb_done, retry
+        except _LLMAuthError:
+            # Clé invalide : inutile de continuer sur le reste du batch
+            _log.warning("auto_analyze_claude: clé Mistral invalide (401/403) — arrêt immédiat")
+            if nb_done > 0:
+                db.commit()
+            if progress_cb:
+                progress_cb(len(pending), len(pending), "")
+            return nb_done, -1
 
         if llm_result is None:
             _log.warning(
@@ -1473,10 +1483,17 @@ def auto_analyze_claude(
 
         nb_done += 1
 
+        if nb_done % 5 == 0:
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
+
         if i < len(pending) - 1:
             time.sleep(delay)
 
-    if nb_done > 0:
+    if nb_done % 5 != 0 and nb_done > 0:
         try:
             db.commit()
         except Exception:
@@ -1512,7 +1529,7 @@ def analyze_tender(text: str, source_url: str | None = None) -> dict:
 
     try:
         llm_result = _mistral_analyze(text)
-    except _LLMQuotaError:
+    except (_LLMQuotaError, _LLMAuthError):
         llm_result = None
 
     if llm_result is not None:
