@@ -526,10 +526,18 @@ _LOGIN_CONFIG: dict[str, dict] = {
             "submit": "button[type='submit'], input[type='submit']",
         },
     },
+    "vaao": {
+        "label": "VAAO",
+        "url": "https://www.vaao.fr/connexion",
+        "selectors": {
+            "email": "input[type='email'], input[name='email'], #email",
+            "password": "input[type='password'], input[name='password'], #password",
+            "submit": "button[type='submit'], input[type='submit']",
+        },
+    },
 }
 
 _SITES_PUBLIC = {
-    "vaao": "VAAO",
     "dept974": "Marchés Publics 974",
     "marchespublicsinfo": "Marchés Publics Info",
 }
@@ -1201,7 +1209,7 @@ def analyze_pending(background_tasks: BackgroundTasks):
         db = SessionLocal()
         try:
             auto_analyze_pending(db)
-            auto_analyze_claude(db, max_per_run=20)
+            auto_analyze_claude(db, max_per_run=9999)
         finally:
             db.close()
 
