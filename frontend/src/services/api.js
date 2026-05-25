@@ -74,6 +74,12 @@ export const getScraperRuns = (limit = 50) =>
 export const getSources = () =>
   api.get('/sources').then((r) => r.data)
 
+export const generateScraper = (body) =>
+  api.post('/sources/generate', body).then((r) => r.data)
+
+export const deleteSource = (id) =>
+  api.delete(`/sources/${id}`).then((r) => r.data)
+
 // ── Charts ────────────────────────────────────────────────────────────────────
 
 export const getChartData = (max_rows = 5000) =>
