@@ -30,3 +30,17 @@ def test_collect_status_known_job(client):
     assert len(data["results"]) == 1
     assert data["results"][0]["nb_new"] == 2
     del _COLLECT_JOBS["test-job-123"]
+
+
+def test_collect_returns_202_and_job_id(client, monkeypatch):
+    """POST /api/collect retourne 202 avec job_id même si aucune source disponible."""
+    # Patcher list_sources pour retourner une liste vide (évite les vrais scrapers)
+    import main as _main
+    monkeypatch.setattr(_main, "list_sources", lambda db: [])
+
+    r = client.post("/api/collect", json={})
+    # Le job démarre quand même (retourne 202 immédiatement)
+    assert r.status_code == 202
+    data = r.json()
+    assert "job_id" in data
+    assert data["status"] == "running"
