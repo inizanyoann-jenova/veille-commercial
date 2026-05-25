@@ -446,7 +446,7 @@ def get_scraper_stats(db, days: int = 30) -> list[dict]:
     cutoff = _dt.now(_tz.utc).replace(tzinfo=None) - _td(days=days)
     runs = (
         db.query(ScraperRun)
-        .filter(ScraperRun.started_at >= cutoff)
+        .filter(ScraperRun.started_at >= cutoff, ScraperRun.status != "running")
         .all()
     )
 
