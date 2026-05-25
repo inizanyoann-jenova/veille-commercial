@@ -38,7 +38,7 @@ from database import (  # noqa: E402
     finish_scraper_run,
 )
 from models import Credential, DuplicateCandidate, ScraperRun, Tender  # noqa: E402
-from source_registry import list_sources, add_source, remove_source, toggle_enabled  # noqa: E402
+from source_registry import list_sources, add_source, toggle_enabled  # noqa: E402
 from health_check import run_all_health_checks  # noqa: E402
 from export_excel import generate_executive_report  # noqa: E402
 from fiche_logic import _compute_fiche_data  # noqa: E402
@@ -476,6 +476,26 @@ class CollectResult(BaseModel):
 class CredentialSave(BaseModel):
     email: str
     password: str
+
+
+class GenerateScraperRequest(BaseModel):
+    url: str
+    name: str
+    category: str
+
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, v: str) -> str:
+        if v not in {"Public", "Privé", "International"}:
+            raise ValueError("Catégorie invalide")
+        return v
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, v: str) -> str:
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("URL invalide — doit commencer par http:// ou https://")
+        return v
 
 
 # ── Credential site registry ──────────────────────────────────────────────────
@@ -1329,17 +1349,48 @@ def create_source(src: SourceCreate, db: Session = Depends(get_db)):
     return {"id": s.id, "name": s.name}
 
 
-# ── DELETE /api/sources/{id} ──────────────────────────────────────────────────
+# ── POST /api/sources/generate ───────────────────────────────────────────────
 
 
-@app.delete("/api/sources/{source_id}", summary="Supprimer une source manuelle")
-def delete_source(source_id: int, db: Session = Depends(get_db)):
-    ok = remove_source(db, source_id)
-    if not ok:
+@app.post("/api/sources/generate", summary="Générer un scraper via IA pour un nouveau site")
+def generate_scraper(body: GenerateScraperRequest, db: Session = Depends(get_db)):
+    from scraper_factory import generate as _generate
+
+    result = _generate(body.url, body.name, body.category, db)
+    if result.status == "failed":
+        raise HTTPException(status_code=422, detail=result.reason)
+    return {
+        "status": "ok",
+        "scraper_module": result.scraper_module,
+        "nb_results": result.nb_results,
+        "preview": result.preview,
+    }
+
+
+# ── DELETE /api/sources/{source_id} ─────────────────────────────────────────
+
+
+@app.delete("/api/sources/{source_id}", summary="Supprimer une source personnalisée")
+def delete_source_endpoint(source_id: int, db: Session = Depends(get_db)):
+    from source_registry import remove_auto_source
+
+    result = remove_auto_source(db, source_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Source introuvable")
+    if result is False:
         raise HTTPException(
-            400, "Source introuvable ou non supprimable (scraper dédié)"
+            status_code=403, detail="Seules les sources générées automatiquement peuvent être supprimées"
         )
-    return {"ok": True}
+    import sys as _sys
+
+    _sys.modules.pop(result, None)
+    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    filepath = os.path.join(root_dir, f"{result}.py")
+    try:
+        os.remove(filepath)
+    except FileNotFoundError:
+        pass
+    return {"deleted": True}
 
 
 # ── PATCH /api/sources/{id}/toggle ───────────────────────────────────────────
