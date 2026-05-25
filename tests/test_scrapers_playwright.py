@@ -176,8 +176,11 @@ def test_fetch_nukema_extracts_deadline():
 
 def test_fetch_marchessecurises_skips_without_creds():
     import scraper_marchessecurises
+    from unittest.mock import MagicMock as _MM
 
-    with patch.dict(os.environ, {"MARCHESSECURISES_LOGIN": "", "MARCHESSECURISES_PASSWORD": ""}):
+    mock_cm = _MM()
+    mock_cm.get.return_value = None
+    with patch("scraper_marchessecurises.CredentialManager", mock_cm):
         result = scraper_marchessecurises.fetch()
     assert result == []
 
@@ -192,7 +195,7 @@ def test_fetch_marchessecurises_with_creds_inserts():
 
     with patch.dict(
         os.environ,
-        {"MARCHESSECURISES_LOGIN": "u@u.com", "MARCHESSECURISES_PASSWORD": "pass"},
+        {"MARCHES_SEC_EMAIL": "u@u.com", "MARCHES_SEC_PASSWORD": "pass"},
     ):
         with patch("scraper_marchessecurises.sync_playwright", return_value=mock_pw):
             with patch(
