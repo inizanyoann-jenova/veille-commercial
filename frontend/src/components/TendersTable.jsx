@@ -71,10 +71,12 @@ export default function TendersTable({
   const LIMIT = 200
   const [offset, setOffset] = useState(0)
   const [allTenders, setAllTenders] = useState([])
+  const [lastPageSize, setLastPageSize] = useState(0)
 
   useEffect(() => {
     setOffset(0)
     setAllTenders([])
+    setLastPageSize(0)
   }, [status, secteur])
 
   const { data: page = [], isLoading, isFetching, isError } = useTenders({
@@ -91,10 +93,10 @@ export default function TendersTable({
       const existingIds = new Set(prev.map((t) => t.id))
       return [...prev, ...page.filter((t) => !existingIds.has(t.id))]
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page])
+    if (!isFetching) setLastPageSize(page.length)
+  }, [page, offset, isFetching])
 
-  const hasMore = !isFetching && page.length === LIMIT
+  const hasMore = lastPageSize === LIMIT
 
   const [analyzingIds, setAnalyzingIds] = useState(new Set())
   const { mutate: triggerAnalysis } = useAnalyzeTender()
