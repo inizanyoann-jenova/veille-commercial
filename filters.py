@@ -312,13 +312,13 @@ def classify_relevance(text: str) -> tuple[bool, list[str]]:
 
     tags contient ["Potentiel SSI implicite"] quand la capture est via
     la logique construction+ERP, sans mot-clé DEF OI direct.
+
+    Règle d'exclusion contextuelle : un mot d'exclusion ne s'applique QUE si
+    aucun mot d'inclusion direct (SSI/CMSI/vidéo/courants faibles) n'est présent.
     """
     text_lower = text.lower()
 
-    for kw in EXCLUSION_KEYWORDS:
-        if kw in text_lower:
-            return False, []
-
+    # Vérifier les inclusions en premier — un match direct annule toute exclusion
     for kw in INCLUSION_KEYWORDS:
         if kw in _WORD_BOUNDARY_KW:
             if _COMPILED_BOUNDARY[kw].search(text_lower):
@@ -326,14 +326,17 @@ def classify_relevance(text: str) -> tuple[bool, list[str]]:
         elif kw in text_lower:
             return True, []
 
+    # Exclusions : seulement si aucun mot d'inclusion direct trouvé
+    for kw in EXCLUSION_KEYWORDS:
+        if kw in text_lower:
+            return False, []
+
     has_chantier = any(kw in text_lower for kw in KEYWORDS_CONSTRUCTION)
     has_erp = any(kw in text_lower for kw in KEYWORDS_ERP_CIBLES)
 
-    # Logique assouplie : construction seule = potentiel SSI pour ERP publics
     if has_chantier:
         if has_erp:
             return True, ["Potentiel SSI implicite"]
-        # Ajout : tout projet de construction dans 974/976 est potentiellement pertinent
         if (
             "974" in text_lower
             or "976" in text_lower
