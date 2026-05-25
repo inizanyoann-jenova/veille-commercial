@@ -4,9 +4,20 @@ La Réunion (974) et Mayotte (976) : SSI, CPV sécurité, construction, ERP.
 Method: REST API (data.economie.gouv.fr v2.1 — dataset decp-2022-marches-valides)
 """
 
+import calendar
 import os
 import requests
 from datetime import datetime, timedelta, timezone
+
+
+def _add_months(dt: datetime, months: int) -> datetime:
+    """Ajoute N mois à une datetime sans dépendance dateutil."""
+    month = dt.month - 1 + months
+    year = dt.year + month // 12
+    month = month % 12 + 1
+    last_day = calendar.monthrange(year, month)[1]
+    day = min(dt.day, last_day)
+    return dt.replace(year=year, month=month, day=day)
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; research-bot/1.0)",
@@ -136,6 +147,16 @@ def _normalise(raw: dict) -> dict:
     except ValueError:
         publication_date = str(raw_date)
 
+    deadline = ""
+    dureemois = raw.get("dureemois")
+    if raw_date and dureemois:
+        try:
+            pub_dt = datetime.fromisoformat(str(raw_date)[:10])
+            dl_dt = _add_months(pub_dt, int(dureemois))
+            deadline = dl_dt.date().isoformat()
+        except (ValueError, TypeError):
+            pass
+
     return {
         "name": objet,
         "url": (
@@ -146,7 +167,7 @@ def _normalise(raw: dict) -> dict:
         "source": "DECP",
         "date_found": datetime.now(timezone.utc).date().isoformat(),
         "publication_date": publication_date,
-        "deadline": "",
+        "deadline": deadline,
         "acheteur": acheteur,
         "departement": lieu_code,
         "cpv": cpv,
