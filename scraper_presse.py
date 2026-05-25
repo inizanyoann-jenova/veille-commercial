@@ -6,6 +6,7 @@ Method: RSS feed parsing via feedparser.
 """
 
 import feedparser
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
 from scraper_utils import parse_rss_date
@@ -134,12 +135,19 @@ def fetch() -> list[dict]:
     Returns relevant articles from Indian Ocean press and institution RSS feeds.
     Each item: name, url, source, date_found + domain-specific fields.
     """
-    results = []
+    all_feeds = (
+        [(t, n, u, "Presse") for t, n, u in FLUX_PRESSE]
+        + [(t, n, u, "Institution") for t, n, u in FLUX_INSTITUTIONS]
+    )
 
-    for territoire, nom, url in FLUX_PRESSE:
-        results.extend(_collect_feed(territoire, nom, url, "Presse"))
-    for territoire, nom, url in FLUX_INSTITUTIONS:
-        results.extend(_collect_feed(territoire, nom, url, "Institution"))
+    results = []
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = {
+            executor.submit(_collect_feed, t, n, u, typ): (t, n)
+            for t, n, u, typ in all_feeds
+        }
+        for future in as_completed(futures):
+            results.extend(future.result())
 
     return results
 
