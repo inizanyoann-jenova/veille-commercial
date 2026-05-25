@@ -48,14 +48,14 @@ def test_simhash_similar_texts_close_hamming():
     from database import _simhash, _hamming_distance
     h1 = _simhash("Installation SSI bâtiment A Réunion 2026")
     h2 = _simhash("Installation SSI bâtiment A Réunion 2026 marché public")
-    assert _hamming_distance(h1, h2) < 20
+    assert _hamming_distance(h1, h2) < 12
 
 
 def test_simhash_different_texts_far_hamming():
     from database import _simhash, _hamming_distance
     h1 = _simhash("Installation système SSI détection incendie")
     h2 = _simhash("Permis construire lotissement résidentiel voirie")
-    assert _hamming_distance(h1, h2) > 8
+    assert _hamming_distance(h1, h2) > 20
 
 
 from sqlalchemy import create_engine
