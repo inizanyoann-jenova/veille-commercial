@@ -1192,12 +1192,50 @@ def _run_collect_job(job_id: str, source_names: Optional[list[str]]) -> None:
                     err_db.close()
             results.append({"source": source.name, "status": "error", "error": type(exc).__name__})
 
-    # Analyse automatique post-collecte
+    # Analyse automatique post-collecte + alertes GO >= 80
     analysis_db = None
     try:
         analysis_db = SessionLocal()
         auto_analyze_pending(analysis_db)
+
+        # Capturer les IDs déjà GO avant l'analyse Claude
+        pre_go_ids: set[str] = {
+            r[0]
+            for r in analysis_db.query(Tender.id)
+            .filter(Tender.relevance_score >= 80, Tender.status == "À qualifier")
+            .all()
+        }
+
         auto_analyze_claude(analysis_db, max_per_run=9999)
+        analysis_db.expire_all()
+
+        # Envoyer alertes pour les nouveaux GO
+        smtp_host = os.getenv("DIGEST_SMTP_HOST")
+        if smtp_host:
+            smtp_cfg = {
+                "host": smtp_host,
+                "port": int(os.getenv("DIGEST_SMTP_PORT", "587")),
+                "user": os.getenv("DIGEST_SMTP_USER", ""),
+                "password": os.getenv("DIGEST_SMTP_PASSWORD", ""),
+                "to": os.getenv("DIGEST_TO", ""),
+            }
+            try:
+                from email_digest import send_go_alert as _send_go_alert
+
+                new_go_query = analysis_db.query(Tender).filter(
+                    Tender.relevance_score >= 80,
+                    Tender.status == "À qualifier",
+                )
+                if pre_go_ids:
+                    new_go_query = new_go_query.filter(Tender.id.notin_(pre_go_ids))
+                new_go = new_go_query.all()
+
+                for t in new_go:
+                    _send_go_alert(t, smtp_cfg)
+                    _log.info("Alerte GO envoyée pour : %s (score=%s)", t.title, t.relevance_score)
+            except Exception as exc:
+                _log.warning("Alertes GO échouées : %s", exc, exc_info=True)
+
     except Exception as exc:
         _log.warning("Analyse post-collecte échouée : %s", exc, exc_info=True)
     finally:
