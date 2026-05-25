@@ -1,6 +1,8 @@
 from models import Source  # noqa: F401  # re-export — `from source_registry import Source` fonctionne toujours
 import requests
 from datetime import datetime as _dt_src, timezone as _tz_src
+import logging
+_log = logging.getLogger(__name__)
 
 
 _DEFAULT_SOURCES = [
@@ -322,7 +324,6 @@ _DEFAULT_SOURCES = [
 _DEFUNCT_URLS = {
     "https://www.e-marches-publics.fr",
     "https://www.marches-internationaux.com",
-    "https://www.semader.re/appels-d-offres",
 }
 
 
@@ -347,7 +348,7 @@ def init_sources(db) -> None:
         "fetch_permis_construire", "fetch_presse_io", "fetch_devbanks",
         "fetch_afd_projects", "fetch_worldbank_projects", "fetch_ungm_tenders",
         "fetch_vaao_tenders", "fetch_marcheonline_tenders", "fetch_dept974_tenders",
-        "fetch_semader_tenders", "fetch_nukema_tenders", "fetch_marchespublicsinfo_tenders",
+        "fetch_nukema_tenders", "fetch_marchespublicsinfo_tenders",
         "fetch_marchessecurises_tenders", "fetch_instao_tenders", "fetch_tendersgo_tenders",
         "fetch_chm_tenders", "fetch_isdb_tenders",
     }
@@ -435,11 +436,24 @@ def _ping_source(db, source) -> bool:
         ok = False
 
     if ok:
+        if (source.ping_failures_count or 0) >= 3 and not source.is_validated:
+            source.is_validated = True
+            _log.info(
+                "Source réactivée après récupération : %s (%s)",
+                source.name,
+                source.url,
+            )
         source.ping_failures_count = 0
     else:
         source.ping_failures_count = (source.ping_failures_count or 0) + 1
         if source.ping_failures_count >= 3:
             source.is_validated = False
+            _log.error(
+                "Source désactivée après %d échecs consécutifs : %s (%s)",
+                source.ping_failures_count,
+                source.name,
+                source.url,
+            )
 
     source.last_ping_at = _dt_src.now(_tz_src.utc).replace(tzinfo=None)
     db.commit()
