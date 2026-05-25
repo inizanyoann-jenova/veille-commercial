@@ -137,6 +137,7 @@ def insert_if_new(db, tender, existing_ids: set) -> bool:
 
 import re as _re
 from datetime import datetime as _datetime
+from email.utils import parsedate_to_datetime as _parsedate_to_datetime
 
 _FR_MONTHS = {
     "janvier": 1, "jan": 1,
@@ -182,3 +183,25 @@ def parse_date(s: "str | None") -> "_datetime | None":
             except ValueError:
                 pass
     return None
+
+
+def parse_rss_date(entry) -> str:
+    """Extrait la date de publication d'un entry feedparser en chaîne ISO YYYY-MM-DD.
+
+    Essaie successivement : published (RFC 2822) → updated (RFC 2822) →
+    published_parsed (struct_time) → updated_parsed (struct_time).
+    Retourne "" si aucune date exploitable.
+    """
+    for attr in ("published", "updated"):
+        val = getattr(entry, attr, None)
+        if val:
+            try:
+                return _parsedate_to_datetime(val).date().isoformat()
+            except Exception:
+                try:
+                    parsed = entry.get(f"{attr}_parsed")
+                    if parsed:
+                        return _datetime(*parsed[:6]).date().isoformat()
+                except Exception:
+                    pass
+    return ""
