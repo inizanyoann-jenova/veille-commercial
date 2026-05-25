@@ -1164,7 +1164,7 @@ def collect(body: CollectRequest):
     try:
         analysis_db = SessionLocal()
         auto_analyze_pending(analysis_db)
-        auto_analyze_claude(analysis_db, max_per_run=10)
+        auto_analyze_claude(analysis_db, max_per_run=9999)
     except Exception as exc:
         _log.warning("Analyse post-collecte échouée : %s", exc, exc_info=True)
     finally:

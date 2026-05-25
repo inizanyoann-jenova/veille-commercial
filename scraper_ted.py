@@ -53,6 +53,7 @@ QUERIES = {
 _FIELDS = [
     "notice-title",
     "publication-number",
+    "publication-date",
     "deadline-receipt-tender-date-lot",
     "description-glo",
 ]
@@ -168,7 +169,7 @@ def _normalise(notice: dict) -> dict:
         "url": url_fr,
         "source": "TED Europe",
         "date_found": datetime.now(timezone.utc).date().isoformat(),
-        "publication_date": "",
+        "publication_date": _parse_ted_date(notice.get("publication-date")),
         "deadline": deadline,
         "description": description,
         "ted_id": pub_num,
