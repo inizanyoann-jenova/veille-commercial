@@ -7,6 +7,8 @@ Method: REST API POST (UNGM SearchNotices).
 import requests
 from datetime import datetime, timezone
 
+from scraper_utils import retry_post
+
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; DEF-OI-Veille/1.0)",
     "Accept": "application/json, text/html, */*",
@@ -69,9 +71,7 @@ def _search_ungm(keyword: str) -> list[dict]:
         "Status": 0,
     }
     try:
-        resp = requests.post(UNGM_SEARCH_URL, headers=HEADERS, json=payload, timeout=30)
-        if resp.status_code != 200:
-            return []
+        resp = retry_post(UNGM_SEARCH_URL, json=payload, headers=HEADERS, timeout=30)
         data = resp.json()
         if isinstance(data, list):
             return data
