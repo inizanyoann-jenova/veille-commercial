@@ -1107,6 +1107,12 @@ def collect_status(job_id: str):
 
 def _run_collect_job(job_id: str, source_names: Optional[list[str]]) -> None:
     """Tâche background : exécute les scrapers et met à jour _COLLECT_JOBS."""
+    # Nettoyage : ne garder que les 50 jobs les plus récents
+    if len(_COLLECT_JOBS) > 50:
+        done_keys = [k for k, v in _COLLECT_JOBS.items() if v.get("status") != "running" and k != job_id]
+        for k in done_keys[:len(done_keys) - 49]:
+            _COLLECT_JOBS.pop(k, None)
+
     db = SessionLocal()
     try:
         sources = list_sources(db)
