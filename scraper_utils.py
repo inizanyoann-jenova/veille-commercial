@@ -129,3 +129,54 @@ def insert_if_new(db, tender, existing_ids: set) -> bool:
     db.flush()
     existing_ids.add(tender.id)
     return True
+
+
+# ── Utilitaire parsing dates ──────────────────────────────────────────────────
+
+import re as _re
+from datetime import datetime as _datetime
+
+_FR_MONTHS = {
+    "janvier": 1, "jan": 1,
+    "février": 2, "fevrier": 2, "fév": 2, "fev": 2,
+    "mars": 3, "mar": 3,
+    "avril": 4, "avr": 4,
+    "mai": 5,
+    "juin": 6,
+    "juillet": 7, "juil": 7,
+    "août": 8, "aout": 8, "aou": 8,
+    "septembre": 9, "sep": 9, "sept": 9,
+    "octobre": 10, "oct": 10,
+    "novembre": 11, "nov": 11,
+    "décembre": 12, "decembre": 12, "déc": 12, "dec": 12,
+}
+
+
+def parse_date(s: "str | None") -> "_datetime | None":
+    """Parse une chaîne date vers datetime. Supporte ISO, numérique français et textuel français."""
+    if not s or s in ("null", "None", "N/A", ""):
+        return None
+    s = s.strip()
+    # ISO: 2026-04-15 ou 2026-04-15T10:30:00
+    try:
+        return _datetime.fromisoformat(s[:10])
+    except (ValueError, TypeError):
+        pass
+    # Numérique français: 15/04/2026 ou 15-04-2026
+    m = _re.match(r"^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})$", s)
+    if m:
+        try:
+            return _datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+        except ValueError:
+            pass
+    # Textuel français: "15 avril 2026" ou "15 avr. 2026"
+    m = _re.match(r"^(\d{1,2})\s+([a-zéûôàèê\.]+)\s+(\d{4})$", s.lower())
+    if m:
+        month_key = m.group(2).rstrip(".")
+        month = _FR_MONTHS.get(month_key)
+        if month:
+            try:
+                return _datetime(int(m.group(3)), month, int(m.group(1)))
+            except ValueError:
+                pass
+    return None
