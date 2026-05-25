@@ -8,6 +8,8 @@ import os
 import requests
 from datetime import datetime, timedelta, timezone
 
+from scraper_utils import retry_post
+
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; research-bot/1.0)",
     "Content-Type": "application/json",
@@ -109,11 +111,8 @@ def _fetch_zone(query: str, date_from: str) -> list[dict]:
             payload["iterationNextToken"] = token
 
         try:
-            resp = requests.post(TED_API_URL, headers=HEADERS, json=payload, timeout=30)
+            resp = retry_post(TED_API_URL, json=payload, headers=HEADERS, timeout=30)
         except requests.RequestException:
-            break
-
-        if resp.status_code != 200:
             break
 
         data = resp.json()
