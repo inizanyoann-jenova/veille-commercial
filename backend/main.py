@@ -58,6 +58,7 @@ from llm_analyzer import (  # noqa: E402
 )
 from credential_manager import CredentialManager as _CredMgr, _ENV_MAP as _CRED_ENV_MAP  # noqa: E402
 import hashlib
+import uuid as _uuid
 import json as _json
 import subprocess as _subprocess
 from filters import is_relevant_def  # noqa: E402
@@ -65,6 +66,9 @@ from scraper_utils import load_existing_ids, insert_if_new  # noqa: E402
 
 _log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+# ── Jobs de collecte asynchrone ───────────────────────────────────────────────
+_COLLECT_JOBS: dict[str, dict] = {}
 
 # ── Constantes métier ─────────────────────────────────────────────────────────
 
@@ -1081,32 +1085,47 @@ def _dict_to_tender(item: dict, source_category: str = "Public") -> Tender:
     return t
 
 
-@app.post("/api/collect", summary="Lancer la collecte (toutes sources ou liste)")
-def collect(body: CollectRequest):
+@app.post("/api/collect", status_code=202, summary="Lancer la collecte (asynchrone)")
+def collect(body: CollectRequest, background_tasks: BackgroundTasks):
     """
-    Exécute les scrapers de façon synchrone et renvoie un bilan par source.
-    - 200 {"status": "ok"} : toutes sources OK
-    - 200 {"status": "partial"} : au moins une source KO, mais au moins une OK
-    - 500 : aucune source configurée/active, ou toutes les sources ont échoué
+    Lance les scrapers en arrière-plan et retourne immédiatement un job_id.
+    Interroger GET /api/collect/status/{job_id} pour suivre l'état.
     """
+    job_id = str(_uuid.uuid4())
+    _COLLECT_JOBS[job_id] = {"status": "running", "results": []}
+    background_tasks.add_task(_run_collect_job, job_id, body.source_names)
+    return {"job_id": job_id, "status": "running"}
+
+
+@app.get("/api/collect/status/{job_id}", summary="État d'un job de collecte")
+def collect_status(job_id: str):
+    job = _COLLECT_JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job inconnu")
+    return job
+
+
+def _run_collect_job(job_id: str, source_names: Optional[list[str]]) -> None:
+    """Tâche background : exécute les scrapers et met à jour _COLLECT_JOBS."""
     db = SessionLocal()
     try:
         sources = list_sources(db)
-        if body.source_names:
-            sources = [s for s in sources if s.name in body.source_names]
+        if source_names:
+            sources = [s for s in sources if s.name in source_names]
         sources = [
-            s
-            for s in sources
+            s for s in sources
             if not s.is_manual and s.scraper_module and s.enabled and s.is_validated
         ]
     finally:
         db.close()
 
     if not sources:
-        raise HTTPException(
-            status_code=500,
-            detail="Aucune source active et validée trouvée — collecte annulée",
-        )
+        _COLLECT_JOBS[job_id] = {
+            "status": "error",
+            "results": [],
+            "error": "Aucune source active et validée trouvée",
+        }
+        return
 
     pre_db = SessionLocal()
     try:
@@ -1157,38 +1176,15 @@ def collect(body: CollectRequest):
         except Exception as exc:
             _log.critical(
                 "SCRAPER FAILURE [%s] — %s: %s",
-                source.name,
-                type(exc).__name__,
-                exc,
-                exc_info=True,
+                source.name, type(exc).__name__, exc, exc_info=True,
             )
             if run_id is not None:
                 err_db = SessionLocal()
                 try:
-                    finish_scraper_run(
-                        err_db, run_id, nb_found=0, nb_new=0, error=str(exc)
-                    )
+                    finish_scraper_run(err_db, run_id, nb_found=0, nb_new=0, error=str(exc))
                 finally:
                     err_db.close()
-
-            # ── Alertes externes (activer en production) ──────────────────
-            # import sentry_sdk
-            # sentry_sdk.capture_exception(exc)
-            #
-            # from email_digest import send_alert_email
-            # send_alert_email(
-            #     subject=f"[DEF OI] Scraper FAILED: {source.name}",
-            #     body=f"{type(exc).__name__}: {exc}",
-            # )
-            # ─────────────────────────────────────────────────────────────
-
-            results.append(
-                {
-                    "source": source.name,
-                    "status": "error",
-                    "error": type(exc).__name__,
-                }
-            )
+            results.append({"source": source.name, "status": "error", "error": type(exc).__name__})
 
     # Analyse automatique post-collecte
     analysis_db = None
@@ -1204,21 +1200,12 @@ def collect(body: CollectRequest):
 
     nb_ok = sum(1 for r in results if r["status"] == "ok")
     nb_err = sum(1 for r in results if r["status"] == "error")
+    final_status = "error" if nb_ok == 0 and nb_err > 0 else "partial" if nb_err > 0 else "done"
 
-    if nb_ok == 0 and nb_err > 0:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "message": f"Toutes les sources ont échoué ({nb_err}/{len(results)})",
-                "results": results,
-            },
-        )
-
-    return {
-        "status": "partial" if nb_err > 0 else "ok",
+    _COLLECT_JOBS[job_id] = {
+        "status": final_status,
         "nb_ok": nb_ok,
         "nb_error": nb_err,
-        "message": f"{nb_ok} source(s) collectée(s), {nb_err} erreur(s)",
         "results": results,
     }
 
