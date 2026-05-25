@@ -15,6 +15,7 @@ import {
   useSaveMistralKey,
   useMistralStatus,
 } from '../hooks/useTenders'
+import SourceGenerator from '../components/SourceGenerator'
 
 const SITE_LOGOS = {
   nukema: '🏢',
@@ -609,6 +610,7 @@ const TABS = [
   { id: 'connexion',     label: '🔐 Connexion' },
   { id: 'analyse',       label: '🤖 Analyse' },
   { id: 'maintenance',   label: '🛠️ Maintenance' },
+  { id: 'sources',       label: '➕ Sources' },
   { id: 'intégrations',  label: '🔑 Intégrations' },
   { id: 'apparence',     label: '🎨 Apparence' },
 ]
@@ -642,6 +644,7 @@ export default function Parametres() {
         {activeTab === 'connexion' && <ConnexionTab />}
         {activeTab === 'analyse' && <AnalyseTab />}
         {activeTab === 'maintenance' && <MaintenanceTab />}
+        {activeTab === 'sources' && <SourceGenerator />}
         {activeTab === 'intégrations' && <IntegrationsTab />}
         {activeTab === 'apparence' && <ApparenceTab />}
       </div>
