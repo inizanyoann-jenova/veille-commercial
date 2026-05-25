@@ -44,11 +44,12 @@ def fetch() -> list[dict]:
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
         try:
-            for base_url in _URLS:
-                page = browser.new_page()
-                try:
-                    if creds:
-                        _login(page, creds[0], creds[1])
+            page = browser.new_page()
+            try:
+                if creds:
+                    _login(page, creds[0], creds[1])
+
+                for base_url in _URLS:
                     try:
                         page.goto(base_url, timeout=30_000)
                         page.wait_for_load_state("networkidle", timeout=30_000)
@@ -70,8 +71,8 @@ def fetch() -> list[dict]:
                             page.wait_for_load_state("networkidle", timeout=15_000)
                         except Exception:
                             break
-                finally:
-                    page.close()
+            finally:
+                page.close()
         finally:
             browser.close()
 
