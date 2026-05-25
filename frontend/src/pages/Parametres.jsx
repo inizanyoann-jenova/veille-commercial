@@ -14,6 +14,7 @@ import {
   useTestCredential,
   useSaveMistralKey,
   useMistralStatus,
+  useScraperStats,
 } from '../hooks/useTenders'
 import SourceGenerator from '../components/SourceGenerator'
 
@@ -428,22 +429,28 @@ function ApparenceTab() {
     return isNaN(saved) ? DEFAULT_BRIGHTNESS : Math.min(2.0, Math.max(0.5, saved))
   })
 
+  const [saved, setSaved] = useState(false)
+
   const handleChange = (key, hex) => {
     const rgb = hexToRgbString(hex)
     if (rgb === null) return
     setColors((prev) => ({ ...prev, [key]: rgb }))
     applyTheme({ [key]: rgb })
+    setSaved(false)
   }
 
   const handleBrightnessChange = (e) => {
     const value = parseFloat(e.target.value)
     setBrightness(value)
     applyBrightness(value)
+    setSaved(false)
   }
 
   const handleApply = () => {
     localStorage.setItem(THEME_KEY, JSON.stringify(colors))
     localStorage.setItem(BRIGHTNESS_KEY, String(brightness))
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2500)
   }
 
   const handleReset = () => {
@@ -453,6 +460,7 @@ function ApparenceTab() {
     setBrightness(DEFAULT_BRIGHTNESS)
     applyBrightness(DEFAULT_BRIGHTNESS)
     localStorage.removeItem(BRIGHTNESS_KEY)
+    setSaved(false)
   }
 
   return (
@@ -509,12 +517,12 @@ function ApparenceTab() {
         </div>
       </div>
 
-      <div className="flex gap-3 pt-4 border-t border-ocean-border">
+      <div className="flex items-center gap-3 pt-4 border-t border-ocean-border flex-wrap">
         <button
           onClick={handleApply}
           className="px-4 py-2 bg-ocean-cyan/12 border border-ocean-cyan/20 text-ocean-cyan font-sans text-sm rounded-lg hover:bg-ocean-cyan/18 transition-colors"
         >
-          💾 Appliquer
+          💾 Sauvegarder
         </button>
         <button
           onClick={handleReset}
@@ -522,10 +530,13 @@ function ApparenceTab() {
         >
           Réinitialiser
         </button>
+        {saved && (
+          <span className="font-sans text-xs text-ocean-teal font-medium">✓ Apparence sauvegardée</span>
+        )}
       </div>
 
       <p className="font-sans text-xs text-ocean-muted italic">
-        Cliquez sur "Appliquer" pour sauvegarder vos choix entre les sessions.
+        Les changements s'appliquent immédiatement. Cliquez sur "Sauvegarder" pour les conserver après rechargement.
       </p>
     </div>
   )
@@ -604,6 +615,68 @@ function IntegrationsTab() {
   )
 }
 
+// ── ScraperStatsTable ─────────────────────────────────────────────────────────
+
+function ScraperStatsTable() {
+  const { data: stats = [], isLoading } = useScraperStats()
+
+  if (isLoading) {
+    return <p className="font-sans text-sm text-ocean-muted">Chargement…</p>
+  }
+  if (stats.length === 0) {
+    return (
+      <p className="font-sans text-sm text-ocean-muted italic">
+        Aucune collecte enregistrée sur les 30 derniers jours.
+      </p>
+    )
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-ocean-border">
+      <table className="w-full text-xs font-mono">
+        <thead>
+          <tr className="text-ocean-muted uppercase tracking-wider bg-black/20">
+            <th className="text-left px-3 py-2">Source</th>
+            <th className="text-right px-3 py-2">Collectes</th>
+            <th className="text-right px-3 py-2">OK</th>
+            <th className="text-right px-3 py-2">Vides</th>
+            <th className="text-right px-3 py-2">Durée moy.</th>
+            <th className="text-left px-3 py-2">Dernière</th>
+          </tr>
+        </thead>
+        <tbody>
+          {stats.map((s) => {
+            const okRate = s.runs_30j > 0 ? Math.round((s.runs_ok / s.runs_30j) * 100) : 0
+            const rateColor =
+              okRate < 50 ? 'text-ocean-coral' : okRate < 80 ? 'text-ocean-gold' : 'text-ocean-teal'
+            return (
+              <tr key={s.source_name} className="border-t border-ocean-border/50 hover:bg-ocean-cyan/2">
+                <td className="px-3 py-2 text-ocean-text">{s.source_name}</td>
+                <td className="px-3 py-2 text-right text-ocean-muted">{s.runs_30j}</td>
+                <td className={`px-3 py-2 text-right ${rateColor}`}>
+                  {s.runs_ok}{' '}
+                  <span className="text-ocean-muted">({okRate}%)</span>
+                </td>
+                <td className="px-3 py-2 text-right text-ocean-muted">{s.runs_empty}</td>
+                <td className="px-3 py-2 text-right text-ocean-muted">
+                  {s.avg_duration_s != null ? `${s.avg_duration_s}s` : '—'}
+                </td>
+                <td className="px-3 py-2 text-ocean-muted">
+                  {s.last_run_at
+                    ? new Date(s.last_run_at).toLocaleString('fr-FR', {
+                        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                      })
+                    : '—'}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 // ── Page principale ───────────────────────────────────────────────────────────
 
 const TABS = [
@@ -644,7 +717,17 @@ export default function Parametres() {
         {activeTab === 'connexion' && <ConnexionTab />}
         {activeTab === 'analyse' && <AnalyseTab />}
         {activeTab === 'maintenance' && <MaintenanceTab />}
-        {activeTab === 'sources' && <SourceGenerator />}
+        {activeTab === 'sources' && (
+          <div className="space-y-8">
+            <div>
+              <h3 className="font-mono text-xs font-semibold text-ocean-muted uppercase tracking-widest mb-3">
+                📊 Statistiques de collecte — 30 derniers jours
+              </h3>
+              <ScraperStatsTable />
+            </div>
+            <SourceGenerator />
+          </div>
+        )}
         {activeTab === 'intégrations' && <IntegrationsTab />}
         {activeTab === 'apparence' && <ApparenceTab />}
       </div>
