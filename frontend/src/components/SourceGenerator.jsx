@@ -156,7 +156,11 @@ export default function SourceGenerator() {
                     actif
                   </span>
                   <button
-                    onClick={() => removeSource(s.id)}
+                    onClick={() => {
+                      if (window.confirm(`Supprimer le scraper "${s.name}" ? Cette action supprime aussi le fichier Python.`)) {
+                        removeSource(s.id)
+                      }
+                    }}
                     className="px-2 py-1 text-ocean-coral font-sans text-xs rounded border border-ocean-coral/20 hover:bg-ocean-coral/10 transition-colors"
                   >
                     Supprimer
