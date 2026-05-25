@@ -114,15 +114,6 @@ _DEFAULT_SOURCES = [
         "display_order": 6,
     },
     {
-        "name": "SEMADER — Appels d'offres Réunion",
-        "url": "https://www.semader.re/appels-d-offres",
-        "category": "Public",
-        "scraper_module": "scraper_semader",
-        "scraper_func": "fetch",
-        "is_manual": False,
-        "display_order": 9,
-    },
-    {
         "name": "Nukema",
         "url": "https://marches-publics.nukema.com",
         "category": "Public",
@@ -331,6 +322,7 @@ _DEFAULT_SOURCES = [
 _DEFUNCT_URLS = {
     "https://www.e-marches-publics.fr",
     "https://www.marches-internationaux.com",
+    "https://www.semader.re/appels-d-offres",
 }
 
 
@@ -464,3 +456,21 @@ def _run_weekly_ping() -> None:
             _ping_source(db, s)
     finally:
         db.close()
+
+
+def add_auto_source(db, name: str, url: str, category: str, module_name: str):
+    """Enregistre une source auto-générée (scraper_custom_*). Retourne l'objet Source créé."""
+    s = Source(
+        name=name,
+        url=url,
+        category=category,
+        scraper_module=module_name,
+        scraper_func="fetch",
+        is_manual=False,
+        enabled=True,
+        is_validated=True,
+    )
+    db.add(s)
+    db.commit()
+    db.refresh(s)
+    return s
