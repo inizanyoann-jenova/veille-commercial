@@ -597,6 +597,8 @@ def get_tenders(
     date_from: Optional[str] = Query(None, description="ISO date (YYYY-MM-DD)"),
     strict_date: bool = Query(False),
     only_recent: bool = Query(False, description="Publiés dans les dernières 24h"),
+    offset: int = Query(0, ge=0, description="Décalage pagination"),
+    limit: int = Query(200, ge=1, le=2000, description="Nombre max de résultats"),
     db: Session = Depends(get_db),
 ):
     if status not in _VALID_STATUS:
@@ -645,7 +647,7 @@ def get_tenders(
     tenders = q.order_by(
         Tender.deadline.asc().nullslast(),
         Tender.relevance_score.desc(),
-    ).all()
+    ).offset(offset).limit(limit).all()
     return [_tender_to_dict(t) for t in tenders]
 
 
