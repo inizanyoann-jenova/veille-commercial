@@ -4,9 +4,10 @@ Method: Playwright avec parsing HTML commentaires (rendu non-premium).
 Credentials optionnels: MARCHEONLINE_EMAIL et MARCHEONLINE_PASSWORD.
 """
 
-import os
 import re
 from datetime import datetime, timezone
+
+from credential_manager import CredentialManager
 
 from playwright.sync_api import sync_playwright
 
@@ -143,8 +144,8 @@ def fetch() -> list[dict]:
     Phase 2: enrich each candidate with detail page description.
     Each item: name, url, source, date_found + domain-specific fields.
     """
-    email = os.getenv("MARCHEONLINE_EMAIL", "")
-    password = os.getenv("MARCHEONLINE_PASSWORD", "")
+    creds = CredentialManager.get("marcheonline")
+    email, password = (creds[0], creds[1]) if creds else ("", "")
     results = []
 
     with sync_playwright() as pw:
