@@ -6,12 +6,17 @@ Génère automatiquement un scraper Python pour un site donné via Mistral AI.
 import ast
 import concurrent.futures
 import importlib
+import logging
 import os
 import re
 import sys
+import traceback
 from dataclasses import dataclass, field
 
 import requests
+from bs4 import BeautifulSoup
+
+_log = logging.getLogger(__name__)
 
 from llm_analyzer import _get_mistral_client
 from source_registry import add_auto_source
@@ -140,6 +145,12 @@ def generate(url: str, source_name: str, category: str, db) -> GenerationResult:
     module_name = f"scraper_custom_{slug}"
     filepath = os.path.join(ROOT_DIR, f"{module_name}.py")
 
+    if os.path.exists(filepath):
+        return GenerationResult(
+            status="failed",
+            reason=f"Un scraper existe déjà pour ce domaine ({module_name}.py) — supprimez-le d'abord",
+        )
+
     try:
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(code)
@@ -152,7 +163,6 @@ def generate(url: str, source_name: str, category: str, db) -> GenerationResult:
         _cleanup(filepath, module_name)
         return GenerationResult(status="failed", reason="Timeout — le scraper a mis plus de 30s")
     except Exception as exc:
-        import traceback
         tb = traceback.format_exc()[-600:]
         _cleanup(filepath, module_name)
         return GenerationResult(status="failed", reason=f"Erreur lors du test : {tb}")
@@ -193,7 +203,7 @@ def _fetch_html(url: str) -> str:
         try:
             html = _fetch_html_playwright(url)
         except Exception:
-            pass
+            _log.warning("Playwright fallback échoué pour %s, HTML court utilisé", url)
 
     return html[:32_000]
 
@@ -213,6 +223,11 @@ def _fetch_html_playwright(url: str) -> str:
 
 
 def _build_prompt(url: str, html: str) -> str:
+    try:
+        from bs4 import BeautifulSoup as _BS
+        html = _BS(html, "html.parser").get_text(separator=" ", strip=True)[:32_000]
+    except Exception:
+        pass
     return f"""Tu es un expert Python en web scraping de marchés publics.
 Génère un scraper Python complet pour le site : {url}
 
@@ -274,6 +289,8 @@ def _test_scraper_module(module_name: str, timeout: int = 30) -> list:
     sys.modules.pop(module_name, None)
     mod = importlib.import_module(module_name)
     func = getattr(mod, "fetch")
+    if not callable(func):
+        raise ValueError("Le module ne contient pas de fonction fetch() appelable")
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(func)
         try:
