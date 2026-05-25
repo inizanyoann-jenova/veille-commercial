@@ -477,3 +477,19 @@ def add_auto_source(db, name: str, url: str, category: str, module_name: str):
     db.commit()
     db.refresh(s)
     return s
+
+
+def remove_auto_source(db, source_id: int):
+    """
+    Supprime une source générée automatiquement (scraper_module startswith 'scraper_custom_').
+    Returns: scraper_module name (str) on success, None if not found, False if not a custom source.
+    """
+    s = db.query(Source).filter(Source.id == source_id).first()
+    if not s:
+        return None
+    if not s.scraper_module or not s.scraper_module.startswith("scraper_custom_"):
+        return False
+    module_name = s.scraper_module
+    db.delete(s)
+    db.commit()
+    return module_name
