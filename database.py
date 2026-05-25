@@ -149,10 +149,13 @@ def finish_scraper_run(
 
 def _simhash(text: str) -> int:
     """Fingerprint SimHash 64 bits d'un texte."""
-    words = text.lower().split()
+    words = text.lower().strip().split()
     v = [0] * 64
     for word in words:
-        h = int(_hashlib.md5(word.encode("utf-8", errors="replace")).hexdigest(), 16)
+        h = int.from_bytes(
+            _hashlib.md5(word.encode("utf-8", errors="replace")).digest()[:8],
+            "big",
+        )
         for i in range(64):
             v[i] += 1 if (h >> i) & 1 else -1
     return sum(1 << i for i in range(64) if v[i] > 0)
@@ -181,6 +184,7 @@ def detect_duplicates(db, max_tenders: int = _DEDUP_MAX_TENDERS) -> int:
         .filter(Tender.is_blacklisted.is_(False), Tender.title.is_not(None), Tender.title != "")
         .all()
     )
+    tenders = [t for t in tenders if t.title and t.title.strip()]
     if len(tenders) > max_tenders:
         tenders = sorted(
             tenders,
@@ -239,7 +243,7 @@ def detect_duplicates(db, max_tenders: int = _DEDUP_MAX_TENDERS) -> int:
                 detected_at=_dt.now(_tz.utc).replace(tzinfo=None),
             )
         )
-        existing_pairs.add((aid, bid))
+        existing_pairs.add((min(aid, bid), max(aid, bid)))
         new_pairs += 1
 
     if new_pairs > 0:
