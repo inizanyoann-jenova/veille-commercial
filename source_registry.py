@@ -460,6 +460,9 @@ def _run_weekly_ping() -> None:
 
 def add_auto_source(db, name: str, url: str, category: str, module_name: str):
     """Enregistre une source auto-générée (scraper_custom_*). Retourne l'objet Source créé."""
+    existing = db.query(Source).filter(Source.url == url).first()
+    if existing:
+        return existing
     s = Source(
         name=name,
         url=url,
