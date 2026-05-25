@@ -1,6 +1,6 @@
 import re
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from database import SessionLocal
 from models import ScoreWeight, Tender
@@ -51,6 +51,15 @@ _NEGATIVE_STATUSES = {"Perdu"}
 _MIN_DECISIONS = 10
 
 
+def _age_weight(tender) -> float:
+    """Retourne 0.5 pour les tenders collectés > 180 jours, 1.0 sinon."""
+    dt = getattr(tender, "date_extraction", None)
+    if dt is None:
+        return 1.0
+    days_old = (datetime.utcnow() - dt).days
+    return 0.5 if days_old > 180 else 1.0
+
+
 def _tokenize(text: str) -> list[str]:
     """Extrait les tokens significatifs d'un texte (longueur ≥ 3, hors stop words)."""
     tokens = re.findall(r"\b[a-zàâäéèêëîïôùûüç]{3,}\b", text.lower())
@@ -91,11 +100,15 @@ def recompute_adaptive_scores(db=None) -> int:
 
         pos_counter: Counter = Counter()
         for t in pos_tenders:
-            pos_counter.update(_tokenize((t.title or "") + " " + (t.description or "")))
+            w = _age_weight(t)
+            for token in _tokenize((t.title or "") + " " + (t.description or "")):
+                pos_counter[token] += w
 
         neg_counter: Counter = Counter()
         for t in neg_tenders:
-            neg_counter.update(_tokenize((t.title or "") + " " + (t.description or "")))
+            w = _age_weight(t)
+            for token in _tokenize((t.title or "") + " " + (t.description or "")):
+                neg_counter[token] += w
 
         total_pos = max(sum(pos_counter.values()), 1)
         total_neg = max(sum(neg_counter.values()), 1)
