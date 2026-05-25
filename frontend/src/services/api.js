@@ -72,6 +72,9 @@ export const detectDuplicates = () =>
 export const getScraperRuns = (limit = 50) =>
   api.get('/scraper-runs', { params: { limit } }).then((r) => r.data)
 
+export const getScraperStats = () =>
+  api.get('/scraper-stats').then((r) => r.data)
+
 // ── Sources ───────────────────────────────────────────────────────────────────
 
 export const getSources = () =>
