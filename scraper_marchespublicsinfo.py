@@ -1,109 +1,150 @@
 """
-Marchés-Publics.info — appels d'offres SSI/incendie/CMSI/vidéosurveillance
+MarchésPublics.info (AW Solutions) — appels d'offres en cours
 La Réunion (974) et Mayotte (976).
-Method: JS-rendered scraping via Playwright.
+
+Formulaire POST → /Annonces/lister.
+Chaque avis est dans un div#entity :
+  - .affiche_date_avis  → date publication + deadline
+  - h2.h2-avis          → organisme / acheteur
+  - #titre_box          → objet du marché
+  - a[href*='Annonces'] → lien detail
+Pagination : GET /Annonces/lister?pager_t=N
 """
 
+import re
 from datetime import datetime, timezone
 
 from playwright.sync_api import sync_playwright
 
-_URL = (
-    "https://www.marches-publics.info/index.php"
-    "?page=entreprise.EntrepriseAdvancedSearch"
-    "&searchAnnouncement[query]=SSI+incendie+CMSI+videosurveillance"
-    "&searchAnnouncement[dptList][]=974"
-    "&searchAnnouncement[dptList][]=976"
-)
+_SEARCH_URL = "https://www.marches-publics.info/Annonces/rechercher"
+_LIST_URL = "https://www.marches-publics.info/Annonces/lister"
 _BASE = "https://www.marches-publics.info"
-_CARD = "tr.annonce, .annonce-row, li.annonce, .search-result-item"
-_NEXT = "a.next, a[title='Page suivante'], .pagination-next a"
+_DEPTS = [("974", "974"), ("976", "976")]
 _MAX_PAGES = 5
 
 
 def fetch() -> list[dict]:
-    """
-    Returns tenders from Marchés-Publics.info filtered on 974/976 and SSI/incendie keywords.
-    Each item: name, url, source, date_found + domain-specific fields.
-    """
     results = []
+    seen_urls: set[str] = set()
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
         try:
-            page = browser.new_page()
-            try:
-                page.goto(_URL, timeout=30_000)
-                page.wait_for_load_state("networkidle", timeout=30_000)
-            except Exception:
-                return results
-
-            for _ in range(_MAX_PAGES):
-                cards = page.query_selector_all(_CARD)
-                for card in cards:
-                    raw = _extract_card(card)
-                    if raw.get("name"):
-                        results.append(_normalise(raw))
-
-                next_btn = page.query_selector(_NEXT)
-                if not next_btn:
-                    break
-                next_btn.click()
-                try:
-                    page.wait_for_load_state("networkidle", timeout=15_000)
-                except Exception:
-                    break
-
-            page.close()
+            for dept_value, dept_label in _DEPTS:
+                results.extend(_search_dept(browser, dept_value, seen_urls))
         finally:
             browser.close()
 
     return results
 
 
-def _extract_card(card) -> dict:
-    """Extract raw fields from a Playwright element handle."""
+def _search_dept(browser, dept_value: str, seen_urls: set) -> list[dict]:
+    results = []
+    page = browser.new_page()
+    try:
+        try:
+            page.goto(_SEARCH_URL, timeout=30_000)
+            page.wait_for_load_state("networkidle", timeout=20_000)
+        except Exception:
+            return results
 
-    def text(selector):
-        el = card.query_selector(selector)
+        try:
+            page.select_option('select[name="IDR"]', value=dept_value)
+            page.click("#sub")
+            page.wait_for_load_state("networkidle", timeout=25_000)
+        except Exception:
+            return results
+
+        for page_num in range(1, _MAX_PAGES + 1):
+            if page_num > 1:
+                try:
+                    page.goto(f"{_LIST_URL}?pager_t={page_num}", timeout=20_000)
+                    page.wait_for_load_state("networkidle", timeout=20_000)
+                except Exception:
+                    break
+
+            entities = page.query_selector_all("div#entity")
+            if not entities:
+                break
+
+            for entity in entities:
+                item = _extract_entity(entity)
+                url = item.get("url", "")
+                if item.get("name") and url not in seen_urls:
+                    seen_urls.add(url)
+                    results.append(_normalise(item))
+
+            # S'arrêter si pas de page suivante
+            has_next = page.query_selector(f'a[href*="pager_t={page_num + 1}"]')
+            if not has_next:
+                break
+
+    finally:
+        page.close()
+
+    return results
+
+
+def _extract_entity(entity) -> dict:
+    def text(sel: str) -> str:
+        el = entity.query_selector(sel)
         return el.inner_text().strip() if el else ""
 
-    def href(selector):
-        el = card.query_selector(selector)
-        return el.get_attribute("href") or "" if el else ""
+    def href(sel: str) -> str:
+        el = entity.query_selector(sel)
+        return (el.get_attribute("href") or "") if el else ""
 
-    title = text("td.objet, .objet, h3, .titre")
-    description = text("td.pa, .organisme, .acheteur")
-    url = href("a")
-    date = text("td.date, .date, time")
+    date_text = text(".affiche_date_avis")
+    organisme = text("h2.h2-avis")
+    url = href("a[href*='Annonces']")
+
+    # Titre : contenu textuel de #titre_box sans le sous-élément .ref-acheteur
+    titre_box = entity.query_selector("#titre_box")
+    title = ""
+    if titre_box:
+        ref_el = titre_box.query_selector(".ref-acheteur")
+        if ref_el:
+            ref_el.evaluate("el => el.remove()")
+        title = titre_box.inner_text().strip()
+    if not title:
+        title = organisme  # fallback
 
     if url and not url.startswith("http"):
         url = f"{_BASE}{url}"
 
     return {
         "name": title,
-        "description": description,
-        "url": url or _URL,
-        "raw_date": date,
+        "organisme": organisme,
+        "url": url or _LIST_URL,
+        "date_text": date_text,
     }
 
 
-def _normalise(raw: dict) -> dict:
-    """Convert extracted card data to standard schema."""
-    raw_date = raw.get("raw_date") or ""
+def _parse_date_fr(text: str, pattern: str) -> str:
+    """Extrait une date DD/MM/YY ou DD/MM/YYYY depuis un texte."""
+    m = re.search(pattern, text)
+    if not m:
+        return ""
+    d, mo, y = m.group(1), m.group(2), m.group(3)
+    if len(y) == 2:
+        y = "20" + y
     try:
-        publication_date = (
-            datetime.fromisoformat(raw_date[:10]).date().isoformat() if raw_date else ""
-        )
+        return datetime.strptime(f"{d}/{mo}/{y}", "%d/%m/%Y").date().isoformat()
     except ValueError:
-        publication_date = raw_date
+        return ""
+
+
+def _normalise(raw: dict) -> dict:
+    date_text = raw.get("date_text", "")
+    publication_date = _parse_date_fr(date_text, r"Publi[ée] le\s+(\d{2})/(\d{2})/(\d{2,4})")
+    deadline = _parse_date_fr(date_text, r"Date limite\s*:.*?(\d{2})/(\d{2})/(\d{2,4})")
 
     return {
         "name": raw.get("name", ""),
-        "url": raw.get("url", _URL),
+        "url": raw.get("url", _LIST_URL),
         "source": "Marchés-Publics.info",
         "date_found": datetime.now(timezone.utc).date().isoformat(),
         "publication_date": publication_date,
-        "deadline": "",
-        "description": raw.get("description", ""),
+        "deadline": deadline,
+        "description": raw.get("organisme", ""),
     }
