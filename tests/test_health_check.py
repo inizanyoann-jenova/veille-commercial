@@ -84,6 +84,67 @@ def test_check_source_html_marker_missing():
     assert "marqueur" in result.error.lower()
 
 
+def test_persist_health_results_increments_failures(db):
+    from health_check import HealthResult, persist_health_results
+    from models import Source
+    from datetime import datetime, timezone
+
+    src = Source(
+        name="BOAMP — Journal Officiel",
+        url="https://boamp.fr",
+        category="Officiel",
+        enabled=True,
+        is_validated=True,
+        ping_failures_count=0,
+    )
+    db.add(src)
+    db.flush()
+
+    results = {
+        "BOAMP — Journal Officiel": HealthResult(
+            name="BOAMP — Journal Officiel",
+            ok=False,
+            http_status=503,
+            error="Service unavailable",
+            checked_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        )
+    }
+    persist_health_results(db, results)
+
+    db.refresh(src)
+    assert src.ping_failures_count == 1
+
+
+def test_persist_health_results_resets_on_success(db):
+    from health_check import HealthResult, persist_health_results
+    from models import Source
+    from datetime import datetime, timezone
+
+    src = Source(
+        name="BOAMP — Journal Officiel",
+        url="https://boamp.fr",
+        category="Officiel",
+        enabled=True,
+        is_validated=False,
+        ping_failures_count=3,
+    )
+    db.add(src)
+    db.flush()
+
+    results = {
+        "BOAMP — Journal Officiel": HealthResult(
+            name="BOAMP — Journal Officiel",
+            ok=True,
+            http_status=200,
+            checked_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        )
+    }
+    persist_health_results(db, results)
+
+    db.refresh(src)
+    assert src.ping_failures_count == 0
+
+
 def test_run_all_health_checks_returns_dict():
     from health_check import run_all_health_checks
 
