@@ -4,7 +4,6 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from unittest.mock import patch, MagicMock
-import pytest
 from scraper_factory import _extract_code, _validate_syntax, generate, GenerationResult
 
 
@@ -24,6 +23,7 @@ def test_extract_code_without_backticks():
     text = "Explication.\ndef fetch() -> list[dict]:\n    return []\n"
     result = _extract_code(text)
     assert "def fetch" in result
+    assert "Explication" not in result
 
 
 def test_extract_code_empty_response():
@@ -68,6 +68,19 @@ def test_generate_zero_results(tmp_path):
         result = generate("https://example.com", "Test", "Public", db=None)
     assert result.status == "failed"
     assert "0 résultats" in result.reason
+    assert list(tmp_path.glob("*.py")) == []
+
+
+def test_generate_invalid_syntax(tmp_path):
+    mock_client = MagicMock()
+    mock_client.chat.complete.return_value = MagicMock(
+        choices=[MagicMock(message=MagicMock(content="def fetch(\n    broken syntax"))]
+    )
+    with patch("scraper_factory._get_mistral_client", return_value=mock_client), \
+         patch("scraper_factory._fetch_html", return_value="<html><body>test</body></html>"), \
+         patch("scraper_factory.ROOT_DIR", str(tmp_path)):
+        result = generate("https://example.com", "Test", "Public", db=None)
+    assert result.status == "failed"
     assert list(tmp_path.glob("*.py")) == []
 
 
