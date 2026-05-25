@@ -105,10 +105,7 @@ def fetch() -> list[dict]:
     results = []
 
     for territoire, nom, feed_url in FLUX_DEVBANKS:
-        try:
-            feed = feedparser.parse(feed_url)
-        except Exception:
-            continue
+        feed = feedparser.parse(feed_url)
 
         if not feed.entries:
             continue
