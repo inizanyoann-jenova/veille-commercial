@@ -74,6 +74,7 @@ _COLLECT_JOBS: dict[str, dict] = {}
 
 SCORE_GO = 65
 SCORE_ETUDE = 35
+SCORE_ALERT = 80  # seuil alerte email — plus strict que SCORE_GO (=65)
 
 DOMAINES: dict[str, list] = {
     "🔥 SSI / Détection incendie": _KW_SSI,
@@ -1192,7 +1193,7 @@ def _run_collect_job(job_id: str, source_names: Optional[list[str]]) -> None:
                     err_db.close()
             results.append({"source": source.name, "status": "error", "error": type(exc).__name__})
 
-    # Analyse automatique post-collecte + alertes GO >= 80
+    # Analyse automatique post-collecte + alertes GO >= SCORE_ALERT
     analysis_db = None
     try:
         analysis_db = SessionLocal()
@@ -1202,7 +1203,7 @@ def _run_collect_job(job_id: str, source_names: Optional[list[str]]) -> None:
         pre_go_ids: set[str] = {
             r[0]
             for r in analysis_db.query(Tender.id)
-            .filter(Tender.relevance_score >= 80, Tender.status == "À qualifier")
+            .filter(Tender.relevance_score >= SCORE_ALERT, Tender.status == "À qualifier")
             .all()
         }
 
@@ -1223,7 +1224,7 @@ def _run_collect_job(job_id: str, source_names: Optional[list[str]]) -> None:
                 from email_digest import send_go_alert as _send_go_alert
 
                 new_go_query = analysis_db.query(Tender).filter(
-                    Tender.relevance_score >= 80,
+                    Tender.relevance_score >= SCORE_ALERT,
                     Tender.status == "À qualifier",
                 )
                 if pre_go_ids:
@@ -1231,8 +1232,11 @@ def _run_collect_job(job_id: str, source_names: Optional[list[str]]) -> None:
                 new_go = new_go_query.all()
 
                 for t in new_go:
-                    _send_go_alert(t, smtp_cfg)
-                    _log.info("Alerte GO envoyée pour : %s (score=%s)", t.title, t.relevance_score)
+                    sent = _send_go_alert(t, smtp_cfg)
+                    if sent:
+                        _log.info("Alerte GO envoyée pour : %s (score=%s)", t.title, t.relevance_score)
+                    else:
+                        _log.warning("Alerte GO non envoyée pour : %s — vérifier config SMTP", t.title)
             except Exception as exc:
                 _log.warning("Alertes GO échouées : %s", exc, exc_info=True)
 
