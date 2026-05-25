@@ -148,3 +148,39 @@ def send_digest(smtp_config: dict, db=None) -> bool:
         return True
     except Exception:
         return False
+
+
+def send_go_alert(tender, smtp_config: dict) -> bool:
+    """Envoie une alerte email pour un marché GO (score >= 80).
+    Retourne True si l'email a été envoyé, False sinon."""
+    deadline_str = tender.deadline.strftime("%d/%m/%Y") if tender.deadline else "—"
+    subject = f"[GO] {tender.title or 'Sans titre'}"
+    body_html = f"""<html><body style='font-family:Inter,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#111827'>
+  <h2 style='color:#166534'>Nouveau marché GO — Score {tender.relevance_score}</h2>
+  <table style='width:100%;border-collapse:collapse;font-size:0.95em'>
+    <tr><td style='padding:6px 0;color:#6b7280;width:120px'>Titre</td>
+        <td style='padding:6px 0;font-weight:600'>{tender.title or '—'}</td></tr>
+    <tr><td style='padding:6px 0;color:#6b7280'>Score</td>
+        <td style='padding:6px 0'>{tender.relevance_score}</td></tr>
+    <tr><td style='padding:6px 0;color:#6b7280'>Deadline</td>
+        <td style='padding:6px 0'>{deadline_str}</td></tr>
+    <tr><td style='padding:6px 0;color:#6b7280'>Lien</td>
+        <td style='padding:6px 0'><a href='{tender.url or "#"}'>{tender.url or "—"}</a></td></tr>
+  </table>
+</body></html>"""
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = smtp_config["user"]
+    msg["To"] = smtp_config["to"]
+    msg.attach(MIMEText(body_html, "html", "utf-8"))
+
+    try:
+        with smtplib.SMTP(smtp_config["host"], smtp_config["port"]) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(smtp_config["user"], smtp_config["password"])
+            server.send_message(msg)
+        return True
+    except Exception:
+        return False
