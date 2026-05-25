@@ -225,10 +225,11 @@ def test_mistral_analyze_raises_quota_error_on_429(monkeypatch):
             llm_analyzer._mistral_analyze("test")
 
 
-def test_mistral_analyze_returns_none_on_auth_error(monkeypatch):
-    """HTTP 401 -> None (clé invalide), pas d'exception propagée."""
+def test_mistral_analyze_raises_auth_error_on_401(monkeypatch):
+    """HTTP 401 -> _LLMAuthError (fast-fail, pas de None silencieux)."""
     monkeypatch.setenv("MISTRAL_API_KEY", "fake-mistral-key-1234567890abcdef")
     import llm_analyzer
+    import pytest
     from unittest.mock import MagicMock, patch
 
     exc_401 = Exception("Unauthorized")
@@ -240,9 +241,8 @@ def test_mistral_analyze_returns_none_on_auth_error(monkeypatch):
         mock_get.return_value = mock_client
         llm_analyzer._mistral_client = None
 
-        result = llm_analyzer._mistral_analyze("test")
-
-    assert result is None
+        with pytest.raises(llm_analyzer._LLMAuthError):
+            llm_analyzer._mistral_analyze("test")
 
 
 def test_mistral_analyze_returns_none_on_invalid_json(monkeypatch):
