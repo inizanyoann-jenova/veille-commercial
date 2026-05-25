@@ -84,6 +84,36 @@ def test_generate_invalid_syntax(tmp_path):
     assert list(tmp_path.glob("*.py")) == []
 
 
+def test_generate_duplicate_domain(tmp_path):
+    # Create an existing scraper file to simulate collision
+    existing = tmp_path / "scraper_custom_example_com.py"
+    existing.write_text("def fetch(): return []\n")
+    mock_client = MagicMock()
+    mock_client.chat.complete.return_value = MagicMock(
+        choices=[MagicMock(message=MagicMock(content="def fetch():\n    return []\n"))]
+    )
+    with patch("scraper_factory._get_mistral_client", return_value=mock_client), \
+         patch("scraper_factory._fetch_html", return_value="<html><body>test</body></html>"), \
+         patch("scraper_factory.ROOT_DIR", str(tmp_path)):
+        result = generate("https://example.com", "Test", "Public", db=None)
+    assert result.status == "failed"
+    assert "existe déjà" in result.reason
+
+
+def test_generate_module_no_fetch(tmp_path):
+    mock_client = MagicMock()
+    mock_client.chat.complete.return_value = MagicMock(
+        choices=[MagicMock(message=MagicMock(content="def fetch():\n    return []\n"))]
+    )
+    with patch("scraper_factory._get_mistral_client", return_value=mock_client), \
+         patch("scraper_factory._fetch_html", return_value="<html><body>test</body></html>"), \
+         patch("scraper_factory._test_scraper_module", side_effect=AttributeError("module has no attribute 'fetch'")), \
+         patch("scraper_factory.ROOT_DIR", str(tmp_path)):
+        result = generate("https://example.com", "Test", "Public", db=None)
+    assert result.status == "failed"
+    assert list(tmp_path.glob("*.py")) == []
+
+
 def test_generate_success(tmp_path):
     preview_item = {
         "name": "Marché test",
