@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useEffect } from 'react'
 import {
   getTenders, getTender, getKpisPublic, getKpisCa, getKpisPriv,
-  getPipeline, getUrgences, getScraperRuns, getSources, getChartData,
+  getPipeline, getUrgences, getScraperRuns, getScraperStats, getSources, getChartData,
   collect, analyzePending, updateStatus, updateSaved, updateNotes,
   updateTags, updateAmount, deleteTender, analyzeTender,
   getDuplicates, resolveDuplicate, detectDuplicates, archiveOld, resetDb,
@@ -281,3 +281,10 @@ export const useDeleteSource = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sources'] }),
   })
 }
+
+export const useScraperStats = () =>
+  useQuery({
+    queryKey: ['scraper-stats'],
+    queryFn: getScraperStats,
+    staleTime: 60_000,
+  })
