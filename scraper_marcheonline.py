@@ -23,6 +23,7 @@ _URLS = [
 ]
 _BASE = "https://www.marchesonline.com"
 _MAX_PAGES = 10
+_MAX_DETAILS = 50
 
 _DETAIL_PATTERNS = [
     r'itemprop=["\']description["\'][^>]*>(.*?)</(?:p|div|span|article)>',
@@ -175,8 +176,8 @@ def fetch() -> list[dict]:
                             break
                         current_url = next_url
 
-                # Phase 2 : enrichissement fiche détail
-                for card in candidates:
+                # Phase 2 : enrichissement fiche détail (plafonné à _MAX_DETAILS)
+                for card in candidates[:_MAX_DETAILS]:
                     detail_desc = _extract_detail(page, card.get("url", ""))
                     desc = detail_desc or card.get("description", "").strip()
                     results.append(_normalise(card, desc))
