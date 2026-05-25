@@ -138,11 +138,37 @@ def test_fetch_nukema_inserts_relevant():
                     "description": "Mayotte 976",
                     "url": "https://marches-publics.nukema.com/consultation/12345",
                     "raw_date": "2026-05-10",
+                    "raw_deadline": "",
                 },
             ):
                 result = scraper_nukema.fetch()
 
     assert len(result) >= 1
+
+
+def test_fetch_nukema_extracts_deadline():
+    import scraper_nukema
+
+    mock_pw, mock_page = _make_pw_mock(
+        page_url="https://marches-publics.nukema.com/consultation"
+    )
+    mock_page.query_selector_all.return_value = [MagicMock()]
+
+    with patch("scraper_nukema.sync_playwright", return_value=mock_pw):
+        with patch(
+            "scraper_nukema._extract_card",
+            return_value={
+                "name": "Maintenance CCTV campus 976",
+                "description": "",
+                "url": "https://marches-publics.nukema.com/consultation/42",
+                "raw_date": "2026-05-10",
+                "raw_deadline": "2026-06-15",
+            },
+        ):
+            result = scraper_nukema.fetch()
+
+    assert len(result) >= 1
+    assert result[0]["deadline"] == "2026-06-15"
 
 
 # ── Marchés Sécurisés ─────────────────────────────────────────────────────────
