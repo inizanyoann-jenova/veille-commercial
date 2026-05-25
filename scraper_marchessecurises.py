@@ -4,9 +4,9 @@ Method: JS-rendered scraping via Playwright avec authentification.
 Credentials: MARCHESSECURISES_LOGIN et MARCHESSECURISES_PASSWORD.
 """
 
-import os
 from datetime import datetime, timezone
 
+from credential_manager import CredentialManager
 from scraper_utils import parse_date as _parse_date
 
 from playwright.sync_api import sync_playwright
@@ -101,11 +101,10 @@ def fetch() -> list[dict]:
     Requires MARCHESSECURISES_LOGIN and MARCHESSECURISES_PASSWORD environment variables.
     Each item: name, url, source, date_found + domain-specific fields.
     """
-    login_val = os.getenv("MARCHESSECURISES_LOGIN", "")
-    password = os.getenv("MARCHESSECURISES_PASSWORD", "")
-
-    if not login_val or not password:
+    creds = CredentialManager.get("marches_securises")
+    if not creds:
         return []
+    login_val, password = creds[0], creds[1]
 
     results = []
 
