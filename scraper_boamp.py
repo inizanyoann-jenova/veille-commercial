@@ -137,9 +137,12 @@ def _normalise(raw: dict, dept: str = "") -> dict:
     )
 
     descripteurs = raw.get("descripteur_libelle") or []
-    description = (
-        " ".join(descripteurs) if isinstance(descripteurs, list) else str(descripteurs)
+    cpv = (
+        ", ".join(descripteurs)
+        if isinstance(descripteurs, list)
+        else str(descripteurs or "")
     )
+    description = cpv
 
     # publication_date en ISO pour lecture IA
     raw_date = raw.get("dateparution") or ""
@@ -170,4 +173,5 @@ def _normalise(raw: dict, dept: str = "") -> dict:
         "departement": dept,
         "description": description,
         "boamp_id": idweb,
+        "cpv": cpv,
     }
