@@ -12,6 +12,11 @@ from dotenv import load_dotenv
 _log = logging.getLogger(__name__)
 load_dotenv()
 
+try:
+    from mistralai.client.errors.mistralerror import MistralError as _MistralAPIError
+except ImportError:
+    _MistralAPIError = None
+
 
 class _LLMQuotaError(Exception):
     """Levée quand l'API LLM retourne une erreur de quota (429 / RESOURCE_EXHAUSTED)."""
@@ -765,7 +770,8 @@ def _calculate_relevance_score(
         score += min(len(brands) * 2, 5)
 
     # Pénalité exclusion : si signaux hors périmètre ET signal technique faible
-    if scores["excl"] > 0 and technical_signal < 2:
+    # Seuil configurable via EXCLUSION_SIGNAL_THRESHOLD env var (défaut : 2)
+    if scores["excl"] > 0 and technical_signal < _EXCLUSION_SIGNAL_THRESHOLD:
         malus = min(scores["excl"] * 12, 30)
         score = max(5, score - malus)
 
@@ -1152,13 +1158,18 @@ def _mistral_analyze(text: str) -> dict | None:
         result["_source"] = "mistral"
         return result
     except Exception as exc:
-        status = getattr(exc, "status_code", None)
+        # Accès type-safe si c'est une vraie MistralError SDK, getattr en fallback sinon
+        if _MistralAPIError is not None and isinstance(exc, _MistralAPIError):
+            status = exc.status_code
+            _exc_headers = exc.headers
+        else:
+            status = getattr(exc, "status_code", None)
+            _exc_headers = getattr(exc, "headers", {})
+
         if status == 429:
             retry_after = None
             try:
-                retry_after = (
-                    int(getattr(exc, "headers", {}).get("retry-after", 0)) or None
-                )
+                retry_after = int(_exc_headers.get("retry-after", 0)) or None
             except Exception:
                 pass
             raise _LLMQuotaError(retry_after=retry_after)
@@ -1231,8 +1242,10 @@ def fetch_dce_content(url: str) -> str | None:
             _log.debug("fetch_dce_content: Schéma non supporté (%s)", parsed.scheme)
             return None
 
-        # Extraire le domaine principal
+        # Extraire le domaine principal (sans port ni www.)
         domain = parsed.netloc.lower()
+        if ":" in domain:
+            domain = domain.split(":")[0]
         if domain.startswith("www."):
             domain = domain[4:]
 
@@ -1378,12 +1391,14 @@ def auto_analyze_pending(db, limit: int | None = None) -> int:
 
 
 _LLM_BATCH_SIZE = int(os.getenv("LLM_BATCH_SIZE", "10"))
+_MISTRAL_DELAY = float(os.getenv("MISTRAL_DELAY", "1.0"))
+_EXCLUSION_SIGNAL_THRESHOLD = int(os.getenv("EXCLUSION_SIGNAL_THRESHOLD", "2"))
 
 
 def auto_analyze_mistral(
     db,
     max_per_run: int = _LLM_BATCH_SIZE,
-    delay: float = 1.0,  # 1s entre requêtes — respecte les limites de l'API
+    delay: float = _MISTRAL_DELAY,  # configurable via MISTRAL_DELAY env var
     progress_cb=None,
 ) -> tuple[int, int]:
     """Analyse en masse via Mistral avec débit contrôlé.
@@ -1513,7 +1528,9 @@ def auto_analyze_mistral(
     return nb_done, -1
 
 
-auto_analyze_gemini = auto_analyze_mistral  # alias rétrocompat
+# Alias conservé pour rétro-compat — pointe vers Mistral, pas Gemini
+auto_analyze_gemini = auto_analyze_mistral
+auto_analyze_claude = auto_analyze_mistral
 
 
 # ---------------------------------------------------------------------------
