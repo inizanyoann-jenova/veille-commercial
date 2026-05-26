@@ -50,7 +50,11 @@ def test_login(url: str, selectors: dict, email: str, password: str) -> dict:
                         "champs_page": champs_trouves,
                     }
 
+            # force=True contourne les overlays qui interceptent les pointer events
+            # et déclenche quand même onfocus (nécessaire pour les champs readonly-on-focus)
+            page.click(selectors["email"], force=True)
             page.fill(selectors["email"], email)
+            page.click(selectors["password"], force=True)
             page.fill(selectors["password"], password)
 
             # 1. Essayer un clic JS (contourne les overlays qui interceptent les pointer events)
@@ -76,20 +80,62 @@ def test_login(url: str, selectors: dict, email: str, password: str) -> dict:
             if final_url != initial_url:
                 return {"ok": True, "url_finale": final_url}
 
+            # Attendre un court instant pour laisser les toasts/animations JS s'afficher
+            try:
+                page.wait_for_timeout(1500)
+            except Exception:
+                pass
+
+            # Vérifier si un login AJAX a réussi (URL inchangée mais on est connecté)
+            logged_in_sels = [
+                "a[href*='deconnexion'], a[href*='logout'], a[href*='disconnect']",
+                "[class*='deconnexion'], [class*='logout']",
+                ".user-menu, .nav-user, .compte-menu, #nav-user-menu",
+                "a[href*='mon-compte'], a[href*='my-account'], a[href*='profil']",
+            ]
+            for logged_sel in logged_in_sels:
+                try:
+                    if page.query_selector(logged_sel):
+                        return {"ok": True, "url_finale": final_url, "ajax_login": True}
+                except Exception:
+                    pass
+
             err_sel = (
                 ".error, .alert-danger, .alert-error, "
                 ".login-error, .message-erreur, .erreur, "
-                ".invalid-feedback, .form-error"
+                ".invalid-feedback, .form-error, "
+                ".MooDialog, .MooDialogTitle, "
+                ".toast-error, .toast.error, .notification-error, "
+                "[class*='error-message'], [class*='login-error'], "
+                ".alert:not(.alert-success), .flash-error"
             )
-            err_el = page.query_selector(err_sel)
-            if err_el:
+            err_texts = []
+            for el in page.query_selector_all(err_sel)[:5]:
+                try:
+                    text = el.inner_text().strip()
+                    if text and len(text) > 3:
+                        err_texts.append(text[:150])
+                except Exception:
+                    pass
+            if err_texts:
                 return {
                     "ok": False,
-                    "erreur_page": err_el.inner_text().strip()[:200],
+                    "erreur_page": " | ".join(err_texts[:3]),
                     "url_finale": final_url,
                 }
 
-            return {"ok": False, "no_redirect": True, "url_finale": final_url}
+            page_title = ""
+            try:
+                page_title = page.title()
+            except Exception:
+                pass
+
+            return {
+                "ok": False,
+                "no_redirect": True,
+                "url_finale": final_url,
+                "page_title": page_title,
+            }
         finally:
             browser.close()
 
