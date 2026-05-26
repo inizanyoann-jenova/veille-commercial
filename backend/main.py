@@ -538,7 +538,7 @@ _LOGIN_CONFIG: dict[str, dict] = {
         "selectors": {
             "email": "#email-input",
             "password": "input[type='password'].modal_connexion_input",
-            "submit": "button.primary-dark-btn",
+            "submit": "button.primary-dark-btn, .modal_connexion_card button.primary-btn",
         },
     },
     "instao": {
@@ -554,9 +554,9 @@ _LOGIN_CONFIG: dict[str, dict] = {
         "label": "Marchés Sécurisés",
         "url": "https://www.marches-securises.fr/entreprise/?page=connexion",
         "selectors": {
-            "email": "input[name='login'], input[type='email'], #login",
-            "password": "input[name='pass'], input[type='password'], #password",
-            "submit": "input[type='submit'], button[type='submit']",
+            "email": "input[name='log']",
+            "password": "input[name='pass']",
+            "submit": "input[type='image'][name='submit']",
         },
     },
     "tendersgo": {
@@ -1652,13 +1652,25 @@ def test_credential(site: str, body: CredentialSave):
             }
         result = _json.loads(proc.stdout)
         if result.get("ok"):
-            return {"ok": True}
+            resp: dict = {"ok": True}
+            if site == "nukema":
+                resp["note"] = (
+                    "Login validé sur actu.nukema.com — mais les cookies ne sont pas "
+                    "partagés avec marches-publics.nukema.com : le scraping s'exécute "
+                    "sans authentification (limitation cross-subdomain)."
+                )
+            return resp
         if result.get("erreur_page"):
             msg = f"Identifiants incorrects : {result['erreur_page']}"
         elif result.get("champ_manquant"):
-            msg = "Champ introuvable — sélecteur CSS à mettre à jour"
+            champs = result.get("champs_page", [])
+            champs_str = " | ".join(champs[:8]) if champs else "aucun input trouvé"
+            msg = f"Champ introuvable [{result['champ_manquant']}] — page contient : {champs_str}"
         elif result.get("no_redirect"):
+            page_title = result.get("page_title", "").strip()
             msg = "Connexion refusée sans message d'erreur"
+            if page_title:
+                msg += f" (page : {page_title[:80]})"
         else:
             msg = result.get("erreur_worker") or "Connexion refusée"
         return {"ok": False, "message": msg}
