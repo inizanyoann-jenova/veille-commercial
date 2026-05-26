@@ -1085,6 +1085,7 @@ BARÈME DE SCORING :
 """
 
 _mistral_client = None
+_mistral_client_lock = threading.Lock()
 
 
 def _get_mistral_client():
@@ -1093,19 +1094,22 @@ def _get_mistral_client():
     if not api_key:
         return None
     if _mistral_client is None:
-        try:
-            from mistralai.client import Mistral
+        with _mistral_client_lock:
+            if _mistral_client is None:
+                try:
+                    from mistralai.client import Mistral
 
-            _mistral_client = Mistral(api_key=api_key)
-        except Exception:
-            return None
+                    _mistral_client = Mistral(api_key=api_key)
+                except Exception:
+                    return None
     return _mistral_client
 
 
 def reset_mistral_client() -> None:
     """Invalide le singleton Mistral — à appeler après changement de clé API."""
     global _mistral_client
-    _mistral_client = None
+    with _mistral_client_lock:
+        _mistral_client = None
 
 
 def _mistral_analyze(text: str) -> dict | None:
