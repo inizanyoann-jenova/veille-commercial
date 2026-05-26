@@ -4,7 +4,6 @@ Method: JS-rendered scraping via Playwright avec authentification.
 Credentials: variables d'env INSTAO_EMAIL et INSTAO_PASSWORD.
 """
 
-import os
 import random
 from datetime import datetime, timezone
 
@@ -44,11 +43,11 @@ def fetch() -> list[dict]:
     Requires INSTAO_EMAIL and INSTAO_PASSWORD environment variables.
     Each item: name, url, source, date_found + domain-specific fields.
     """
-    email = os.getenv("INSTAO_EMAIL", "")
-    password = os.getenv("INSTAO_PASSWORD", "")
-
-    if not email or not password:
+    from credential_manager import CredentialManager
+    creds = CredentialManager.get("instao")
+    if not creds:
         return []
+    email, password = creds
 
     results = []
 
