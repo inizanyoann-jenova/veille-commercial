@@ -509,3 +509,114 @@ def test_analyze_tender_structured_logs_warning_on_exception(monkeypatch, caplog
     assert any("analyze_tender_structured" in r.message for r in caplog.records), (
         "Le log doit mentionner 'analyze_tender_structured' pour être identifiable"
     )
+
+
+# ---------------------------------------------------------------------------
+# Finding #6 — isinstance MistralError pour la détection 429/401
+# ---------------------------------------------------------------------------
+
+
+def test_mistral_api_error_imported_for_isinstance_check():
+    """_MistralAPIError est importé dans llm_analyzer pour isinstance check robuste (pas getattr)."""
+    import llm_analyzer
+
+    assert hasattr(llm_analyzer, "_MistralAPIError"), (
+        "_MistralAPIError non défini dans llm_analyzer — "
+        "la détection 429/401 reste fragile aux changements d'attribut SDK"
+    )
+    # Doit être la classe réelle (ou None si SDK absent), pas None sans raison
+    from mistralai.client.errors.mistralerror import MistralError as _RealError
+    assert llm_analyzer._MistralAPIError is _RealError, (
+        "_MistralAPIError doit référencer mistralai.client.errors.mistralerror.MistralError"
+    )
+
+
+def test_mistral_analyze_429_retry_after_extracted_from_headers(monkeypatch):
+    """retry_after est correctement extrait de exc.headers.get('retry-after') sur MistralError SDK."""
+    import llm_analyzer
+    from unittest.mock import MagicMock, patch
+    import pytest
+    from mistralai.client.errors.mistralerror import MistralError as _RealMistralError
+
+    monkeypatch.setenv("MISTRAL_API_KEY", "fake-key-retry-after-test")
+
+    # Construire une vraie MistralError instanciable
+    mock_response = MagicMock()
+    mock_response.status_code = 429
+    mock_response.text = "Rate limit exceeded"
+    mock_response.headers = {"retry-after": "45"}
+    sdk_exc = _RealMistralError("Rate limited", mock_response)
+
+    with patch("llm_analyzer._get_mistral_client") as mock_get:
+        mock_client = MagicMock()
+        mock_client.chat.complete.side_effect = sdk_exc
+        mock_get.return_value = mock_client
+        llm_analyzer._mistral_client = None
+
+        with pytest.raises(llm_analyzer._LLMQuotaError) as exc_info:
+            llm_analyzer._mistral_analyze("test retry_after headers")
+
+    assert exc_info.value.retry_after == 45, (
+        f"retry_after attendu=45, obtenu={exc_info.value.retry_after} — "
+        "l'extraction depuis exc.headers.get('retry-after') ne fonctionne pas"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Finding #7 — MISTRAL_DELAY env var
+# ---------------------------------------------------------------------------
+
+
+def test_mistral_delay_configurable_via_env():
+    """_MISTRAL_DELAY est défini en tant que constante lue depuis MISTRAL_DELAY env var."""
+    import llm_analyzer
+
+    assert hasattr(llm_analyzer, "_MISTRAL_DELAY"), (
+        "_MISTRAL_DELAY absent — le délai entre requêtes Mistral n'est pas configurable "
+        "sans modifier le code"
+    )
+    assert isinstance(llm_analyzer._MISTRAL_DELAY, float), "_MISTRAL_DELAY doit être un float"
+    assert llm_analyzer._MISTRAL_DELAY > 0, "_MISTRAL_DELAY doit être positif"
+
+
+# ---------------------------------------------------------------------------
+# Finding #8 — fetch_dce_content : URL avec port non-standard
+# ---------------------------------------------------------------------------
+
+
+def test_fetch_dce_content_strips_port_from_domain(monkeypatch):
+    """fetch_dce_content() accepte marcheonline.fr:8080 — le port est ignoré pour la whitelist."""
+    from unittest.mock import MagicMock, patch
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.headers = {"content-type": "text/html", "content-length": "300"}
+    mock_resp.encoding = "utf-8"
+    mock_resp.iter_content.return_value = [b"<html><body>" + b"Marche SSI " * 20 + b"</body></html>"]
+    mock_resp.__enter__ = lambda self: self
+    mock_resp.__exit__ = MagicMock(return_value=False)
+
+    with patch("requests.get", return_value=mock_resp):
+        from llm_analyzer import fetch_dce_content
+        result = fetch_dce_content("http://marcheonline.fr:8080/tender/123")
+
+    assert result is not None, (
+        "fetch_dce_content retourne None pour marcheonline.fr:8080 — "
+        "le port n'est pas strippé avant le check whitelist"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Finding #10 — seuil exclusion configurable via env
+# ---------------------------------------------------------------------------
+
+
+def test_exclusion_signal_threshold_configurable():
+    """_EXCLUSION_SIGNAL_THRESHOLD est lu depuis env EXCLUSION_SIGNAL_THRESHOLD."""
+    import llm_analyzer
+
+    assert hasattr(llm_analyzer, "_EXCLUSION_SIGNAL_THRESHOLD"), (
+        "_EXCLUSION_SIGNAL_THRESHOLD absent — le seuil d'exclusion est figé dans le code"
+    )
+    assert isinstance(llm_analyzer._EXCLUSION_SIGNAL_THRESHOLD, int)
+    assert llm_analyzer._EXCLUSION_SIGNAL_THRESHOLD >= 0
