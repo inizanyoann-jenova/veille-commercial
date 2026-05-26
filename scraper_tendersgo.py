@@ -4,7 +4,6 @@ Method: JS-rendered scraping via Playwright avec authentification.
 Credentials: TENDERSGO_EMAIL et TENDERSGO_PASSWORD.
 """
 
-import os
 from datetime import datetime, timezone
 
 from playwright.sync_api import sync_playwright
@@ -42,11 +41,11 @@ def fetch() -> list[dict]:
     Requires TENDERSGO_EMAIL and TENDERSGO_PASSWORD environment variables.
     Each item: name, url, source, date_found + domain-specific fields.
     """
-    email = os.getenv("TENDERSGO_EMAIL", "")
-    password = os.getenv("TENDERSGO_PASSWORD", "")
-
-    if not email or not password:
+    from credential_manager import CredentialManager
+    creds = CredentialManager.get("tendersgo")
+    if not creds:
         return []
+    email, password = creds
 
     results = []
 
