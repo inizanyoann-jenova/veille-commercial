@@ -322,3 +322,103 @@ def test_system_prompt_enforces_date_extraction():
     from llm_analyzer import SYSTEM_PROMPT
 
     assert "IMPÉRATIVEMENT" in SYSTEM_PROMPT or "obligatoire" in SYSTEM_PROMPT.lower()
+
+
+# ---------------------------------------------------------------------------
+# Critique #2 — Thread-safety du singleton Mistral
+# ---------------------------------------------------------------------------
+
+
+def test_mistral_singleton_has_thread_lock():
+    """Un threading.Lock protège le singleton _mistral_client (attribut requis)."""
+    import threading
+    import llm_analyzer
+
+    assert hasattr(llm_analyzer, "_mistral_client_lock"), (
+        "_mistral_client_lock absent de llm_analyzer — le singleton n'est pas thread-safe"
+    )
+    assert isinstance(llm_analyzer._mistral_client_lock, type(threading.Lock())), (
+        "_mistral_client_lock doit être un threading.Lock"
+    )
+
+
+def test_get_mistral_client_thread_safe_no_duplicate_creation(monkeypatch):
+    """Appels concurrents à _get_mistral_client() ne créent qu'un seul client."""
+    import threading
+    import llm_analyzer
+
+    monkeypatch.setenv("MISTRAL_API_KEY", "fake-key-concurrent-test")
+    llm_analyzer._mistral_client = None
+
+    creation_count = [0]
+    original_init = None
+
+    # Patch le constructeur Mistral pour compter les instanciations
+    from mistralai.client import Mistral as _RealMistral
+
+    class CountingMistral(_RealMistral):
+        def __init__(self, **kwargs):
+            creation_count[0] += 1
+            super().__init__(**kwargs)
+
+    monkeypatch.setattr("llm_analyzer.Mistral", CountingMistral, raising=False)
+
+    # Injecter le patch dans le module
+    import mistralai.client as _mc
+    original_cls = _mc.Mistral
+    _mc.Mistral = CountingMistral
+
+    try:
+        results = []
+
+        def get():
+            results.append(llm_analyzer._get_mistral_client())
+
+        threads = [threading.Thread(target=get) for _ in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert creation_count[0] <= 2, (
+            f"Le constructeur Mistral a été appelé {creation_count[0]} fois "
+            f"pour 10 threads concurrents — le singleton n'est pas protégé"
+        )
+        # Tous les threads ont obtenu un client non-None
+        assert all(r is not None for r in results)
+    finally:
+        _mc.Mistral = original_cls
+        llm_analyzer._mistral_client = None
+
+
+def test_reset_mistral_client_thread_safe(monkeypatch):
+    """reset_mistral_client() et _get_mistral_client() sont safe en parallèle."""
+    import threading
+    import llm_analyzer
+
+    monkeypatch.setenv("MISTRAL_API_KEY", "fake-key-reset-safe")
+    llm_analyzer._mistral_client = None
+    errors = []
+
+    def do_get():
+        try:
+            llm_analyzer._get_mistral_client()
+        except Exception as e:
+            errors.append(f"get: {e}")
+
+    def do_reset():
+        try:
+            llm_analyzer.reset_mistral_client()
+        except Exception as e:
+            errors.append(f"reset: {e}")
+
+    threads = [
+        threading.Thread(target=(do_get if i % 2 == 0 else do_reset))
+        for i in range(20)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, f"Exceptions sous accès concurrent : {errors}"
