@@ -1,5 +1,6 @@
 // frontend/src/components/TenderDetail.jsx
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTender, useUpdateStatus, useUpdateSaved } from '../hooks/useTenders'
 
 const STATUTS = ['À qualifier', 'En cours', 'Soumis', 'Gagné', 'Perdu']
@@ -241,19 +242,19 @@ export default function TenderDetail({ tenderId, onClose }) {
 
   if (!tenderId) return null
 
-  return (
-    <>
-      <div
-        className="fixed inset-0 z-40 bg-black/60"
-        onClick={onClose}
-        aria-hidden="true"
-      />
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60"
+      onClick={onClose}
+      aria-hidden="true"
+    >
       <div
         role="dialog"
         aria-label="Fiche marché"
-        className="fixed right-0 top-0 bottom-0 w-[480px] z-50 bg-ocean-panel border-l border-ocean-border overflow-y-auto shadow-xl flex flex-col"
+        className="w-full max-w-[640px] max-h-[88vh] bg-ocean-panel border border-ocean-border rounded-2xl overflow-y-auto shadow-2xl flex flex-col"
+        onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-ocean-border shrink-0 bg-ocean-navy">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ocean-border shrink-0 bg-ocean-navy rounded-t-2xl">
           <span className="font-sans text-sm font-medium text-ocean-muted">Fiche marché</span>
           <button
             onClick={onClose}
@@ -281,6 +282,7 @@ export default function TenderDetail({ tenderId, onClose }) {
           </div>
         )}
       </div>
-    </>
+    </div>,
+    document.body
   )
 }
