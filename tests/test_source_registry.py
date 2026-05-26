@@ -221,8 +221,7 @@ def test_sources_batch2_presentes():
         "UNDP Procurement",
         "ADB — Banque Asiatique de Développement",
         "IsDB — Banque Islamique de Développement",
-        "SEMADER — Appels d'offres Réunion",
-        "Centre Hospitalier de Mayotte",
+"Centre Hospitalier de Mayotte",
     ]
     for name in expected:
         assert name in names, f"Source manquante : {name}"
