@@ -220,7 +220,7 @@ def test_test_credential_playwright_missing_selector():
     assert resp.status_code == 200
     body = resp.json()
     assert body["ok"] is False
-    assert body["message"] == "Champ introuvable — sélecteur CSS à mettre à jour"
+    assert "Champ introuvable" in body["message"] and "#login" in body["message"]
 
 
 def test_test_credential_playwright_no_redirect():
