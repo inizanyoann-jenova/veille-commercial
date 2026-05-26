@@ -62,69 +62,16 @@ function TabButton({ active, onClick, children, badge }) {
 
 // ── Onglet Connexion ──────────────────────────────────────────────────────────
 
-function ConnexionTab() {
-  const { data: sites = [], refetch, isError } = useCredentials()
-  const { mutate: save, isPending: saving } = useSaveCredential()
-  const { mutate: remove, isPending: deleting } = useDeleteCredential()
-  const { mutate: test, isPending: testing } = useTestCredential()
+function statusBadge(status) {
+  if (status === 'configured')
+    return <span className="inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 rounded-full bg-ocean-teal/10 text-ocean-teal font-medium">● Configuré</span>
+  if (status === 'env_override')
+    return <span className="inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 rounded-full bg-ocean-cyan/10 text-ocean-cyan font-medium">● Variable d'env</span>
+  return <span className="inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 rounded-full bg-ocean-coral/10 text-ocean-coral font-medium">● Non configuré</span>
+}
 
-  const [open, setOpen] = useState(null)
-  const [form, setForm] = useState({ email: '', password: '' })
-  const [showPwd, setShowPwd] = useState(false)
-  const [testResult, setTestResult] = useState(null)
-  const [canSave, setCanSave] = useState(false)
-
-  const authenticated = sites.filter((s) => s.has_login_url)
-  const publicSites = sites.filter((s) => !s.has_login_url)
-
-  const openSite = (site) => {
-    if (open === site) { closeSite(); return }
-    setOpen(site)
-    const entry = sites.find((s) => s.site === site)
-    setForm({ email: entry?.email ?? '', password: '' })
-    setShowPwd(false)
-    setTestResult(null)
-    setCanSave(false)
-  }
-
-  const closeSite = () => {
-    setOpen(null)
-    setTestResult(null)
-    setCanSave(false)
-  }
-
-  const handleTest = () => {
-    setTestResult(null)
-    setCanSave(false)
-    test(
-      { site: open, email: form.email, password: form.password },
-      {
-        onSuccess: (data) => { setTestResult(data); setCanSave(data.ok) },
-        onError: () => setTestResult({ ok: false, message: 'Erreur réseau' }),
-      }
-    )
-  }
-
-  const handleSave = () => {
-    save(
-      { site: open, email: form.email, password: form.password },
-      { onSuccess: () => { refetch(); closeSite() } }
-    )
-  }
-
-  const handleDelete = (site) => {
-    remove({ site }, { onSuccess: () => refetch() })
-  }
-
-  const statusBadge = (status) => {
-    if (status === 'configured')
-      return <span className="inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 rounded-full bg-ocean-teal/10 text-ocean-teal font-medium">● Configuré</span>
-    if (status === 'env_override')
-      return <span className="inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 rounded-full bg-ocean-cyan/10 text-ocean-cyan font-medium">● Variable d'env</span>
-    return <span className="inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 rounded-full bg-ocean-coral/10 text-ocean-coral font-medium">● Non configuré</span>
-  }
-
-  const SiteRow = ({ entry }) => (
+function SiteRow({ entry, open, openSite, form, setForm, showPwd, setShowPwd, testResult, canSave, setCanSave, handleTest, handleSave, handleDelete, testing, saving, deleting }) {
+  return (
     <div className="border border-ocean-border rounded-lg overflow-hidden">
       <button
         onClick={() => openSite(entry.site)}
@@ -237,6 +184,61 @@ function ConnexionTab() {
       )}
     </div>
   )
+}
+
+function ConnexionTab() {
+  const { data: sites = [], refetch, isError } = useCredentials()
+  const { mutate: save, isPending: saving } = useSaveCredential()
+  const { mutate: remove, isPending: deleting } = useDeleteCredential()
+  const { mutate: test, isPending: testing } = useTestCredential()
+
+  const [open, setOpen] = useState(null)
+  const [form, setForm] = useState({ email: '', password: '' })
+  const [showPwd, setShowPwd] = useState(false)
+  const [testResult, setTestResult] = useState(null)
+  const [canSave, setCanSave] = useState(false)
+
+  const authenticated = sites.filter((s) => s.has_login_url)
+  const publicSites = sites.filter((s) => !s.has_login_url)
+
+  const openSite = (site) => {
+    if (open === site) { closeSite(); return }
+    setOpen(site)
+    const entry = sites.find((s) => s.site === site)
+    setForm({ email: entry?.email ?? '', password: '' })
+    setShowPwd(false)
+    setTestResult(null)
+    setCanSave(false)
+  }
+
+  const closeSite = () => {
+    setOpen(null)
+    setTestResult(null)
+    setCanSave(false)
+  }
+
+  const handleTest = () => {
+    setTestResult(null)
+    setCanSave(false)
+    test(
+      { site: open, email: form.email, password: form.password },
+      {
+        onSuccess: (data) => { setTestResult(data); setCanSave(data.ok) },
+        onError: () => setTestResult({ ok: false, message: 'Erreur réseau' }),
+      }
+    )
+  }
+
+  const handleSave = () => {
+    save(
+      { site: open, email: form.email, password: form.password },
+      { onSuccess: () => { refetch(); closeSite() } }
+    )
+  }
+
+  const handleDelete = (site) => {
+    remove({ site }, { onSuccess: () => refetch() })
+  }
 
   if (isError) {
     return (
@@ -269,7 +271,25 @@ function ConnexionTab() {
         </h3>
         <div className="space-y-2">
           {authenticated.map((entry) => (
-            <SiteRow key={entry.site} entry={entry} />
+            <SiteRow
+              key={entry.site}
+              entry={entry}
+              open={open}
+              openSite={openSite}
+              form={form}
+              setForm={setForm}
+              showPwd={showPwd}
+              setShowPwd={setShowPwd}
+              testResult={testResult}
+              canSave={canSave}
+              setCanSave={setCanSave}
+              handleTest={handleTest}
+              handleSave={handleSave}
+              handleDelete={handleDelete}
+              testing={testing}
+              saving={saving}
+              deleting={deleting}
+            />
           ))}
           {authenticated.length === 0 && (
             <p className="font-sans text-sm text-ocean-muted italic">Chargement…</p>
@@ -284,7 +304,25 @@ function ConnexionTab() {
           </h3>
           <div className="space-y-2">
             {publicSites.map((entry) => (
-              <SiteRow key={entry.site} entry={entry} />
+              <SiteRow
+                key={entry.site}
+                entry={entry}
+                open={open}
+                openSite={openSite}
+                form={form}
+                setForm={setForm}
+                showPwd={showPwd}
+                setShowPwd={setShowPwd}
+                testResult={testResult}
+                canSave={canSave}
+                setCanSave={setCanSave}
+                handleTest={handleTest}
+                handleSave={handleSave}
+                handleDelete={handleDelete}
+                testing={testing}
+                saving={saving}
+                deleting={deleting}
+              />
             ))}
           </div>
         </div>
@@ -631,48 +669,81 @@ function ScraperStatsTable() {
     )
   }
 
+  // Un scraper est "dormant" s'il a tourné au moins 3 fois avec succès
+  // mais n'a JAMAIS remonté de nouveaux résultats — signe de blocage ou changement de format.
+  const isDormant = (s) => s.runs_ok >= 3 && s.runs_empty >= s.runs_ok
+  const dormantSources = stats.filter(isDormant)
+
   return (
-    <div className="overflow-x-auto rounded-lg border border-ocean-border">
-      <table className="w-full text-xs font-mono">
-        <thead>
-          <tr className="text-ocean-muted uppercase tracking-wider bg-black/20">
-            <th className="text-left px-3 py-2">Source</th>
-            <th className="text-right px-3 py-2">Collectes</th>
-            <th className="text-right px-3 py-2">OK</th>
-            <th className="text-right px-3 py-2">Vides</th>
-            <th className="text-right px-3 py-2">Durée moy.</th>
-            <th className="text-left px-3 py-2">Dernière</th>
-          </tr>
-        </thead>
-        <tbody>
-          {stats.map((s) => {
-            const okRate = s.runs_30j > 0 ? Math.round((s.runs_ok / s.runs_30j) * 100) : 0
-            const rateColor =
-              okRate < 50 ? 'text-ocean-coral' : okRate < 80 ? 'text-ocean-gold' : 'text-ocean-teal'
-            return (
-              <tr key={s.source_name} className="border-t border-ocean-border/50 hover:bg-ocean-cyan/2">
-                <td className="px-3 py-2 text-ocean-text">{s.source_name}</td>
-                <td className="px-3 py-2 text-right text-ocean-muted">{s.runs_30j}</td>
-                <td className={`px-3 py-2 text-right ${rateColor}`}>
-                  {s.runs_ok}{' '}
-                  <span className="text-ocean-muted">({okRate}%)</span>
-                </td>
-                <td className="px-3 py-2 text-right text-ocean-muted">{s.runs_empty}</td>
-                <td className="px-3 py-2 text-right text-ocean-muted">
-                  {s.avg_duration_s != null ? `${s.avg_duration_s}s` : '—'}
-                </td>
-                <td className="px-3 py-2 text-ocean-muted">
-                  {s.last_run_at
-                    ? new Date(s.last_run_at).toLocaleString('fr-FR', {
-                        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
-                      })
-                    : '—'}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+    <div className="space-y-3">
+      {dormantSources.length > 0 && (
+        <div className="flex items-start gap-2 px-3 py-2 rounded-lg border border-orange-500/30 bg-orange-500/8 text-orange-300 text-xs font-sans">
+          <span className="mt-0.5">⚠️</span>
+          <div>
+            <span className="font-semibold">
+              {dormantSources.length} source{dormantSources.length > 1 ? 's' : ''} dormante{dormantSources.length > 1 ? 's' : ''} détectée{dormantSources.length > 1 ? 's' : ''}
+            </span>
+            {' — '}toujours OK techniquement mais 0 nouveau marché remontés.
+            Vérifier si le site a changé de format ou bloque les accès.
+            <div className="mt-1 opacity-80">
+              {dormantSources.map((s) => s.source_name).join(', ')}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="overflow-x-auto rounded-lg border border-ocean-border">
+        <table className="w-full text-xs font-mono">
+          <thead>
+            <tr className="text-ocean-muted uppercase tracking-wider bg-black/20">
+              <th className="text-left px-3 py-2">Source</th>
+              <th className="text-right px-3 py-2">Collectes</th>
+              <th className="text-right px-3 py-2">OK</th>
+              <th className="text-right px-3 py-2">Vides</th>
+              <th className="text-right px-3 py-2">Durée moy.</th>
+              <th className="text-left px-3 py-2">Dernière</th>
+            </tr>
+          </thead>
+          <tbody>
+            {stats.map((s) => {
+              const okRate = s.runs_30j > 0 ? Math.round((s.runs_ok / s.runs_30j) * 100) : 0
+              const rateColor =
+                okRate < 50 ? 'text-ocean-coral' : okRate < 80 ? 'text-ocean-gold' : 'text-ocean-teal'
+              const dormant = isDormant(s)
+              return (
+                <tr
+                  key={s.source_name}
+                  className={`border-t border-ocean-border/50 hover:bg-ocean-cyan/2 ${dormant ? 'bg-orange-500/5' : ''}`}
+                  title={dormant ? 'Source dormante — 0 nouveau marché sur toutes les collectes récentes' : undefined}
+                >
+                  <td className="px-3 py-2 text-ocean-text">
+                    {dormant && <span className="mr-1.5 text-orange-400">⚠️</span>}
+                    {s.source_name}
+                  </td>
+                  <td className="px-3 py-2 text-right text-ocean-muted">{s.runs_30j}</td>
+                  <td className={`px-3 py-2 text-right ${rateColor}`}>
+                    {s.runs_ok}{' '}
+                    <span className="text-ocean-muted">({okRate}%)</span>
+                  </td>
+                  <td className={`px-3 py-2 text-right ${dormant ? 'text-orange-400 font-semibold' : 'text-ocean-muted'}`}>
+                    {s.runs_empty}
+                  </td>
+                  <td className="px-3 py-2 text-right text-ocean-muted">
+                    {s.avg_duration_s != null ? `${s.avg_duration_s}s` : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-ocean-muted">
+                    {s.last_run_at
+                      ? new Date(s.last_run_at).toLocaleString('fr-FR', {
+                          day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                        })
+                      : '—'}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
