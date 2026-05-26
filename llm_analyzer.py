@@ -628,8 +628,8 @@ _LOCAL_CACHE_MAX = 512
 
 
 def _local_analyze(text: str) -> dict:
-    # MD5 non-sécuritaire suffit pour une clé de cache (usedforsecurity=False)
-    text_key = hashlib.md5(text.encode(), usedforsecurity=False).hexdigest()
+    # Clé sur text[:6000] — cohérent avec la troncature dans _local_analyze_impl
+    text_key = hashlib.md5(text[:6000].encode(), usedforsecurity=False).hexdigest()
     now = time.time()
     with _local_cache_lock:
         entry = _local_cache.get(text_key)
@@ -1350,20 +1350,23 @@ def fetch_dce_content(url: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def auto_analyze_pending(db) -> int:
-    """Analyse tous les marchés sans llm_analysis. Moteur local uniquement."""
+def auto_analyze_pending(db, limit: int | None = None) -> int:
+    """Analyse les marchés sans llm_analysis. Moteur local uniquement.
+
+    limit : nombre maximum de tenders traités par appel (None = pas de limite).
+    Passer une valeur pour éviter les chargements massifs en RAM après un reset DB.
+    """
     from sqlalchemy import text as _text
     from models import Tender
 
     # SQLite stocke parfois 'null' (JSON null) au lieu de SQL NULL — on filtre les deux
-    pending = (
-        db.query(Tender)
-        .filter(
-            Tender.is_blacklisted.is_(False),
-            _text("llm_analysis IS NULL OR llm_analysis = 'null'"),
-        )
-        .all()
+    q = db.query(Tender).filter(
+        Tender.is_blacklisted.is_(False),
+        _text("llm_analysis IS NULL OR llm_analysis = 'null'"),
     )
+    if limit is not None:
+        q = q.limit(limit)
+    pending = q.all()
     for t in pending:
         result = _local_analyze(f"{t.title or ''} {t.description or ''}")
         t.llm_analysis = result
@@ -1628,7 +1631,29 @@ def analyze_tender_structured(
         start = raw.find("{")
         end = raw.rfind("}") + 1
         if start == -1 or end == 0:
+            _log.warning(
+                "analyze_tender_structured: réponse non-JSON pour '%s' — fallback None",
+                (title or "")[:60],
+            )
             return None
         return json.loads(raw[start:end])
-    except Exception:
+    except json.JSONDecodeError as exc:
+        _log.warning(
+            "analyze_tender_structured: JSON invalide pour '%s' — %s",
+            (title or "")[:60],
+            str(exc)[:120],
+        )
+        return None
+    except Exception as exc:
+        status = getattr(exc, "status_code", None)
+        if status == 429:
+            _log.warning("analyze_tender_structured: quota API atteint (429) pour '%s'", (title or "")[:60])
+        elif status in (401, 403):
+            _log.warning("analyze_tender_structured: clé API invalide (%s) pour '%s'", status, (title or "")[:60])
+        else:
+            _log.warning(
+                "analyze_tender_structured: erreur inattendue pour '%s' — %s",
+                (title or "")[:60],
+                str(exc)[:200],
+            )
         return None
