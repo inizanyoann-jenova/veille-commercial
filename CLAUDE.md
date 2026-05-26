@@ -85,7 +85,7 @@ Scrapers (scraper_*.py)
 | `database.py` | Engine, session, whitelist migrations, helper queries (`load_urgences`, `load_pipeline_data`, `detect_duplicates`, `clean_obsolete_data`, `reset_tenders_db`, `start_scraper_run`, `finish_scraper_run`) |
 | `source_registry.py` | Source catalog (20+ sources), CRUD, weekly ping, `init_sources()` |
 | `filters.py` | Keyword lists (`INCLUSION_KEYWORDS`, `EXCLUSION_KEYWORDS`) for relevance scoring |
-| `llm_analyzer.py` | Mistral AI tender analysis; `analyze_tender()`, `auto_analyze_pending()`, `auto_analyze_claude()` (reads `LLM_BATCH_SIZE` env), `reset_mistral_client()` |
+| `llm_analyzer.py` | Mistral AI tender analysis; `analyze_tender()`, `auto_analyze_pending(limit=None)`, `auto_analyze_mistral()` (reads `LLM_BATCH_SIZE`, `MISTRAL_DELAY`, `EXCLUSION_SIGNAL_THRESHOLD` env), `reset_mistral_client()`. Aliases: `auto_analyze_claude = auto_analyze_gemini = auto_analyze_mistral` |
 | `score_adaptive.py` | Adaptive scoring trained on GO/NOGO decisions via `ScoreWeight` table |
 | `playwright_base.py` | Generic `login()` helper used by authenticated scrapers |
 | `credential_manager.py` | Fernet-encrypted credentials for authenticated scrapers |
@@ -96,9 +96,9 @@ Scrapers (scraper_*.py)
 
 Each `scraper_*.py` exposes a single `fetch()` function (no db parameter) registered in `source_registry._DEFAULT_SOURCES`. It returns `list[dict]` with keys: `name`, `url`, `source`, `date_found`, plus domain-specific fields. Scrapers using Playwright call `playwright_base.login()` with selectors and credentials from `credential_manager`. All HTTP calls go through `scraper_utils.retry_get()` / `retry_post()`.
 
-Active scrapers: `scraper_boamp`, `scraper_decp`, `scraper_ted`, `scraper_dept974`, `scraper_semader`, `scraper_nukema`, `scraper_marcheonline`, `scraper_marchessecurises`, `scraper_marchespublicsinfo`, `scraper_instao`, `scraper_tendersgo`, `scraper_vaao`, `scraper_afd`, `scraper_devbanks`, `scraper_isdb`, `scraper_permis`, `scraper_presse`, `scraper_chm`.
+Active scrapers: `scraper_boamp`, `scraper_decp`, `scraper_ted`, `scraper_dept974`, `scraper_nukema`, `scraper_marcheonline`, `scraper_marchessecurises`, `scraper_marchespublicsinfo`, `scraper_instao`, `scraper_tendersgo`, `scraper_vaao`, `scraper_afd`, `scraper_devbanks`, `scraper_isdb`, `scraper_permis`, `scraper_presse`, `scraper_chm`.
 
-`POST /api/collect` pipeline: fetch → `_dict_to_tender()` → `insert_if_new()` (rejects if no `publication_date` or already known) → `auto_analyze_pending()` + `auto_analyze_claude()` post-collect. Counter `nb_rejected_no_date` is returned in the response.
+`POST /api/collect` pipeline: fetch → `_dict_to_tender()` → `insert_if_new()` (rejects if no `publication_date` or already known) → `auto_analyze_pending()` + `auto_analyze_mistral()` post-collect. Counter `nb_rejected_no_date` is returned in the response.
 
 ### Database / migrations
 
@@ -134,7 +134,9 @@ DIGEST_SMTP_PASSWORD=...
 DIGEST_TO=...
 DIGEST_HOUR=7                 # Daily digest hour (default 7)
 SCRAPER_WINDOW_DAYS=30        # Fenêtre de collecte BOAMP / insert (défaut 30j)
-LLM_BATCH_SIZE=10             # Nombre de tenders analysés par auto_analyze_claude()
+LLM_BATCH_SIZE=10             # Nombre de tenders analysés par auto_analyze_mistral()
+MISTRAL_DELAY=1.0             # Délai en secondes entre requêtes Mistral (défaut 1.0)
+EXCLUSION_SIGNAL_THRESHOLD=2  # Signal technique min pour ignorer la pénalité exclusion
 ```
 
 Copy `.env.example` to `.env`. La clé Mistral peut aussi être mise à jour à chaud via `POST /api/settings/mistral-key` (appelle `reset_mistral_client()` pour rechargement immédiat).
