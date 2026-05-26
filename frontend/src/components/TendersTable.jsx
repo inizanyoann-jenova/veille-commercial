@@ -213,8 +213,22 @@ export default function TendersTable({
                   tabIndex={onRowClick ? 0 : undefined}
                   onKeyDown={onRowClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') onRowClick(t.id) } : undefined}
                 >
-                  <td className="px-4 py-3 font-sans font-medium text-ocean-text max-w-xs truncate">
-                    {t.title}
+                  <td className="px-4 py-3 font-sans font-medium text-ocean-text max-w-xs">
+                    <div className="flex items-start gap-1.5">
+                      <span className="truncate">{t.title}</span>
+                      {t.url && (
+                        <a
+                          href={t.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          title="Voir l'annonce"
+                          className="shrink-0 text-ocean-cyan hover:text-ocean-teal transition-colors mt-0.5"
+                        >
+                          ↗
+                        </a>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 font-sans text-xs text-ocean-text/80">{t.domaine || '—'}</td>
                   <td className="px-4 py-3 font-sans text-xs text-ocean-text/80">{t.territoire || '—'}</td>
@@ -240,22 +254,7 @@ export default function TendersTable({
                     <GonogoBadge gonogo={t.gonogo} />
                   </td>
                   <td className="px-4 py-3 font-sans text-xs text-ocean-text/80">{t.status}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-ocean-muted">
-                    {t.url ? (
-                      <a
-                        href={t.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-ocean-cyan hover:text-ocean-teal underline underline-offset-2 transition-colors"
-                        aria-label={`Voir l'annonce ${t.source}`}
-                      >
-                        {t.source}
-                      </a>
-                    ) : (
-                      t.source
-                    )}
-                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-ocean-muted">{t.source}</td>
                   <td className="px-4 py-3">
                     <IaBadge
                       tender={t}
