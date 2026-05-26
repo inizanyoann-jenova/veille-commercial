@@ -1,6 +1,6 @@
 import logging as _logging
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, or_, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
 from models import Base  # noqa: Credential enregistre la table credentials
@@ -340,11 +340,13 @@ def clean_obsolete_data(db, days: int = 30) -> int:
     - Ne touche JAMAIS les tenders avec statut Soumis/Gagné/Perdu/Archivé
     - Ne touche JAMAIS les tenders blacklistés
     - Ne touche JAMAIS les tenders sans publication_date
+    - Ne touche JAMAIS les tenders dont la deadline est dans le futur
     - Retourne le nombre de tenders archivés
     """
     from models import Tender
 
-    cutoff = _dt.now(_tz.utc).replace(tzinfo=None) - _td(days=days)
+    today = _dt.now(_tz.utc).replace(tzinfo=None)
+    cutoff = today - _td(days=days)
 
     tenders = (
         db.query(Tender)
@@ -353,6 +355,8 @@ def clean_obsolete_data(db, days: int = 30) -> int:
             Tender.is_blacklisted.is_(False),
             Tender.publication_date.is_not(None),
             Tender.publication_date < cutoff,
+            # Ne pas archiver si la deadline est encore dans le futur
+            or_(Tender.deadline.is_(None), Tender.deadline < today),
         )
         .all()
     )
