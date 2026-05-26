@@ -21,9 +21,9 @@ _NEXT = "a.suivant, a[title='Suivant'], .page-suivante"
 _MAX_PAGES = 5
 
 _LOGIN_SELECTORS = {
-    "email": "input[name='login'], input[type='email'], #login",
-    "password": "input[name='pass'], input[type='password'], #password",
-    "submit": "input[type='submit'], button[type='submit']",
+    "email": "input[name='log']",
+    "password": "input[name='pass']",
+    "submit": "input[type='image'][name='submit']",
 }
 
 # Filtre DEF OI appliqué post-extraction (URL de recherche générique sans filtre géo)
@@ -86,7 +86,9 @@ def _login(page, login: str, password: str) -> bool:
     try:
         page.goto(_LOGIN_URL, timeout=30_000)
         page.wait_for_load_state("networkidle", timeout=30_000)
+        page.click(_LOGIN_SELECTORS["email"])
         page.fill(_LOGIN_SELECTORS["email"], login)
+        page.click(_LOGIN_SELECTORS["password"])
         page.fill(_LOGIN_SELECTORS["password"], password)
         page.click(_LOGIN_SELECTORS["submit"])
         page.wait_for_load_state("networkidle", timeout=20_000)
