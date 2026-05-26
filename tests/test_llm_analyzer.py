@@ -422,3 +422,90 @@ def test_reset_mistral_client_thread_safe(monkeypatch):
         t.join()
 
     assert not errors, f"Exceptions sous accès concurrent : {errors}"
+
+
+# ---------------------------------------------------------------------------
+# Finding #3 — Clé de cache incohérente avec la troncature à 6000 chars
+# ---------------------------------------------------------------------------
+
+
+def test_local_cache_key_uses_truncated_text():
+    """Deux textes identiques sur [:6000] partagent le cache — _local_analyze_impl appelé une seule fois."""
+    import llm_analyzer
+    from unittest.mock import patch
+
+    base = "SSI incendie alarme détecteur La Réunion 974 " * 134  # ~6000 chars
+    text_a = base[:6000] + " SUFFIXE_UNIQUEMENT_A_texte_tres_long"
+    text_b = base[:6000] + " SUFFIXE_COMPLETEMENT_DIFFERENT_B_encore_plus_long"
+
+    assert text_a[:6000] == text_b[:6000], "Précondition : les 6000 premiers chars doivent être identiques"
+    assert text_a != text_b, "Précondition : les textes complets doivent différer"
+
+    with llm_analyzer._local_cache_lock:
+        llm_analyzer._local_cache.clear()
+
+    call_count = [0]
+    original_impl = llm_analyzer._local_analyze_impl
+
+    def counting_impl(text):
+        call_count[0] += 1
+        return original_impl(text)
+
+    with patch.object(llm_analyzer, "_local_analyze_impl", counting_impl):
+        llm_analyzer._local_analyze(text_a)
+        llm_analyzer._local_analyze(text_b)
+
+    assert call_count[0] == 1, (
+        f"_local_analyze_impl appelé {call_count[0]} fois pour 2 textes "
+        f"identiques sur les 6000 premiers chars — clé de cache sur texte complet au lieu de [:6000]"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Finding #4 — auto_analyze_pending() sans LIMIT mémoire
+# ---------------------------------------------------------------------------
+
+
+def test_auto_analyze_pending_accepts_limit_parameter():
+    """auto_analyze_pending() expose un paramètre limit pour limiter la charge mémoire."""
+    import inspect
+    from llm_analyzer import auto_analyze_pending
+
+    sig = inspect.signature(auto_analyze_pending)
+    assert "limit" in sig.parameters, (
+        "auto_analyze_pending() n'a pas de paramètre 'limit' — "
+        "charge tous les tenders en RAM sans filet de sécurité"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Finding #5 — analyze_tender_structured() : échecs silencieux sans log
+# ---------------------------------------------------------------------------
+
+
+def test_analyze_tender_structured_logs_warning_on_exception(monkeypatch, caplog):
+    """analyze_tender_structured() log un warning quand Mistral lève une exception."""
+    import logging
+    import llm_analyzer
+    from unittest.mock import MagicMock
+
+    monkeypatch.setenv("MISTRAL_API_KEY", "fake-key-log-test")
+
+    mock_client = MagicMock()
+    mock_client.chat.complete.side_effect = Exception("Simulated network error")
+    monkeypatch.setattr(llm_analyzer, "_get_mistral_client", lambda: mock_client)
+
+    with caplog.at_level(logging.WARNING, logger="llm_analyzer"):
+        result = llm_analyzer.analyze_tender_structured(
+            "Installation SSI ERP",
+            "Installation d'un système de sécurité incendie complet dans un ERP de type J.",
+        )
+
+    assert result is None
+    assert caplog.records, (
+        "Aucun log émis lors d'une exception dans analyze_tender_structured — "
+        "les échecs sont invisibles en production"
+    )
+    assert any("analyze_tender_structured" in r.message for r in caplog.records), (
+        "Le log doit mentionner 'analyze_tender_structured' pour être identifiable"
+    )
