@@ -14,7 +14,7 @@ const PAGE_TITLES = {
 
 export default function Layout() {
   const { pathname } = useLocation()
-  const title = PAGE_TITLES[pathname] ?? 'DEF OI'
+  const title = PAGE_TITLES[pathname] ?? 'ATEXIA'
   const today = new Date().toLocaleDateString('fr-FR', {
     day: 'numeric', month: 'long', year: 'numeric',
   })
