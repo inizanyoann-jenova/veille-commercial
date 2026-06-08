@@ -1,3 +1,4 @@
+from datetime import timezone
 """
 UNGM (United Nations Global Marketplace) — appels d'offres Océan Indien.
 Source globale : filtrée par mots-clés SSI/incendie puis par pays OI.
@@ -150,7 +151,7 @@ def _normalise(notice: dict, title: str, description: str, uid: str) -> dict:
         "name": title,
         "url": url,
         "source": "UNGM",
-        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "date_found": datetime.now(timezone.utc).replace(tzinfo=None).date().isoformat(),
         "publication_date": _to_iso(
             _pick("PublishedOn", "publishedOn", "PublicationDate")
         ),
