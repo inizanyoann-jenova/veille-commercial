@@ -1,5 +1,6 @@
+from datetime import timezone
 """
-Module de health check — DEF OI Veille Commerciale.
+Module de health check — ATEXIA Veille Commerciale.
 
 Vérifie pour chaque source :
   1. Code HTTP 200
@@ -98,7 +99,7 @@ _SOURCE_MARKERS: list[dict] = [
     },
 ]
 
-_HEADERS = {"User-Agent": "DEF-OI-HealthCheck/1.0"}
+_HEADERS = {"User-Agent": "ATEXIA-HealthCheck/1.0"}
 
 
 def check_source(
