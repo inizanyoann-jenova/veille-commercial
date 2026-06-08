@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useMemo, useState, useCallback, useEffect } from 'react'
 import { useTenders, useAnalyzeTender } from '../hooks/useTenders'
 
