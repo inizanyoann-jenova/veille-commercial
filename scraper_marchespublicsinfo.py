@@ -1,3 +1,4 @@
+from datetime import timezone
 """
 MarchésPublics.info (AW Solutions) — appels d'offres en cours
 La Réunion (974) et Mayotte (976).
@@ -143,7 +144,7 @@ def _normalise(raw: dict) -> dict:
         "name": raw.get("name", ""),
         "url": raw.get("url", _LIST_URL),
         "source": "Marchés-Publics.info",
-        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "date_found": datetime.now(timezone.utc).replace(tzinfo=None).date().isoformat(),
         "publication_date": publication_date,
         "deadline": deadline,
         "description": raw.get("organisme", ""),
