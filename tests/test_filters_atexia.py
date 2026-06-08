@@ -49,6 +49,7 @@ def test_acteur_local_shlmr_est_pertinent():
     """SHLMR dans le texte + mot construction → potentiel SSI implicite."""
     result, tags = classify_relevance("Construction logements sociaux SHLMR Saint-Denis Réunion")
     assert result is True
+    assert "Potentiel SSI implicite" in tags
 
 
 def test_relamping_est_pertinent():
