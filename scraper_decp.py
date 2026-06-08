@@ -1,3 +1,4 @@
+from datetime import timezone
 """
 DECP (Données Essentielles de la Commande Publique) — marchés notifiés
 La Réunion (974) et Mayotte (976) : SSI, CPV sécurité, construction, ERP.
@@ -89,7 +90,7 @@ def fetch() -> list[dict]:
     results = []
     # Dataset publication lag ~6 weeks — use 90 days minimum to avoid missing recent data
     days_back = int(os.getenv("DECP_WINDOW_DAYS", "90"))
-    date_min = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime(
+    date_min = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days_back)).strftime(
         "%Y-%m-%d"
     )
     where = (
@@ -163,7 +164,7 @@ def _normalise(raw: dict) -> dict:
             else "https://data.economie.gouv.fr"
         ),
         "source": "DECP",
-        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "date_found": datetime.now(timezone.utc).replace(tzinfo=None).date().isoformat(),
         "publication_date": publication_date,
         "deadline": deadline,
         "acheteur": acheteur,
