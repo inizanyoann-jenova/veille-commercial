@@ -1,3 +1,4 @@
+from datetime import timezone
 """
 AFD (Agence Française de Développement) — projets actifs dans les pays
 de l'Océan Indien : Madagascar, Maurice, Comores, La Réunion, Mayotte.
@@ -55,7 +56,7 @@ def fetch() -> list[dict]:
     """
     results = []
     days_back = int(os.getenv("SCRAPER_WINDOW_DAYS", "30"))
-    date_min = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime(
+    date_min = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days_back)).strftime(
         "%Y-%m-%d"
     )
 
@@ -109,7 +110,7 @@ def _normalise(raw: dict, pays_label: str = "") -> dict:
         "name": title,
         "url": f"https://www.afd.fr/fr/carte-des-projets?query={raw_id}",
         "source": "AFD",
-        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "date_found": datetime.now(timezone.utc).replace(tzinfo=None).date().isoformat(),
         "pays": pays_label,
         "secteur": secteur,
         "publication_date": pub_date,
