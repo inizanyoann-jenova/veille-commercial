@@ -1,3 +1,4 @@
+from datetime import timezone
 """
 CHM (Centre Hospitalier de Mayotte) — appels d'offres.
 Method: JS-rendered scraping via Playwright (site Drupal dynamique).
@@ -94,7 +95,7 @@ def _normalise(raw: dict) -> dict:
         "name": raw.get("name", ""),
         "url": raw.get("url", _URL),
         "source": "CHM Mayotte",
-        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "date_found": datetime.now(timezone.utc).replace(tzinfo=None).date().isoformat(),
         "publication_date": publication_date,
         "deadline": "",
         "description": raw.get("description", ""),
