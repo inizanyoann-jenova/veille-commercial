@@ -67,18 +67,6 @@ function Table({ headers, rows }) {
   )
 }
 
-function Block({ icon, title, children }) {
-  return (
-    <div className="bg-ocean-panel border border-ocean-border rounded-xl p-4 space-y-2">
-      <div className="flex items-center gap-2 mb-1">
-        <span className="text-base">{icon}</span>
-        <span className="font-sans text-sm font-semibold text-ocean-text">{title}</span>
-      </div>
-      {children}
-    </div>
-  )
-}
-
 function KeywordGroup({ title, keywords }) {
   return (
     <div className="space-y-1.5">
@@ -150,7 +138,7 @@ export default function Guide() {
             {
               n: '4',
               title: 'Score initial (50 ou 0)',
-              desc: "À l'insertion, le système applique le filtre par mots-clés (voir section ci-dessous). Si le marché est pertinent pour DEF OI, relevance_score = 50. Sinon = 0. Ce score provisoire sera écrasé par Mistral si une clé est configurée.",
+              desc: "À l'insertion, le système applique le filtre par mots-clés (voir section ci-dessous). Si le marché est pertinent pour ATEXIA, relevance_score = 50. Sinon = 0. Ce score provisoire sera écrasé par Mistral si une clé est configurée.",
             },
             {
               n: '5',
@@ -193,7 +181,7 @@ export default function Guide() {
         <H2>Comment fonctionne la détection des marchés</H2>
         <P>
           Avant même d'attribuer un score, le système doit décider si un marché collecté est
-          potentiellement pertinent pour DEF OI. Ce filtrage se fait en deux passes successives.
+          potentiellement pertinent pour ATEXIA. Ce filtrage se fait en deux passes successives.
         </P>
 
         <H3>Passe 1 — Exclusions absolues</H3>
@@ -207,9 +195,9 @@ export default function Guide() {
         </div>
         <P>Ces exclusions évitent les faux positifs évidents (gardiennage, sécurité humaine, fournitures scolaires, etc.).</P>
 
-        <H3>Passe 2 — Mots-clés d'inclusion (125 termes)</H3>
+        <H3>Passe 2 — Mots-clés d'inclusion (160 termes)</H3>
         <P>
-          Si le marché n'est pas exclu, le système cherche l'un des 125 mots-clés métier DEF OI.
+          Si le marché n'est pas exclu, le système cherche l'un des 160 mots-clés métier ATEXIA.
           Un seul match suffit pour qualifier le marché comme pertinent.
         </P>
         <div className="space-y-4 mb-4">
@@ -243,8 +231,8 @@ export default function Guide() {
           tag <Chip color="gold">Potentiel SSI implicite</Chip>. Ces bâtiments ont une obligation réglementaire SSI/CMSI.
         </P>
         <P>
-          Tout projet de construction dans le <strong>974 ou 976</strong> (La Réunion ou Mayotte) est également
-          conservé même sans ERP identifié, car DEF OI est le principal opérateur local qualifié.
+          Tout projet de construction dans le <strong>974</strong> (La Réunion) est également
+          conservé même sans ERP identifié, car ATEXIA est le principal opérateur local qualifié.
         </P>
       </section>
 
@@ -322,7 +310,7 @@ export default function Guide() {
           </Li>
           <Li>
             Plus vous enregistrez de résultats (Gagné / Perdu), plus le score adaptatif devient pertinent
-            pour votre activité spécifique à La Réunion et Mayotte.
+            pour votre activité spécifique à La Réunion.
           </Li>
         </ul>
 
@@ -336,7 +324,7 @@ export default function Guide() {
           headers={['Composante', 'Max', 'Ce que ça mesure']}
           rows={[
             ['Pertinence métier', '45', "SSI direct = 45 · CMSI/Vidéo = 40 · Courants faibles = 30 · Signal implicite = 5"],
-            ['Proximité géographique', '30', "La Réunion / Mayotte = 30 · Madagascar / Maurice = 22 · Comores = 18 · France = 10"],
+            ['Proximité géographique', '30', "La Réunion = 30 · Madagascar / Maurice = 22 · Comores = 18 · France = 10"],
             ['Mots-clés dans le titre', '15', "3+ mots-clés métier dans le titre = 15 · 2 = 10 · 1 = 6 · aucun = 0"],
             ['Maintenance / Récurrence', '10', "10 si le marché est identifié comme un contrat de maintenance, sinon 0"],
           ]}
@@ -366,7 +354,7 @@ export default function Guide() {
             ['Type acheteur', 'Collectivité, établissement de santé, bailleur social, entreprise privée…'],
             ['Niveau de concurrence', 'Estimation du nombre et type de concurrents probables sur ce marché.'],
             ['Concurrents nommés', 'Marques ou entreprises citées dans le DCE (Notifier, Hikvision, Tyco…).'],
-            ['Recommandation', "GO / NON — jugement global de Mistral sur l'opportunité pour DEF OI."],
+            ['Recommandation', "GO / NON — jugement global de Mistral sur l'opportunité pour ATEXIA."],
             ['Justification', 'Explication synthétique du raisonnement IA.'],
           ]}
         />
@@ -412,7 +400,7 @@ export default function Guide() {
           rows={[
             ['Titre', 'Intitulé du marché. Cliquez sur la ligne pour ouvrir la fiche détail.'],
             ['Domaine', 'SSI, CMSI, Vidéosurveillance, Courants faibles — détecté automatiquement dans le titre.'],
-            ['Territoire', 'La Réunion, Mayotte, France métropole, International, etc.'],
+            ['Territoire', 'La Réunion, France métropole, International, etc.'],
             ['Deadline', "Date limite de remise de l'offre."],
             ['Score', 'Note de pertinence de 0 à 100. Provisoire (50) avant analyse IA, définitif après.'],
             ['GO/NO-GO', '🟢 GO ≥ 65 · 🟡 Étudier 35–64 · 🔴 Passer < 35'],
@@ -513,7 +501,7 @@ export default function Guide() {
           <Li><strong>CA gagné</strong> — somme des montants des marchés remportés.</Li>
           <Li><strong>CA pipeline</strong> — somme des montants En cours + Soumis (potentiel commercial).</Li>
           <Li><strong>Publications / semaine</strong> — histogramme des 30 dernières semaines.</Li>
-          <Li><strong>Par territoire</strong> — donut La Réunion / Mayotte / autres.</Li>
+          <Li><strong>Par territoire</strong> — donut La Réunion / autres.</Li>
           <Li><strong>Par domaine</strong> — SSI, CMSI, Vidéo, Courants faibles.</Li>
           <Li><strong>Top 5 sources</strong> — les plateformes qui génèrent le plus de marchés pertinents.</Li>
         </ul>
@@ -579,7 +567,7 @@ export default function Guide() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {[
             { cat: '🏛️ Marchés publics France', sources: ['BOAMP', 'DECP', 'TED (Europe)', 'Marchés Publics Info', 'Marchés Sécurisés', 'Marché Online'] },
-            { cat: '🏝️ Sources locales Océan Indien', sources: ['Département 974', 'NUKEMA', 'VAAO', 'CHM (Mayotte)', 'Instao', 'Tenders Go'] },
+            { cat: '🏝️ Sources locales Océan Indien', sources: ['Département 974', 'NUKEMA', 'VAAO', 'Instao', 'Tenders Go'] },
             { cat: '🌍 Banques de développement', sources: ['AFD', 'Banque Mondiale / IDA', 'BID (Amériques)', 'ISDB (islamique)'] },
             { cat: '🏗️ Signaux privés', sources: ['Permis de construire', 'Presse économique locale'] },
           ].map(({ cat, sources }) => (
