@@ -1,3 +1,4 @@
+from datetime import timezone
 import re
 from collections import Counter
 from datetime import datetime, timedelta
@@ -56,7 +57,7 @@ def _age_weight(tender) -> float:
     dt = getattr(tender, "date_extraction", None)
     if dt is None:
         return 1.0
-    days_old = (datetime.utcnow() - dt).days
+    days_old = (datetime.now(timezone.utc).replace(tzinfo=None) - dt).days
     return 0.5 if days_old > 180 else 1.0
 
 
@@ -121,7 +122,7 @@ def recompute_adaptive_scores(db=None) -> int:
                 weights[token] = (freq_go, freq_nogo)
 
         # Persister les poids
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         for token, (wgo, wnogo) in weights.items():
             sw = db.query(ScoreWeight).filter(ScoreWeight.keyword == token).first()
             if sw:
