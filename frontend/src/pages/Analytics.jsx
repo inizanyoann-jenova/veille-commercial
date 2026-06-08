@@ -5,7 +5,7 @@ import {
 import { useChartData, useKpisCa } from '../hooks/useTenders'
 
 const COLORS_TERRITOIRE = ['#00c8ff', '#00e5c0', '#ff6b6b', '#ffd700', 'rgba(150,200,240,0.4)']
-const COULEUR_DEF = '#00c8ff'
+const COULEUR_DEF = '#0057B8'
 
 function getWeekLabel(date) {
   const d = new Date(date)
