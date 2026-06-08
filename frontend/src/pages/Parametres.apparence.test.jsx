@@ -23,7 +23,7 @@ vi.mock('../hooks/useTenders', () => ({
 vi.mock('../utils/theme', () => ({
   THEME_KEY: 'theme-colors',
   BRIGHTNESS_KEY: 'app-brightness',
-  DEFAULTS: { deep: '4 13 26', cyan: '0 200 255', coral: '255 107 107', text: '221 238 255' },
+  DEFAULTS: { deep: '0 20 65', cyan: '0 87 184', coral: '227 6 19', text: '221 230 255' },
   DEFAULT_BRIGHTNESS: 1.0,
   hexToRgbString: (hex) => {
     const r = parseInt(hex.slice(1, 3), 16)
@@ -70,14 +70,14 @@ describe('Parametres — onglet Apparence', () => {
   it('affiche les boutons Appliquer et Réinitialiser', () => {
     render(<Parametres />, { wrapper: Wrapper })
     fireEvent.click(screen.getByText(/Apparence/i))
-    expect(screen.getByRole('button', { name: /appliquer/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /sauvegarder/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /réinitialiser/i })).toBeInTheDocument()
   })
 
   it('sauvegarde les couleurs dans localStorage au clic sur Appliquer', () => {
     render(<Parametres />, { wrapper: Wrapper })
     fireEvent.click(screen.getByText(/Apparence/i))
-    fireEvent.click(screen.getByRole('button', { name: /appliquer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /sauvegarder/i }))
     const saved = localStorage.getItem('theme-colors')
     expect(saved).not.toBeNull()
     const parsed = JSON.parse(saved)
@@ -93,7 +93,7 @@ describe('Parametres — onglet Apparence', () => {
     fireEvent.click(screen.getByText(/Apparence/i))
     fireEvent.click(screen.getByRole('button', { name: /réinitialiser/i }))
     expect(localStorage.getItem('theme-colors')).toBeNull()
-    expect(applyTheme).toHaveBeenCalledWith({ deep: '4 13 26', cyan: '0 200 255', coral: '255 107 107', text: '221 238 255' })
+    expect(applyTheme).toHaveBeenCalledWith({ deep: '0 20 65', cyan: '0 87 184', coral: '227 6 19', text: '221 230 255' })
   })
 
   it('affiche le slider de luminosité', () => {
@@ -115,7 +115,7 @@ describe('Parametres — onglet Apparence', () => {
     fireEvent.click(screen.getByText(/Apparence/i))
     const slider = screen.getByRole('slider', { name: /luminosité/i })
     fireEvent.change(slider, { target: { value: '1.5' } })
-    fireEvent.click(screen.getByRole('button', { name: /appliquer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /sauvegarder/i }))
     expect(localStorage.getItem('app-brightness')).toBe('1.5')
   })
 
