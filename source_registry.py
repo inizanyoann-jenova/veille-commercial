@@ -1,3 +1,4 @@
+from datetime import timezone
 from models import Source  # noqa: F401  # re-export — `from source_registry import Source` fonctionne toujours
 import requests
 from datetime import datetime as _dt_src, timezone as _tz_src
@@ -178,15 +179,6 @@ _DEFAULT_SOURCES = [
         "is_manual": False,
         "display_order": 26,
     },
-    {
-        "name": "Centre Hospitalier de Mayotte",
-        "url": "https://www.chm-mayotte.fr/appels-d-offres",
-        "category": "Public",
-        "scraper_module": "scraper_chm",
-        "scraper_func": "fetch",
-        "is_manual": False,
-        "display_order": 27,
-    },
     # ── Manuels (accès guidé) ─────────────────────────────────────────────────
     {
         "name": "PLACE — Portail commandes publiques",
@@ -215,13 +207,6 @@ _DEFAULT_SOURCES = [
         "category": "Privé",
         "is_manual": True,
         "display_order": 43,
-    },
-    {
-        "name": "Deepbloo",
-        "url": "https://www.deepbloo.com",
-        "category": "International",
-        "is_manual": True,
-        "display_order": 50,
     },
     {
         "name": "DG Market",
@@ -259,33 +244,119 @@ _DEFAULT_SOURCES = [
         "is_manual": True,
         "display_order": 34,
     },
+    # ── Agrégateurs freemium ──────────────────────────────────────────────────
     {
-        "name": "Département de Mayotte — Marchés",
-        "url": "https://www.departement976.fr/appels-d-offres",
+        "name": "e-marchespublics.com",
+        "url": "https://www.e-marchespublics.com",
         "category": "Public",
         "is_manual": True,
-        "display_order": 35,
+        "display_order": 60,
+        "notes": "Freemium — important en volume, couvre les acheteurs de La Réunion. Compte gratuit pour les alertes.",
     },
     {
-        "name": "CADEMA — Marchés publics",
-        "url": "https://www.cadema.yt/appels-d-offres",
+        "name": "J360",
+        "url": "https://www.j360.info",
         "category": "Public",
         "is_manual": True,
-        "display_order": 36,
+        "display_order": 61,
+        "notes": "Freemium — réseau social professionnel de la commande publique. Veille cartographiée par mots-clés.",
     },
     {
-        "name": "ARMP Madagascar",
-        "url": "https://www.armp.mg/appels-offres",
+        "name": "Bidding Source",
+        "url": "https://www.biddingsource.com",
         "category": "International",
         "is_manual": True,
-        "display_order": 37,
+        "display_order": 62,
+        "notes": "Freemium — bonne déclinaison des flux français et ultra-marins.",
+    },
+    # ── Agrégateurs premium / experts ────────────────────────────────────────
+    {
+        "name": "Vecteur Plus",
+        "url": "https://www.vecteurplus.com",
+        "category": "Privé",
+        "is_manual": True,
+        "display_order": 70,
+        "notes": "Premium — leader BTP et second œuvre technique. Détecte marchés privés et publics, analyses amont.",
     },
     {
-        "name": "CPB Mauritius — Procurement",
-        "url": "https://procurement.govmu.org",
+        "name": "Libel",
+        "url": "https://www.libel.fr",
+        "category": "Privé",
+        "is_manual": True,
+        "display_order": 71,
+        "notes": "Premium — centralisation exhaustive web + presse locale. IA pour analyser les DCE.",
+    },
+    {
+        "name": "Explore",
+        "url": "https://www.explore.fr",
+        "category": "Privé",
+        "is_manual": True,
+        "display_order": 72,
+        "notes": "Premium — cartographie projets immobiliers et d'aménagement avant la sortie officielle de l'AO.",
+    },
+    {
+        "name": "DoubleTrade",
+        "url": "https://www.doubletrade.com",
+        "category": "Privé",
+        "is_manual": True,
+        "display_order": 73,
+        "notes": "Premium — Business Intelligence marchés publics et privés, excellents filtres de tri.",
+    },
+    {
+        "name": "Deepbloo",
+        "url": "https://www.deepbloo.com",
         "category": "International",
         "is_manual": True,
-        "display_order": 38,
+        "display_order": 74,
+        "notes": "Premium — spécialisé énergie, électricité, infrastructures de réseaux. Idéal pour ATEXIA.",
+    },
+    {
+        "name": "Wanao",
+        "url": "https://www.wanao.com",
+        "category": "Privé",
+        "is_manual": True,
+        "display_order": 75,
+        "notes": "Premium — veille automatique avec segmentation sectorielle très fine.",
+    },
+    {
+        "name": "Klekoon",
+        "url": "https://www.klekoon.com",
+        "category": "Privé",
+        "is_manual": True,
+        "display_order": 76,
+        "notes": "Premium — veille payante + plateforme d'envoi de candidatures sécurisées.",
+    },
+    {
+        "name": "MPF — Marchés Publics France",
+        "url": "https://www.mpfrance.fr",
+        "category": "Public",
+        "is_manual": True,
+        "display_order": 77,
+        "notes": "Premium — plateforme EASY, alertes dédoublonnées avec analyse rapide du DCE.",
+    },
+    {
+        "name": "Centrale des Marchés",
+        "url": "https://www.centraledesmarches.com",
+        "category": "Public",
+        "is_manual": True,
+        "display_order": 78,
+        "notes": "Premium — détection et envoi ciblé d'opportunités d'affaires publiques.",
+    },
+    {
+        "name": "First AO",
+        "url": "https://www.firstao-appel-offre.fr",
+        "category": "Public",
+        "is_manual": True,
+        "display_order": 79,
+        "notes": "Premium — prospection commerciale via la commande publique.",
+    },
+    {
+        "name": "TendersPage",
+        "url": "https://www.tenderspage.com",
+        "category": "International",
+        "is_manual": True,
+        "display_order": 80,
+        "notes": "Premium — un des plus grands moteurs de recherche mondiaux, couverture outre-mer.",
     },
     # ── Banques de développement — OI ────────────────────────────────────────
     {
@@ -350,7 +421,7 @@ def init_sources(db) -> None:
         "fetch_vaao_tenders", "fetch_marcheonline_tenders", "fetch_dept974_tenders",
         "fetch_nukema_tenders", "fetch_marchespublicsinfo_tenders",
         "fetch_marchessecurises_tenders", "fetch_instao_tenders", "fetch_tendersgo_tenders",
-        "fetch_chm_tenders", "fetch_isdb_tenders",
+        "fetch_isdb_tenders",
     }
     (
         db.query(Source)
@@ -429,7 +500,7 @@ def _ping_source(db, source) -> bool:
             source.url,
             timeout=8,
             allow_redirects=True,
-            headers={"User-Agent": "DEF-OI-Monitor/1.0"},
+            headers={"User-Agent": "ATEXIA-Monitor/1.0"},
         )
         ok = resp.status_code < 400
     except Exception:
