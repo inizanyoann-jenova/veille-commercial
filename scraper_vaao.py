@@ -1,3 +1,4 @@
+from datetime import timezone
 """
 VAAO — appels d'offres La Réunion et Mayotte.
 Method: JS-rendered scraping via Playwright + login requis.
@@ -135,7 +136,7 @@ def _normalise(raw: dict) -> dict:
         "name": raw.get("name", ""),
         "url": raw.get("url", _BASE),
         "source": "VAAO",
-        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "date_found": datetime.now(timezone.utc).replace(tzinfo=None).date().isoformat(),
         "publication_date": publication_date,
         "deadline": deadline,
         "description": raw.get("description", ""),
