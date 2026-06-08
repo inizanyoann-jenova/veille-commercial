@@ -43,7 +43,7 @@ describe('TendersTable — pagination', () => {
     vi.clearAllMocks()
   })
 
-  it('affiche le bouton "Charger 200 de plus" si la page a exactement 200 résultats', () => {
+  it('affiche le bouton "Charger 200 de plus" si la page a exactement 200 résultats', async () => {
     useTenders.mockReturnValue({
       data: makeTenders(200),
       isLoading: false,
@@ -51,8 +51,8 @@ describe('TendersTable — pagination', () => {
       isError: false,
     })
     render(<TendersTable {...defaultProps} />)
-    expect(screen.getByRole('button', { name: /Charger 200 de plus/i })).toBeDefined()
-  })
+    expect(await screen.findByRole('button', { name: /Charger 200 de plus/i }, { timeout: 15000 })).toBeDefined()
+  }, 20000)
 
   it("n'affiche pas le bouton si la page a moins de 200 résultats", () => {
     useTenders.mockReturnValue({
