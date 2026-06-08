@@ -1,3 +1,4 @@
+from datetime import timezone
 """
 Banque Mondiale — projets actifs à Madagascar (MG), Maurice (MU), Comores (KM).
 Method: REST API (World Bank Projects API v2).
@@ -62,7 +63,7 @@ def fetch() -> list[dict]:
     Each item: name, url, source, date_found + domain-specific fields.
     """
     days_back = int(os.getenv("SCRAPER_WINDOW_DAYS", "30"))
-    date_min = datetime.now(timezone.utc) - timedelta(days=days_back)
+    date_min = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days_back)
     results = []
 
     for code, country_name in COUNTRIES.items():
@@ -139,7 +140,7 @@ def _normalise(proj: dict, country_name: str) -> dict:
         "name": proj.get("project_name") or f"Projet BM {proj_id}",
         "url": f"https://projects.worldbank.org/en/projects-operations/project-detail/{proj_id}",
         "source": "Banque Mondiale",
-        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "date_found": datetime.now(timezone.utc).replace(tzinfo=None).date().isoformat(),
         "publication_date": pub_date,
         "deadline": _to_iso(proj.get("closingdate")),
         "pays": country_name,
