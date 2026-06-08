@@ -121,8 +121,8 @@ def test_collect_critical_log_on_scraper_failure(caplog):
     ), "Aucun log CRITICAL trouvé pour le scraper en échec"
 
 
-def test_collect_returns_500_when_no_sources():
-    """Aucune source active → 500 avec message clair."""
+def test_collect_returns_202_when_no_sources():
+    """Aucune source active -> job créé, background task renseigne error dans le job."""
     import main as m
     from fastapi.testclient import TestClient
 
@@ -130,13 +130,14 @@ def test_collect_returns_500_when_no_sources():
         client = TestClient(m.app)
         resp = client.post("/api/collect", json={})
 
-    assert resp.status_code == 500
-    body = resp.json()
-    assert "Aucune source" in body.get("detail", "")
+    assert resp.status_code == 202
+    job_id = resp.json()["job_id"]
+    st = m._COLLECT_JOBS[job_id]
+    assert "Aucune source" in st.get("error", "")
 
 
-def test_collect_returns_200_partial_on_mixed_results():
-    """Une source OK + une source KO → 200 avec status='partial'."""
+def test_collect_returns_202_partial_on_mixed_results():
+    """Une source OK + une source KO -> job partial."""
     import main as m
     from fastapi.testclient import TestClient
 
@@ -178,16 +179,17 @@ def test_collect_returns_200_partial_on_mixed_results():
         client = TestClient(m.app)
         resp = client.post("/api/collect", json={})
 
-    assert resp.status_code == 200
-    body = resp.json()
+    assert resp.status_code == 202
+    job_id = resp.json()["job_id"]
+    body = m._COLLECT_JOBS[job_id]
     assert body["status"] == "partial"
     assert body["nb_ok"] == 1
     assert body["nb_error"] == 1
     assert len(body["results"]) == 2
 
 
-def test_collect_returns_200_ok_when_all_succeed():
-    """Toutes les sources OK → 200 avec status='ok'."""
+def test_collect_returns_202_ok_when_all_succeed():
+    """Toutes les sources OK -> job ok."""
     import main as m
     from fastapi.testclient import TestClient
 
@@ -215,15 +217,16 @@ def test_collect_returns_200_ok_when_all_succeed():
         client = TestClient(m.app)
         resp = client.post("/api/collect", json={})
 
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["status"] == "ok"
+    assert resp.status_code == 202
+    job_id = resp.json()["job_id"]
+    body = m._COLLECT_JOBS[job_id]
+    assert body["status"] == "done"
     assert body["nb_ok"] == 1
     assert body["nb_error"] == 0
 
 
-def test_collect_returns_500_when_all_sources_fail():
-    """Toutes les sources échouent → 500 avec detail.results."""
+def test_collect_returns_202_when_all_sources_fail():
+    """Toutes les sources échouent -> job error."""
     import main as m
     from fastapi.testclient import TestClient
 
@@ -250,12 +253,13 @@ def test_collect_returns_500_when_all_sources_fail():
         client = TestClient(m.app, raise_server_exceptions=False)
         resp = client.post("/api/collect", json={})
 
-    assert resp.status_code == 500
-    body = resp.json()
-    detail = body.get("detail", {})
-    assert "Toutes les sources ont échoué" in detail.get("message", "")
-    assert len(detail.get("results", [])) == 1
-    assert detail["results"][0]["status"] == "error"
+    assert resp.status_code == 202
+    job_id = resp.json()["job_id"]
+    body = m._COLLECT_JOBS[job_id]
+    assert body["status"] == "error"
+    assert "RuntimeError" in body.get("errors", [])[0]
+    assert len(body.get("results", [])) == 1
+    assert body["results"][0]["status"] == "error"
 
 
 def test_get_kpis_public_includes_new_24h():
