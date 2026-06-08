@@ -1,3 +1,4 @@
+from datetime import timezone
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -85,7 +86,7 @@ def test_scraper_stats_excludes_old_runs(db):
 
     run_id = start_scraper_run(db, "boamp")
     run = db.query(ScraperRun).filter(ScraperRun.id == run_id).first()
-    run.started_at = datetime.utcnow() - timedelta(days=35)
+    run.started_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=35)
     run.finished_at = run.started_at + timedelta(seconds=10)
     run.status = "ok"
     db.commit()
