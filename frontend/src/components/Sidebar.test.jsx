@@ -37,9 +37,9 @@ function Wrapper({ children }) {
 }
 
 describe('Sidebar', () => {
-  it('affiche le logo DEF OI', () => {
+  it('affiche le logo ATEXIA', () => {
     render(<Sidebar />, { wrapper: Wrapper })
-    expect(screen.getByText('DEF Océan Indien')).toBeInTheDocument()
+    expect(screen.getByText('ATEXIA')).toBeInTheDocument()
   })
 
   it('affiche tous les items de navigation', () => {
