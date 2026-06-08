@@ -247,6 +247,8 @@ def test_sources_batch2_presentes():
         "Centrale des Marchés",
         "First AO",
         "TendersPage",
+        "Explore",
+        "DoubleTrade",
     ]
     for name in aggregateurs:
         assert name in names, f"Agrégateur manquant : {name}"
