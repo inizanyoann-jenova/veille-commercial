@@ -1,3 +1,4 @@
+from datetime import timezone
 # scraper_factory.py
 """
 Génère automatiquement un scraper Python pour un site donné via Mistral AI.
@@ -50,7 +51,7 @@ def fetch() -> list[dict]:
                     "name": title_el.inner_text().strip(),
                     "url": url,
                     "source": "Exemple Site",
-                    "date_found": datetime.now(timezone.utc).date().isoformat(),
+                    "date_found": datetime.now(timezone.utc).replace(tzinfo=None).date().isoformat(),
                     "publication_date": "",
                     "deadline": "",
                     "description": "",
@@ -84,7 +85,7 @@ def fetch() -> list[dict]:
                 "name": cells[0].get_text(strip=True),
                 "url": link["href"] if link else "https://exemple2.fr/marches",
                 "source": "Exemple Site 2",
-                "date_found": datetime.now(timezone.utc).date().isoformat(),
+                "date_found": datetime.now(timezone.utc).replace(tzinfo=None).date().isoformat(),
                 "publication_date": cells[1].get_text(strip=True),
                 "deadline": "",
                 "description": "",
@@ -237,7 +238,7 @@ CONTRAINTES STRICTES :
    - name: str  (titre de l'appel d'offres, jamais vide)
    - url: str   (lien absolu vers l'annonce)
    - source: str (nom court du site)
-   - date_found: str  (date ISO via datetime.now(timezone.utc).date().isoformat())
+   - date_found: str  (date ISO via datetime.now(timezone.utc).replace(tzinfo=None).date().isoformat())
    - publication_date: str  (date ISO "YYYY-MM-DD" ou "" si inconnue)
    - deadline: str  (date ISO "YYYY-MM-DD" ou "" si inconnue)
    - description: str  (description courte ou "")
