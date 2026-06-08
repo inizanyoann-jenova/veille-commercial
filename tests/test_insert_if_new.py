@@ -85,7 +85,7 @@ def test_insert_if_new_rejects_invalid_date_string(db):
 def test_insert_if_new_accepts_aware_datetime(db):
     """Un datetime timezone-aware récent doit être inséré, pas rejeté silencieusement."""
     from datetime import timezone
-    pub = datetime.now(timezone.utc) - timedelta(days=5)
+    pub = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=5)
     t = _make_tender(id="T-006", publication_date=pub)
     known: set = set()
     result = insert_if_new(db, t, known)
@@ -96,7 +96,7 @@ def test_insert_if_new_accepts_aware_datetime(db):
 def test_insert_if_new_rejects_old_aware_datetime(db):
     """Un datetime timezone-aware trop ancien doit être rejeté."""
     from datetime import timezone
-    pub = datetime.now(timezone.utc) - timedelta(days=365)
+    pub = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=365)
     t = _make_tender(id="T-007", publication_date=pub)
     known: set = set()
     result = insert_if_new(db, t, known)
