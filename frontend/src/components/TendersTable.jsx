@@ -2,6 +2,8 @@
 import { useMemo, useState, useCallback, useEffect } from 'react'
 import { useTenders, useAnalyzeTender } from '../hooks/useTenders'
 
+const EMPTY_PAGE = []
+
 const STATUTS = ['Tous', 'À qualifier', 'En cours', 'Soumis', 'Gagné', 'Perdu']
 const SECTEURS = ['Public', 'Privé', 'International']
 const GONOGOS = ['Tous', 'GO', 'Étudier', 'Passer']
@@ -80,7 +82,7 @@ export default function TendersTable({
     setLastPageSize(0)
   }, [status, secteur])
 
-  const { data: page = [], isLoading, isFetching, isError } = useTenders({
+  const { data: page = EMPTY_PAGE, isLoading, isFetching, isError } = useTenders({
     status,
     secteur,
     limit: LIMIT,
@@ -89,10 +91,11 @@ export default function TendersTable({
 
   useEffect(() => {
     setAllTenders((prev) => {
-      if (page.length === 0 && offset === 0) return []
+      if (page.length === 0 && offset === 0) return prev.length === 0 ? prev : []
       if (offset === 0) return page
       const existingIds = new Set(prev.map((t) => t.id))
-      return [...prev, ...page.filter((t) => !existingIds.has(t.id))]
+      const newItems = page.filter((t) => !existingIds.has(t.id))
+      return newItems.length === 0 ? prev : [...prev, ...newItems]
     })
     if (!isFetching) setLastPageSize(page.length)
   }, [page, offset, isFetching])
