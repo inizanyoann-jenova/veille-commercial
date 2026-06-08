@@ -1,10 +1,10 @@
 export const THEME_KEY = 'theme-colors'
 
 export const DEFAULTS = {
-  deep:  '4 13 26',
-  cyan:  '0 200 255',
-  coral: '255 107 107',
-  text:  '221 238 255',
+  deep:  '0 20 65',
+  cyan:  '0 87 184',
+  coral: '227 6 19',
+  text:  '221 230 255',
 }
 
 export function hexToRgbString(hex) {
@@ -28,7 +28,7 @@ export function loadSavedTheme() {
   try {
     saved = JSON.parse(localStorage.getItem(THEME_KEY) || 'null')
   } catch {
-    saved = null
+    // ignore error
   }
   const colors = saved && typeof saved === 'object' ? { ...DEFAULTS, ...saved } : DEFAULTS
   applyTheme(colors)
