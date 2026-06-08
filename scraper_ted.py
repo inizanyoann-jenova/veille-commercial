@@ -1,3 +1,4 @@
+from datetime import timezone
 """
 TED (Tenders Electronic Daily — Journal Officiel UE) — appels d'offres
 Océan Indien : La Réunion, Mayotte, Madagascar, Maurice, Comores.
@@ -137,7 +138,7 @@ def fetch() -> list[dict]:
     """
     window_days = int(os.getenv("SCRAPER_WINDOW_DAYS", "90"))
     # TED date format : YYYYMMDD sans tirets
-    date_from = (datetime.now(timezone.utc) - timedelta(days=window_days)).strftime(
+    date_from = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=window_days)).strftime(
         "%Y%m%d"
     )
 
@@ -170,7 +171,7 @@ def _normalise(notice: dict) -> dict:
         "name": title,
         "url": url_fr,
         "source": "TED Europe",
-        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "date_found": datetime.now(timezone.utc).replace(tzinfo=None).date().isoformat(),
         "publication_date": _parse_ted_date(notice.get("publication-date")),
         "deadline": deadline,
         "description": description,
