@@ -1,3 +1,4 @@
+from datetime import timezone
 import sys
 import os
 
@@ -29,7 +30,7 @@ def db(engine):
 
 
 def _today_midnight():
-    return datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    return datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 def _add_tender(
