@@ -1,3 +1,4 @@
+from datetime import timezone
 """
 Marchés Sécurisés — appels d'offres La Réunion (974) et Mayotte (976).
 Method: JS-rendered scraping via Playwright avec authentification.
@@ -188,7 +189,7 @@ def _normalise(raw: dict) -> dict:
         "name": raw.get("name", ""),
         "url": raw.get("url", _SEARCH_URL),
         "source": "Marchés Sécurisés",
-        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "date_found": datetime.now(timezone.utc).replace(tzinfo=None).date().isoformat(),
         "publication_date": publication_date,
         "deadline": deadline,
         "description": raw.get("description", ""),
