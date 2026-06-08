@@ -3,7 +3,7 @@
 
 $rootDir = $PSScriptRoot
 
-Write-Host "=== DEF OI - Lancement de l'application ===" -ForegroundColor Cyan
+Write-Host "=== ATEXIA - Lancement de l'application ===" -ForegroundColor Cyan
 
 # Libérer le port 8000 si un ancien processus occupe déjà le port
 $oldPid = (netstat -ano | Select-String ":8000 .*LISTENING" | ForEach-Object { ($_ -split '\s+')[-1] } | Select-Object -First 1)
