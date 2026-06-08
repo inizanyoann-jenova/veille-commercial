@@ -1,5 +1,4 @@
 import { describe, it, expect, vi } from 'vitest'
-import axios from 'axios'
 
 vi.mock('axios', () => ({
   default: {
