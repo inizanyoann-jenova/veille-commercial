@@ -1,3 +1,4 @@
+from datetime import timezone
 """
 TendersGo — appels d'offres SSI/incendie/CMSI/vidéosurveillance France (La Réunion + Mayotte).
 Method: JS-rendered scraping via Playwright avec authentification.
@@ -125,7 +126,7 @@ def _normalise(raw: dict) -> dict:
         "name": raw.get("name", ""),
         "url": raw.get("url", _SEARCH_URL),
         "source": "TendersGo",
-        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "date_found": datetime.now(timezone.utc).replace(tzinfo=None).date().isoformat(),
         "publication_date": publication_date,
         "deadline": "",
         "description": raw.get("description", ""),
