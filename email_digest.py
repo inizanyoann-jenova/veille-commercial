@@ -1,3 +1,4 @@
+from datetime import timezone
 import smtplib
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
@@ -14,9 +15,9 @@ def build_digest(since_hours: int = 24, db=None) -> dict | None:
     if db is None:
         db = SessionLocal()
     try:
-        cutoff = datetime.utcnow() - timedelta(hours=since_hours)
-        urgence_limit = datetime.utcnow() + timedelta(days=7)
-        now = datetime.utcnow()
+        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=since_hours)
+        urgence_limit = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=7)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
 
         new_tenders = (
             db.query(Tender)
