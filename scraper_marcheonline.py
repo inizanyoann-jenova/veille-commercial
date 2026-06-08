@@ -1,3 +1,4 @@
+from datetime import timezone
 """
 MarchesOnline — appels d'offres La Réunion (D101) et Mayotte (D976).
 Method: Playwright avec parsing HTML commentaires (rendu non-premium).
@@ -196,7 +197,7 @@ def _normalise(card: dict, description: str = "") -> dict:
         "name": card.get("title", ""),
         "url": card.get("url", _BASE),
         "source": "MarchesOnline",
-        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "date_found": datetime.now(timezone.utc).replace(tzinfo=None).date().isoformat(),
         "publication_date": _to_iso(card.get("date", "")),
         "deadline": _to_iso(card.get("deadline", "")),
         "description": description,
