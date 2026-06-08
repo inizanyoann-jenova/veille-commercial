@@ -1,3 +1,4 @@
+from datetime import timezone
 """
 Nukema — marchés publics La Réunion (974) et Mayotte (976).
 Method: JS-rendered scraping via Playwright.
@@ -154,7 +155,7 @@ def _normalise(raw: dict) -> dict:
         "name": raw.get("name", ""),
         "url": raw.get("url", _BASE),
         "source": "Nukema",
-        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "date_found": datetime.now(timezone.utc).replace(tzinfo=None).date().isoformat(),
         "publication_date": publication_date,
         "deadline": deadline,
         "description": raw.get("description", ""),
