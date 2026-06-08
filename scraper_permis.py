@@ -1,3 +1,4 @@
+from datetime import timezone
 """
 Permis de Construire — DiDo v1 (SDES).
 Récupère les permis autorisés sur La Réunion (974) et Mayotte (976).
@@ -82,7 +83,7 @@ def fetch() -> list[dict]:
     Each item: name, url, source, date_found + domain-specific fields.
     """
     days_back = int(os.getenv("SCRAPER_WINDOW_DAYS", "30"))
-    date_from = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime(
+    date_from = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days_back)).strftime(
         "%Y-%m-%d"
     )
 
@@ -139,7 +140,7 @@ def _normalise(raw: dict, rid: str = "") -> dict:
         "name": f"[PC] {dest}{surf_txt} — {comm} ({dep})",
         "url": _DATASET_URL.format(rid),
         "source": "Permis de Construire (DiDo)",
-        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "date_found": datetime.now(timezone.utc).replace(tzinfo=None).date().isoformat(),
         "publication_date": publication_date,
         "deadline": "",
         "departement": dep,
