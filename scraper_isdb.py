@@ -1,3 +1,4 @@
+from datetime import timezone
 """
 IsDB (Islamic Development Bank) — appels d'offres projets Océan Indien.
 Source globale : filtrée sur pays OI et secteurs pertinents DEF.
@@ -149,7 +150,7 @@ def _normalise(raw: dict) -> dict:
         "name": raw.get("name", ""),
         "url": raw.get("url", _URL),
         "source": "IsDB",
-        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "date_found": datetime.now(timezone.utc).replace(tzinfo=None).date().isoformat(),
         "publication_date": publication_date,
         "deadline": "",
         "description": raw.get("description", ""),
