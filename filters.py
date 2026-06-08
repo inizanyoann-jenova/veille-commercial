@@ -160,8 +160,6 @@ INCLUSION_KEYWORDS = [
     "éclairage de sécurité",
     "balisage lumineux",
     "éclairage de balisage",
-    "luminaire",
-    "luminaires",
     # ── IRVE — bornes de recharge ────────────────────────────────────────────
     "irve",
     "borne de recharge",
