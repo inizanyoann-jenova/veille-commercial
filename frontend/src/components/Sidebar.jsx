@@ -276,10 +276,10 @@ export default function Sidebar() {
       <div className="px-4 py-5 border-b border-ocean-border">
         <div className="flex items-center gap-3 mb-3">
           <div className="w-11 h-11 bg-gradient-to-br from-ocean-cyan/20 to-ocean-teal/10 border border-ocean-cyan/25 rounded-xl flex items-center justify-center flex-shrink-0">
-            <span className="font-serif font-bold text-ocean-cyan text-sm">OI</span>
+            <span className="font-serif font-bold text-ocean-cyan text-sm">AT</span>
           </div>
           <div>
-            <p className="font-serif font-bold text-ocean-text text-sm leading-tight">DEF Océan Indien</p>
+            <p className="font-serif font-bold text-ocean-text text-sm leading-tight">ATEXIA</p>
             <p className="font-sans text-[10px] uppercase tracking-widest text-ocean-muted mt-0.5">Veille Marchés</p>
           </div>
         </div>
