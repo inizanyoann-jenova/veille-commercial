@@ -1,3 +1,4 @@
+from datetime import timezone
 """
 Marchés Publics — Département de La Réunion (974).
 Method: JS-rendered scraping via Playwright (plateforme e-marchespublics).
@@ -95,7 +96,7 @@ def _normalise(raw: dict) -> dict:
         "name": raw.get("name", ""),
         "url": raw.get("url", _URL),
         "source": "Département 974",
-        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "date_found": datetime.now(timezone.utc).replace(tzinfo=None).date().isoformat(),
         "publication_date": publication_date,
         "deadline": "",
         "description": raw.get("description", ""),
