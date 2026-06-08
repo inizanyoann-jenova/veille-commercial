@@ -1,4 +1,7 @@
+from datetime import timezone
 import logging as _logging
+import os as _os
+import sys as _sys
 
 from sqlalchemy import create_engine, or_, text
 from sqlalchemy.exc import OperationalError
@@ -7,7 +10,17 @@ from models import Base  # noqa: Credential enregistre la table credentials
 
 _log = _logging.getLogger(__name__)
 
-DATABASE_URL = "sqlite:///def_oi_veille.db"
+
+def _get_db_path() -> str:
+    if getattr(_sys, "frozen", False):
+        # Running as PyInstaller exe — store in %APPDATA%\ATEXIA
+        data_dir = _os.path.join(_os.environ.get("APPDATA", "."), "ATEXIA")
+        _os.makedirs(data_dir, exist_ok=True)
+        return _os.path.join(data_dir, "atexia_veille.db")
+    return _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "atexia_veille.db")
+
+
+DATABASE_URL = f"sqlite:///{_get_db_path()}"
 
 engine = create_engine(
     DATABASE_URL,
