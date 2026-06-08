@@ -19,6 +19,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
+from fastapi.staticfiles import StaticFiles
+import pathlib as _pathlib
 from pydantic import BaseModel, field_validator
 from sqlalchemy import func as _func, or_
 from sqlalchemy.orm import Session
@@ -69,6 +71,19 @@ from scraper_utils import load_existing_ids, insert_if_new  # noqa: E402
 
 _log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+
+def _find_frontend_dist() -> str | None:
+    """Returns path to compiled React frontend, or None if not built."""
+    candidates = [
+        _pathlib.Path(getattr(sys, "_MEIPASS", "")) / "frontend" / "dist",
+        _pathlib.Path(__file__).parent.parent / "frontend" / "dist",
+    ]
+    for p in candidates:
+        if p.is_dir():
+            return str(p)
+    return None
+
 
 # ── Jobs de collecte asynchrone ───────────────────────────────────────────────
 _COLLECT_JOBS: dict[str, dict] = {}
@@ -1682,3 +1697,11 @@ def test_credential(site: str, body: CredentialSave):
         }
     except Exception as exc:
         return {"ok": False, "message": str(exc)}
+
+
+# ── Frontend statique (mode EXE PyInstaller) ──────────────────────────────────
+# Le montage sur "/" doit être en DERNIER — après toutes les routes /api/*,
+# sinon il intercepte les requêtes API avant les handlers FastAPI.
+_frontend_dist = _find_frontend_dist()
+if _frontend_dist:
+    app.mount("/", StaticFiles(directory=_frontend_dist, html=True), name="frontend")
