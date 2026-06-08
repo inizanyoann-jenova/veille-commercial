@@ -1,3 +1,4 @@
+from datetime import timezone
 """
 Banques de Développement Régionales — Océan Indien.
 Sources RSS : BAD (Afrique), BEI (Europe), COI (Océan Indien), JICA, KfW, UNDP, ADB.
@@ -132,7 +133,7 @@ def _normalise(entry, territoire: str, nom: str, feed_url: str) -> dict:
         "name": f"[{nom}] {title[:200]}",
         "url": link,
         "source": nom,
-        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "date_found": datetime.now(timezone.utc).replace(tzinfo=None).date().isoformat(),
         "publication_date": parse_rss_date(entry),
         "deadline": "",
         "territoire": territoire,
