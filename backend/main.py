@@ -1,5 +1,6 @@
+
 """
-FastAPI backend — DEF OI Veille Marchés
+FastAPI backend — ATEXIA Veille Marchés
 Reproduit exactement la logique de récupération de données de app.py.
 """
 
@@ -439,8 +440,8 @@ async def lifespan(app: FastAPI):
 # ── Application ───────────────────────────────────────────────────────────────
 
 app = FastAPI(
-    title="DEF OI — Veille Marchés API",
-    description="API REST pour la veille marchés DEF Océan Indien",
+    title="ATEXIA — Veille Marchés API",
+    description="API REST pour la veille marchés ATEXIA",
     version="1.0.0",
     lifespan=lifespan,
 )
