@@ -4,20 +4,20 @@ export default {
   theme: {
     extend: {
       colors: {
-        sidebar: '#16213e',
-        accent: '#e94560',
+        sidebar: '#001441',
+        accent:  '#E30613',
         ocean: {
           deep:   'rgb(var(--color-ocean-deep) / <alpha-value>)',
-          navy:   '#071428',
-          panel:  '#0a1c35',
-          border: 'rgba(0,200,255,0.08)',
-          glow:   'rgba(0,200,255,0.15)',
+          navy:   '#00082A',
+          panel:  '#000C36',
+          border: 'rgba(0,87,184,0.12)',
+          glow:   'rgba(0,87,184,0.20)',
           cyan:   'rgb(var(--color-ocean-cyan) / <alpha-value>)',
-          teal:   '#00e5c0',
+          teal:   '#4A90D9',
           coral:  'rgb(var(--color-ocean-coral) / <alpha-value>)',
           gold:   '#ffd700',
           text:   'rgb(var(--color-ocean-text) / <alpha-value>)',
-          muted:  'rgba(150,200,240,0.4)',
+          muted:  'rgba(140,175,230,0.45)',
         },
       },
       fontFamily: {
