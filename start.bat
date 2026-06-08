@@ -1,6 +1,6 @@
 @echo off
-title DEF OI - Lancement application
-echo === DEF OI - Lancement de l'application ===
+title ATEXIA - Lancement application
+echo === ATEXIA - Lancement de l'application ===
 echo.
 
 cd /d "%~dp0"
