@@ -44,6 +44,6 @@ describe('DuplicatePair', () => {
 
   it('met en évidence tender_a (score plus élevé)', () => {
     const { container } = render(<DuplicatePair pair={PAIR} onResolve={vi.fn()} />)
-    expect(container.querySelector('.ring-2')).toBeInTheDocument()
+    expect(container.querySelector('.ring-1')).toBeInTheDocument()
   })
 })
