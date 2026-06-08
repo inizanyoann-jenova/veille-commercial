@@ -1,3 +1,4 @@
+from datetime import timezone
 """
 BOAMP (Bulletin Officiel des Annonces des Marchés Publics) — appels d'offres
 ciblés La Réunion (974) et Mayotte (976) : SSI, incendie, construction, ERP.
@@ -83,7 +84,7 @@ def fetch() -> list[dict]:
     """
     results = []
     days_back = int(os.getenv("SCRAPER_WINDOW_DAYS", "30"))
-    date_min = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime(
+    date_min = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days_back)).strftime(
         "%Y-%m-%d"
     )
 
@@ -184,7 +185,7 @@ def _normalise(raw: dict, dept: str = "") -> dict:
         "name": raw.get("objet") or f"Marché BOAMP {idweb}",
         "url": url,
         "source": "BOAMP",
-        "date_found": datetime.now(timezone.utc).date().isoformat(),
+        "date_found": datetime.now(timezone.utc).replace(tzinfo=None).date().isoformat(),
         "publication_date": publication_date,
         "deadline": deadline,
         "departement": dept,
