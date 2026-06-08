@@ -1,3 +1,4 @@
+from datetime import timezone
 from models import ScoreWeight
 
 
@@ -126,7 +127,7 @@ def test_age_weight_recent_returns_one():
     from datetime import datetime, timedelta
 
     class FakeTender:
-        date_extraction = datetime.utcnow() - timedelta(days=30)
+        date_extraction = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=30)
 
     assert _age_weight(FakeTender()) == 1.0
 
@@ -137,7 +138,7 @@ def test_age_weight_old_returns_half():
     from datetime import datetime, timedelta
 
     class FakeTender:
-        date_extraction = datetime.utcnow() - timedelta(days=200)
+        date_extraction = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=200)
 
     assert _age_weight(FakeTender()) == 0.5
 
@@ -151,11 +152,11 @@ def test_age_weight_boundary_180_days():
         pass
 
     t180 = FakeTender()
-    t180.date_extraction = datetime.utcnow() - timedelta(days=180)
+    t180.date_extraction = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=180)
     assert _age_weight(t180) == 1.0
 
     t181 = FakeTender()
-    t181.date_extraction = datetime.utcnow() - timedelta(days=181)
+    t181.date_extraction = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=181)
     assert _age_weight(t181) == 0.5
 
 
@@ -174,7 +175,7 @@ def test_decay_old_decisions_still_produce_valid_score(db, make_tender):
     from score_adaptive import recompute_adaptive_scores
     from datetime import datetime, timedelta
 
-    old_date = datetime.utcnow() - timedelta(days=200)
+    old_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=200)
     for i in range(8):
         t = make_tender(
             status="Gagné",
