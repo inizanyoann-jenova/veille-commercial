@@ -1,3 +1,4 @@
+from datetime import timezone
 from datetime import datetime, timezone
 from models import Tender
 
@@ -52,7 +53,7 @@ def test_afd_normalise_uses_real_publication_date():
     assert result["publication_date"] != ""
     assert "2024" in result["publication_date"]  # real source date, not today
     assert result["date_found"] is not None
-    assert str(datetime.now(timezone.utc).year) in result["date_found"]  # collected today
+    assert str(datetime.now(timezone.utc).replace(tzinfo=None).year) in result["date_found"]  # collected today
 
 
 def test_afd_normalise_date_found_is_naive_string():
