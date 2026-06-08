@@ -60,8 +60,8 @@ describe('TenderDetail', () => {
 
   it('affiche 3 skeletons en état loading', () => {
     useTender.mockReturnValue({ data: null, isLoading: true, isError: false })
-    const { container } = render(<TenderDetail tenderId="abc1" onClose={vi.fn()} />)
-    expect(container.querySelectorAll('.animate-pulse')).toHaveLength(3)
+    render(<TenderDetail tenderId="abc1" onClose={vi.fn()} />)
+    expect(document.querySelectorAll('.animate-pulse')).toHaveLength(3)
   })
 
   it('affiche le message erreur si isError', () => {
@@ -107,7 +107,7 @@ describe('TenderDetail', () => {
     useTender.mockReturnValue({ data: MOCK_TENDER, isLoading: false, isError: false })
     const onClose = vi.fn()
     render(<TenderDetail tenderId="abc1" onClose={onClose} />)
-    fireEvent.click(document.querySelector('[aria-hidden="true"]'))
+    fireEvent.click(document.querySelector('.fixed.inset-0'))
     expect(onClose).toHaveBeenCalledOnce()
   })
 
