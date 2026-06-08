@@ -28,7 +28,7 @@ describe('Layout', () => {
       </MemoryRouter>,
       { wrapper: Wrapper }
     )
-    expect(screen.getByText('DEF Océan Indien')).toBeInTheDocument()
+    expect(screen.getByText('ATEXIA')).toBeInTheDocument()
     expect(screen.getByText('Contenu Pipeline')).toBeInTheDocument()
   })
 
@@ -43,6 +43,6 @@ describe('Layout', () => {
       </MemoryRouter>,
       { wrapper: Wrapper }
     )
-    expect(screen.getByRole('banner').textContent).toBe('Analytics')
+    expect(screen.getByRole('banner')).toHaveTextContent('Analytics')
   })
 })
