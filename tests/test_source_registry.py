@@ -187,21 +187,27 @@ def test_nouvelles_sources_oi_presentes():
     db = Session()
     init_sources(db)
     names = {s.name for s in list_sources(db)}
-    expected = [
+    # Sources La Réunion présentes
+    expected_present = [
         "Région Réunion — Marchés publics",
         "CINOR — Marchés publics",
         "TCO — Marchés publics",
         "CHU Réunion — Marchés publics",
-        "Département de Mayotte — Marchés",
-        "CADEMA — Marchés publics",
-        "ARMP Madagascar",
-        "CPB Mauritius — Procurement",
         "IFC — Projets Afrique / OI",
         "AIIB — Projets approuvés",
         "COI — Commission Océan Indien",
     ]
-    for name in expected:
+    for name in expected_present:
         assert name in names, f"Source manquante : {name}"
+    # Sources Mayotte supprimées (ATEXIA opère uniquement à La Réunion)
+    removed = [
+        "Département de Mayotte — Marchés",
+        "CADEMA — Marchés publics",
+        "ARMP Madagascar",
+        "CPB Mauritius — Procurement",
+    ]
+    for name in removed:
+        assert name not in names, f"Source Mayotte devrait être absente : {name}"
     db.close()
 
 
@@ -217,12 +223,31 @@ def test_sources_batch2_presentes():
     db = Session()
     init_sources(db)
     names = {s.name for s in list_sources(db)}
+    # Sources automatiques internationales présentes
     expected = [
         "UNDP Procurement",
         "ADB — Banque Asiatique de Développement",
         "IsDB — Banque Islamique de Développement",
-"Centre Hospitalier de Mayotte",
     ]
     for name in expected:
         assert name in names, f"Source manquante : {name}"
+    # Centre Hospitalier de Mayotte supprimé (hors périmètre ATEXIA)
+    assert "Centre Hospitalier de Mayotte" not in names
+    # Nouveaux agrégateurs présents
+    aggregateurs = [
+        "e-marchespublics.com",
+        "J360",
+        "Bidding Source",
+        "Vecteur Plus",
+        "Libel",
+        "Deepbloo",
+        "Wanao",
+        "Klekoon",
+        "MPF — Marchés Publics France",
+        "Centrale des Marchés",
+        "First AO",
+        "TendersPage",
+    ]
+    for name in aggregateurs:
+        assert name in names, f"Agrégateur manquant : {name}"
     db.close()
