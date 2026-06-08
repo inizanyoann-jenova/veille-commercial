@@ -1,3 +1,4 @@
+from datetime import timezone
 from unittest.mock import patch, MagicMock
 from health_check import check_source
 
