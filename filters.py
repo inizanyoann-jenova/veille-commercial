@@ -1,6 +1,6 @@
 import re as _re
 
-# Mots déclencheurs directs — équipements DEF OI
+# Mots déclencheurs directs — équipements ATEXIA
 INCLUSION_KEYWORDS = [
     # ── SSI — signaux directs ──────────────────────────────────────────────────
     "ssi",
@@ -40,7 +40,7 @@ INCLUSION_KEYWORDS = [
     "évacuation incendie",
     # Équipements complémentaires SSI
     "ria",
-    "robinet incendie arm",  # préfixe : couvre armé / armés
+    "robinet incendie arm",
     "robinets incendie arm",
     "baas",
     "bloc autonome alarme",
@@ -80,7 +80,7 @@ INCLUSION_KEYWORDS = [
     "télésurveillance",
     "nvr",
     "dvr",
-    # Contrôle d'accès (souvent bundlé avec CCTV)
+    # Contrôle d'accès
     "contrôle d'accès",
     "controle d'acces",
     "système de contrôle d'accès",
@@ -95,7 +95,7 @@ INCLUSION_KEYWORDS = [
     "sûreté électronique",
     "sureté électronique",
     "sécurité électronique",
-    # Intrusion (souvent couplé)
+    # Intrusion
     "alarme intrusion",
     "détection intrusion",
     "anti-intrusion",
@@ -120,7 +120,88 @@ INCLUSION_KEYWORDS = [
     "tableau de communication",
     "armoire de brassage",
     "baie de brassage",
-    # ── Maintenance SSI / réglementaire ───────────────────────────────────────
+    # ── Courants forts / Génie électrique ────────────────────────────────────
+    "courants forts",
+    "génie électrique",
+    "genie electrique",
+    "installation électrique",
+    "installations électriques",
+    "travaux électriques",
+    "tgbt",
+    "tableau général basse tension",
+    "armoire électrique",
+    "armoires électriques",
+    "distribution basse tension",
+    "coffret électrique",
+    "coffrets électriques",
+    "tableau divisionnaire",
+    "tableaux divisionnaires",
+    "disjoncteur",
+    "câblage électrique",
+    "cablage electrique",
+    # ── Continuité d'énergie ─────────────────────────────────────────────────
+    "groupe électrogène",
+    "groupes électrogènes",
+    "onduleur",
+    "onduleurs",
+    "ups",
+    "asi",
+    "alimentation sans interruption",
+    "continuité d'énergie",
+    "secours électrique",
+    "alimentation de secours",
+    # ── Éclairage ────────────────────────────────────────────────────────────
+    "relamping",
+    "éclairage intérieur",
+    "éclairage led",
+    "mise aux normes électriques",
+    "nf c 15-100",
+    "nfc 15-100",
+    "éclairage de sécurité",
+    "balisage lumineux",
+    "éclairage de balisage",
+    "luminaire",
+    "luminaires",
+    # ── IRVE — bornes de recharge ────────────────────────────────────────────
+    "irve",
+    "borne de recharge",
+    "bornes de recharge",
+    "recharge véhicule électrique",
+    "infrastructure de recharge",
+    "point de charge",
+    "station de recharge",
+    # ── Énergie renouvelable / photovoltaïque ────────────────────────────────
+    "photovoltaïque",
+    "photovoltaique",
+    "panneaux solaires",
+    "panneau solaire",
+    "centrale solaire",
+    "autoconsommation",
+    "stockage énergie",
+    "batterie solaire",
+    "ombrière photovoltaïque",
+    "ombriere photovoltaique",
+    "enr",
+    # ── Efficacité énergétique / réglementaire ───────────────────────────────
+    "décret tertiaire",
+    "decret tertiaire",
+    "operat",
+    "performance énergétique",
+    "audit énergétique",
+    "audit energetique",
+    "bilan énergétique",
+    "rénovation énergétique",
+    "efficacité énergétique",
+    "cee",
+    # ── Réseau / infrastructures numériques ──────────────────────────────────
+    "fibre optique",
+    "réseau informatique",
+    "baie informatique",
+    "réseau local",
+    "lan",
+    "câblage réseau",
+    "infrastructure réseau",
+    # ── Maintenance SSI / réglementaire ──────────────────────────────────────
     "mco ssi",
     "mco",
     "maintenance ssi",
@@ -135,15 +216,14 @@ INCLUSION_KEYWORDS = [
     "vérification et maintenance",
     "maintenance et vérification",
     "télémaintenance",
-    # Conformité réglementaire (déclencheurs d'obligation SSI)
+    # Conformité réglementaire
     "mise en conformité",
     "dta",
     "dossier technique amiante",
 ]
 
-# Exclusions absolues — hors périmètre DEF OI
+# Exclusions absolues — hors périmètre ATEXIA
 EXCLUSION_KEYWORDS = [
-    # Sécurité humaine (gardiens, agents)
     "gardiennage",
     "agents de sécurité",
     "agent de sécurité",
@@ -153,19 +233,16 @@ EXCLUSION_KEYWORDS = [
     "maître-chien",
     "ssiap",
     "sécurité civile",
-    # Contenu scolaire/culturel sans lien avec la construction
     "livres scolaires",
     "manuels scolaires",
     "fournitures scolaires",
     "rentrée scolaire",
     "prix littéraire",
     "concours littéraire",
-    # RH / social
     "offre d'emploi",
     "aide sociale",
     "allocation",
     "bourse scolaire",
-    # Environnement / voirie (sans lien avec bâtiment)
     "espaces verts",
     "voirie",
     "assainissement",
@@ -174,8 +251,6 @@ EXCLUSION_KEYWORDS = [
     "déchèterie",
 ]
 
-# Indicateurs de projet de construction ou réhabilitation
-# (condition NÉCESSAIRE pour les signaux presse/institution)
 KEYWORDS_CONSTRUCTION = [
     "construction",
     "chantier",
@@ -206,102 +281,40 @@ KEYWORDS_CONSTRUCTION = [
     "zac",
 ]
 
-# Types d'ERP / bâtiments à obligation SSI
-# (condition NÉCESSAIRE pour les signaux presse/institution)
 KEYWORDS_ERP_CIBLES = [
-    # Santé
-    "hôpital",
-    "hopital",
-    "clinique",
-    "ehpad",
-    "maison de retraite",
-    "résidence seniors",
-    "établissement de santé",
-    "maison de santé",
-    "centre de soins",
-    "centre médical",
-    "dispensaire",
-    # Hébergement / hôtellerie
-    "hôtel",
-    "hotel",
-    "résidence hôtelière",
-    "resort",
-    "résidence de tourisme",
-    # Enseignement
-    "école",
-    "ecole",
-    "lycée",
-    "lycee",
-    "collège",
-    "college",
-    "université",
-    "universite",
-    "résidence étudiante",
-    "campus",
-    "internat",
-    "crèche",
-    "creche",
-    "halte-garderie",
-    "halte garderie",
-    # Commerce / logistique
-    "centre commercial",
-    "mall",
-    "galerie marchande",
-    "marché couvert",
-    "entrepôt logistique",
-    "entrepot",
-    "usine",
-    # Sport / loisirs
-    "salle de sport",
-    "gymnase",
-    "stade",
-    "arena",
-    "piscine",
-    "centre aquatique",
-    "base nautique",
-    # Culture
-    "centre culturel",
-    "théâtre",
-    "theatre",
-    "cinéma",
-    "cinema",
-    "musée",
-    "musee",
-    "bibliothèque",
-    "bibliotheque",
-    "médiathèque",
-    "mediatheque",
-    "salle des fêtes",
-    "salle polyvalente",
-    # Bureaux / administration
-    "immeuble de bureaux",
-    "siège social",
-    "bâtiment administratif",
-    "mairie",
-    "préfecture",
-    "sous-préfecture",
-    "tribunal",
-    "commissariat",
-    "caserne",
-    "foyer",
-    # Logement social
-    "logement social",
-    "hlm",
-    "office hlm",
-    "résidence sociale",
-    # Transport / data
-    "aéroport",
-    "aeroport",
-    "gare",
-    "port maritime",
-    "centre de données",
-    "data center",
+    "hôpital", "hopital", "clinique", "ehpad", "maison de retraite",
+    "résidence seniors", "établissement de santé", "maison de santé",
+    "centre de soins", "centre médical", "dispensaire",
+    "hôtel", "hotel", "résidence hôtelière", "resort", "résidence de tourisme",
+    "école", "ecole", "lycée", "lycee", "collège", "college",
+    "université", "universite", "résidence étudiante", "campus",
+    "internat", "crèche", "creche", "halte-garderie", "halte garderie",
+    "centre commercial", "mall", "galerie marchande", "marché couvert",
+    "entrepôt logistique", "entrepot", "usine",
+    "salle de sport", "gymnase", "stade", "arena", "piscine",
+    "centre aquatique", "base nautique",
+    "centre culturel", "théâtre", "theatre", "cinéma", "cinema",
+    "musée", "musee", "bibliothèque", "bibliotheque",
+    "médiathèque", "mediatheque", "salle des fêtes", "salle polyvalente",
+    "immeuble de bureaux", "siège social", "bâtiment administratif",
+    "mairie", "préfecture", "sous-préfecture", "tribunal",
+    "commissariat", "caserne", "foyer",
+    "logement social", "hlm", "office hlm", "résidence sociale",
+    "aéroport", "aeroport", "gare", "port maritime",
+    "centre de données", "data center",
 ]
 
+# Acteurs locaux La Réunion — renforcent le score géographique
+_ACTEURS_LOCAUX_974 = [
+    "shlmr", "sidr", "semader", "sedre", "chu réunion", "chu reunion",
+    "chor", "cinor", "tco", "civis", "cirest",
+]
 
-_WORD_BOUNDARY_KW = {"ssi", "cmsi", "cctv", "ria", "gtb", "gtc", "bms", "mco", "vdi", "nvr", "dvr"}
+_WORD_BOUNDARY_KW = {
+    "ssi", "cmsi", "cctv", "ria", "gtb", "gtc", "bms", "mco", "vdi",
+    "nvr", "dvr", "ups", "asi", "irve", "enr", "cee", "lan", "tgbt",
+}
 
-# Pré-compilation pour éviter de recompiler à chaque appel
 _COMPILED_BOUNDARY = {
     kw: _re.compile(r"\b" + _re.escape(kw) + r"\b") for kw in _WORD_BOUNDARY_KW
 }
@@ -311,14 +324,10 @@ def classify_relevance(text: str) -> tuple[bool, list[str]]:
     """Retourne (pertinent, tags).
 
     tags contient ["Potentiel SSI implicite"] quand la capture est via
-    la logique construction+ERP, sans mot-clé DEF OI direct.
-
-    Règle d'exclusion contextuelle : un mot d'exclusion ne s'applique QUE si
-    aucun mot d'inclusion direct (SSI/CMSI/vidéo/courants faibles) n'est présent.
+    la logique construction+ERP, sans mot-clé ATEXIA direct.
     """
     text_lower = text.lower()
 
-    # Vérifier les inclusions en premier — un match direct annule toute exclusion
     for kw in INCLUSION_KEYWORDS:
         if kw in _WORD_BOUNDARY_KW:
             if _COMPILED_BOUNDARY[kw].search(text_lower):
@@ -326,22 +335,21 @@ def classify_relevance(text: str) -> tuple[bool, list[str]]:
         elif kw in text_lower:
             return True, []
 
-    # Exclusions : seulement si aucun mot d'inclusion direct trouvé
     for kw in EXCLUSION_KEYWORDS:
         if kw in text_lower:
             return False, []
 
     has_chantier = any(kw in text_lower for kw in KEYWORDS_CONSTRUCTION)
     has_erp = any(kw in text_lower for kw in KEYWORDS_ERP_CIBLES)
+    has_acteur_local = any(kw in text_lower for kw in _ACTEURS_LOCAUX_974)
 
     if has_chantier:
         if has_erp:
             return True, ["Potentiel SSI implicite"]
         if (
             "974" in text_lower
-            or "976" in text_lower
             or "réunion" in text_lower
-            or "mayotte" in text_lower
+            or has_acteur_local
         ):
             return True, ["Potentiel SSI implicite"]
 
@@ -353,7 +361,6 @@ def is_relevant_def(text: str) -> bool:
 
 
 def is_construction_relevant(text: str) -> bool:
-    """Retourne True si le texte mentionne un projet de construction susceptible de nécessiter du SSI/CMSI."""
     text_lower = text.lower()
     return any(kw in text_lower for kw in KEYWORDS_CONSTRUCTION)
 
